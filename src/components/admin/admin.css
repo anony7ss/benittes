@@ -2070,6 +2070,14 @@ html.dark .admin-stat-card:hover {
   font-size: 12.5px;
 }
 
+.admin-prices-empty-action {
+  margin-top: 10px;
+}
+
+.admin-root a.admin-prices-empty-action {
+  color: #ffffff;
+}
+
 @keyframes adminShimmer {
   0% {
     background-position: 200% 0;

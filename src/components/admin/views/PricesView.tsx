@@ -170,9 +170,7 @@ export function PricesView({ session }: { session: { user: { id: string } } }) {
         <div>
           <p className="admin-kicker">TABELA DE APLICAÇÕES</p>
           <h1>Preços por veículo</h1>
-          <p style={{ color: "var(--admin-muted)", marginTop: 6 }}>
-            Cadastre valores diferentes por marca, modelo e faixa de ano.
-          </p>
+          <p className="admin-page-desc">Cadastre valores diferentes por marca, modelo e faixa de ano.</p>
         </div>
         <div className="admin-title-actions">
           <a href="/painel/servicos/" className="admin-secondary" style={{ textDecoration: "none" }}>
@@ -184,59 +182,101 @@ export function PricesView({ session }: { session: { user: { id: string } } }) {
         </div>
       </div>
 
-      {error && <p className="admin-form-error">{error}</p>}
+      {error && <p className="admin-form-error" style={{ marginBottom: 16 }}>{error}</p>}
       <div className="admin-toolbar">
-        <label className="admin-search" style={{ flex: "1 1 280px", maxWidth: 480 }}>
+        <div className="admin-search-wrap">
           <Search size={15} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar serviço, marca ou modelo" />
-        </label>
+          <input
+            className="admin-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar serviço, marca, modelo ou aplicação..."
+          />
+        </div>
         <span className="admin-muted">{rows.length} {rows.length === 1 ? "regra" : "regras"}</span>
       </div>
 
-      {services.length === 0 && !servicesLoading && (
-        <div className="admin-empty" style={{ marginTop: 16 }}>
-          <Tags size={22} />
+      {loading || servicesLoading ? (
+        <SkeletonTable rows={4} />
+      ) : services.length === 0 && rows.length === 0 ? (
+        <div className="admin-empty">
+          <Tags size={24} />
           <strong>Configure primeiro um serviço por veículo</strong>
-          <p>Abra o catálogo, escolha “Preço por veículo” e depois cadastre aqui as tarifas de cada aplicação.</p>
-          <a href="/painel/servicos/" className="admin-primary" style={{ textDecoration: "none", marginTop: 10 }}>Abrir catálogo de serviços</a>
+          <p>Abra o catálogo, escolha “Preço por veículo” e depois cadastre as tarifas de cada aplicação.</p>
+          <a href="/painel/servicos/" className="admin-primary admin-prices-empty-action">Abrir catálogo de serviços</a>
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="admin-empty">
+          <Tags size={24} />
+          <strong>Nenhuma tarifa cadastrada</strong>
+          <p>Adicione uma regra para o sistema consultar o valor correto de cada carro.</p>
+          <button type="button" className="admin-primary admin-prices-empty-action" onClick={openCreate}>
+            <Plus size={15} /> Nova tarifa
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="admin-empty">
+          <Search size={24} />
+          <strong>Nenhuma tarifa encontrada</strong>
+          <p>Tente buscar por outro serviço, marca, modelo ou aplicação.</p>
+        </div>
+      ) : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Serviço</th>
+                <th>Aplicação</th>
+                <th>Validade</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th aria-label="Ações" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => {
+                const service = serviceRows.find((item) => item.id === detail(row, "service_id"));
+                const make = String(detail(row, "vehicle_make") ?? "").trim();
+                const model = String(detail(row, "vehicle_model") ?? "").trim();
+                const yearFrom = detail(row, "year_from");
+                const yearTo = detail(row, "year_to");
+                const yearLabel = yearFrom || yearTo ? `${yearFrom || "…"}–${yearTo || "…"}` : "todos os anos";
+                return (
+                  <tr key={row.id}>
+                    <td>
+                      <strong>{service?.title ?? row.title}</strong>
+                      <div className="admin-muted">{service ? asText(detail(service, "categoria")) : "Serviço removido ou não vinculado"}</div>
+                    </td>
+                    <td>
+                      {[make, model].filter(Boolean).join(" ") || String(detail(row, "vehicle_application") ?? "Aplicação antiga para revisar")}
+                      <div className="admin-muted">
+                        {yearLabel}{detail(row, "vehicle_application") ? ` · ${String(detail(row, "vehicle_application"))}` : ""}
+                      </div>
+                    </td>
+                    <td>
+                      <span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                        <CalendarDays size={13} />
+                        {detail(row, "valid_from") || detail(row, "valid_until")
+                          ? `${asText(detail(row, "valid_from"))} — ${asText(detail(row, "valid_until"))}`
+                          : "Sem prazo"}
+                      </span>
+                    </td>
+                    <td><strong>{row.amount && row.amount > 0 ? money(row.amount) : "Valor pendente"}</strong></td>
+                    <td><AdminStatusBadge status={row.status} label={row.status === "cancelado" ? "Inativa" : "Ativa"} /></td>
+                    <td>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button type="button" className="admin-icon-btn" title={row.status === "cancelado" ? "Ativar" : "Desativar"} onClick={() => void toggleActive(row)}><Power size={14} /></button>
+                        <button type="button" className="admin-icon-btn" title="Editar" onClick={() => openEdit(row)}><Pencil size={14} /></button>
+                        <button type="button" className="admin-icon-btn danger" title="Excluir" onClick={() => void removeRecord(row)}><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
-
-      <div className="admin-table-wrap" style={{ marginTop: 14 }}>
-        <table className="admin-table">
-          <thead>
-            <tr><th>Serviço</th><th>Aplicação</th><th>Validade</th><th>Valor</th><th>Status</th><th aria-label="Ações" /></tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={6}><SkeletonTable rows={4} /></td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={6}><div className="admin-empty"><strong>Nenhuma tarifa cadastrada</strong><p>Adicione uma regra para o sistema consultar o valor correto de cada carro.</p></div></td></tr>
-            ) : filtered.map((row) => {
-              const service = serviceRows.find((item) => item.id === detail(row, "service_id"));
-              const make = String(detail(row, "vehicle_make") ?? "").trim();
-              const model = String(detail(row, "vehicle_model") ?? "").trim();
-              const yearFrom = detail(row, "year_from");
-              const yearTo = detail(row, "year_to");
-              const yearLabel = yearFrom || yearTo ? `${yearFrom || "…"}–${yearTo || "…"}` : "todos os anos";
-              return (
-                <tr key={row.id}>
-                  <td><strong>{service?.title ?? row.title}</strong><div className="admin-muted">{service ? asText(detail(service, "categoria")) : "Serviço removido ou não vinculado"}</div></td>
-                  <td>{[make, model].filter(Boolean).join(" ") || String(detail(row, "vehicle_application") ?? "Aplicação antiga para revisar")}<div className="admin-muted">{yearLabel}{detail(row, "vehicle_application") ? ` · ${String(detail(row, "vehicle_application"))}` : ""}</div></td>
-                  <td><span style={{ display: "inline-flex", gap: 5, alignItems: "center" }}><CalendarDays size={13} />{detail(row, "valid_from") || detail(row, "valid_until") ? `${asText(detail(row, "valid_from"))} — ${asText(detail(row, "valid_until"))}` : "Sem prazo"}</span></td>
-                  <td><strong>{row.amount && row.amount > 0 ? money(row.amount) : "Valor pendente"}</strong></td>
-                  <td><AdminStatusBadge status={row.status} label={row.status === "cancelado" ? "Inativa" : "Ativa"} /></td>
-                  <td><div style={{ display: "flex", gap: 5 }}>
-                    <button type="button" className="admin-icon-btn" title={row.status === "cancelado" ? "Ativar" : "Desativar"} onClick={() => void toggleActive(row)}><Power size={14} /></button>
-                    <button type="button" className="admin-icon-btn" title="Editar" onClick={() => openEdit(row)}><Pencil size={14} /></button>
-                    <button type="button" className="admin-icon-btn danger" title="Excluir" onClick={() => void removeRecord(row)}><Trash2 size={14} /></button>
-                  </div></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
 
       {modalOpen && (
         <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
