@@ -46,10 +46,11 @@ export function clientePediuAudio(texto) {
   const norm = removerAcentos(texto);
 
   const padroes = [
-    /\b(manda|mandar|mande|envia|enviar|envie|fala|falar|fale|grava|gravar|grave|responde|responder|responda|prefiro|quero|pode ser|consegue)\b.*\b(audio|voz|gravacao)\b/,
+    /\b(me\s+)?(manda|mandar|mande|envia|enviar|envie|fala|falar|fale|grava|gravar|grave|responde|responder|responda|explica|explique|prefiro|quero|pode\s+ser|consegue)\b.*\b(audio|voz|gravacao)\b/,
     /\b(em|por)\s+(audio|voz)\b/,
     /\b(audio|voz)\b.*\b(por\s*favor|pfv|pode\s*ser|obrigad[oa])\b/,
-    /\b(manda|grava|responde|envia)\s+(um\s+)?(audio|voz)\b/
+    /\b(manda|grava|responde|envia|explica)\s+(um\s+)?(audio|voz)\b/,
+    /\b(audio|voz)\s+(pra|para)\s+mim\b/
   ];
 
   return padroes.some((re) => re.test(norm));

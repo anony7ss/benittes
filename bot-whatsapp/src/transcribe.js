@@ -1,4 +1,4 @@
-import { downloadMediaMessage } from '@whiskeysockets/baileys';
+import { downloadMediaMessage, normalizeMessageContent } from '@whiskeysockets/baileys';
 import config from './config.js';
 import { logInfo, logWarn, logError } from './terminal.js';
 import { isSupportedMediaBuffer, readAsyncIterableWithLimit, readResponseBodyWithLimit, sanitizeUntrustedText } from './security-utils.js';
@@ -36,7 +36,8 @@ export async function transcreverAudio(msg, sock) {
     };
   }
 
-  const audioMessage = msg?.message?.audioMessage || msg?.message?.pttMessage;
+  const normalizedContent = normalizeMessageContent(msg?.message) || msg?.message || {};
+  const audioMessage = normalizedContent.audioMessage || normalizedContent.pttMessage;
   if (!audioMessage) {
     return {
       sucesso: false,

@@ -184,6 +184,22 @@ export async function POST(request: NextRequest) {
       if (body.audio_voice.length > 100) return NextResponse.json({ error: "Voz inválida." }, { status: 400 });
       patch.audio_voice = body.audio_voice.trim() || "pt-BR-FranciscaNeural";
     }
+    if (Array.isArray(body.ai_paused_phones)) {
+      if (body.ai_paused_phones.length > 200 || body.ai_paused_phones.some((phone) => typeof phone !== "string")) {
+        return NextResponse.json({ error: "Lista de números inválida." }, { status: 400 });
+      }
+      const phones = [...new Set(body.ai_paused_phones.map((phone) => String(phone).replace(/\D/g, "")).filter(Boolean))];
+      if (phones.some((phone) => !/^\d{10,15}$/.test(phone))) {
+        return NextResponse.json({ error: "Use números com DDD e código do país." }, { status: 400 });
+      }
+      patch.ai_paused_phones = phones;
+    }
+    if (typeof body.human_reply_pause_minutes === "number") {
+      if (![0, 15, 30, 60, 120, 240, 480, 1440].includes(body.human_reply_pause_minutes)) {
+        return NextResponse.json({ error: "Duração de pausa inválida." }, { status: 400 });
+      }
+      patch.human_reply_pause_minutes = body.human_reply_pause_minutes;
+    }
 
     const { data, error } = await supabase
       .from("whatsapp_bot_session")

@@ -2,7 +2,7 @@ import { supabase } from './supabase.js';
 import { sendHumanizedMessage } from './queue.js';
 import { logAction, logError, logInfo } from './terminal.js';
 import { resolverJidWhatsApp } from './phone-utils.js';
-import { registrarMensagemChat } from './web-sync.js';
+import { registrarMensagemChat, pausarIaParaContato } from './web-sync.js';
 
 let isProcessing = false;
 let realtimeSubscription = null;
@@ -63,6 +63,19 @@ export async function processarOutboxPendente() {
           senderName: 'Sistema (Direto)',
           body: isTwoFactorMessage ? '[código de verificação oculto]' : item.message,
         });
+
+        if (!isTwoFactorMessage && item.kind === 'direct') {
+          const { data: settings } = await supabase
+            .from('whatsapp_bot_session')
+            .select('human_reply_pause_minutes')
+            .eq('id', 'default')
+            .maybeSingle();
+          const pauseMinutes = Number(settings?.human_reply_pause_minutes ?? 30);
+          if (pauseMinutes > 0) {
+            await pausarIaParaContato(normalized, pauseMinutes);
+            logInfo('IA', `Pausa automática por ${pauseMinutes} min após mensagem manual para ${normalized}.`);
+          }
+        }
 
         await supabase
           .from('whatsapp_outbox')

@@ -37,6 +37,8 @@ type BotSession = {
   notify_on_quote_response?: boolean;
   audio_mode?: "direct_request" | "mirror" | "always" | "disabled";
   audio_voice?: string | null;
+  ai_paused_phones?: string[] | null;
+  human_reply_pause_minutes?: number | null;
   closed_auto_reply_enabled?: boolean;
   closed_auto_reply_message?: string | null;
   last_heartbeat?: string | null;
@@ -94,6 +96,8 @@ export function WhatsAppBotView({ session }: { session: Session }) {
   const [aiModel, setAiModel] = useState("qwen3.8-flash");
   const [audioMode, setAudioMode] = useState<"direct_request" | "mirror" | "always" | "disabled">("direct_request");
   const [audioVoice, setAudioVoice] = useState("pt-BR-FranciscaNeural");
+  const [pausedPhonesText, setPausedPhonesText] = useState("");
+  const [humanPauseMinutes, setHumanPauseMinutes] = useState(30);
   const [closedAutoReplyEnabled, setClosedAutoReplyEnabled] = useState(true);
   const [closedAutoReplyMessage, setClosedAutoReplyMessage] = useState(
     "Olá! 👋 No momento a *Benittes Oficina Mecânica* está fechada. Assim que retomarmos o atendimento, responderemos sua mensagem!",
@@ -128,6 +132,8 @@ export function WhatsAppBotView({ session }: { session: Session }) {
           setAiModel(json.session.ai_model || "qwen3.8-flash");
           setAudioMode(json.session.audio_mode || "direct_request");
           setAudioVoice(json.session.audio_voice || "pt-BR-FranciscaNeural");
+          setPausedPhonesText((json.session.ai_paused_phones ?? []).join("\n"));
+          setHumanPauseMinutes(json.session.human_reply_pause_minutes ?? 30);
           setClosedAutoReplyEnabled(json.session.closed_auto_reply_enabled !== false);
           if (json.session.closed_auto_reply_message) {
             setClosedAutoReplyMessage(json.session.closed_auto_reply_message);
@@ -218,6 +224,8 @@ export function WhatsAppBotView({ session }: { session: Session }) {
       ai_model: aiModel,
       audio_mode: audioMode,
       audio_voice: audioVoice,
+      ai_paused_phones: pausedPhonesText.split(/[\n,;]+/).map((phone) => phone.trim()).filter(Boolean),
+      human_reply_pause_minutes: humanPauseMinutes,
       closed_auto_reply_enabled: closedAutoReplyEnabled,
       closed_auto_reply_message: closedAutoReplyMessage,
     });
@@ -553,6 +561,35 @@ export function WhatsAppBotView({ session }: { session: Session }) {
                 <option value="always">Sempre responder em áudio</option>
                 <option value="disabled">Desativado</option>
               </select>
+            </div>
+
+            <div className="admin-field wide">
+              <label>Pausa após mensagem do atendente</label>
+              <select className="admin-select" value={humanPauseMinutes} onChange={(event) => setHumanPauseMinutes(Number(event.target.value))}>
+                <option value={0}>Não pausar automaticamente</option>
+                <option value={15}>15 minutos</option>
+                <option value={30}>30 minutos</option>
+                <option value={60}>1 hora</option>
+                <option value={120}>2 horas</option>
+                <option value={240}>4 horas</option>
+                <option value={480}>8 horas</option>
+                <option value={1440}>24 horas</option>
+              </select>
+              <small style={{ color: "var(--admin-muted)" }}>Depois de uma resposta manual enviada pelo site, a IA ignora novas mensagens desse contato durante esse período. Elas não ficam em fila para resposta posterior.</small>
+            </div>
+
+            <div className="admin-field wide">
+              <label>Números com IA pausada</label>
+              <textarea
+                className="admin-input"
+                rows={4}
+                value={pausedPhonesText}
+                onChange={(event) => setPausedPhonesText(event.target.value)}
+                placeholder={"+5511999999999\n+5511888888888"}
+              />
+              <small style={{ color: "var(--admin-muted)" }}>
+                Um número por linha. Também aceita vírgulas. O bot não responderá automaticamente a esses contatos até remover o número e salvar.
+              </small>
             </div>
 
             <div className="admin-field">

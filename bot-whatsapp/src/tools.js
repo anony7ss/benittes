@@ -11,6 +11,9 @@ const STATUS_LABELS = {
   cancelado: 'Cancelado / Recusado',
 };
 
+const SERVICE_CACHE_TTL_MS = 60 * 1000;
+let serviceCatalogCache = { expiresAt: 0, data: null, pending: null };
+
 function moneyBR(val) {
   const num = Number(val ?? 0);
   return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -41,14 +44,31 @@ async function notifyOwner(message) {
 }
 
 export async function listarServicos(categoria = '') {
-  const { data, error } = await supabase
-    .from('services')
-    .select('id, name, category, description, base_price, details')
-    .eq('active', true)
-    .order('name', { ascending: true })
-    .limit(100);
-
-  if (error) return { ok: false, erro: 'Não foi possível consultar os serviços.' };
+  let data = serviceCatalogCache.data;
+  if (!data || serviceCatalogCache.expiresAt <= Date.now()) {
+    if (!serviceCatalogCache.pending) {
+      serviceCatalogCache.pending = supabase
+        .from('services')
+        .select('id, name, category, description, base_price, details')
+        .eq('active', true)
+        .order('name', { ascending: true })
+        .limit(100)
+        .then(({ data: rows, error }) => {
+          if (error) throw error;
+          serviceCatalogCache = { data: rows || [], expiresAt: Date.now() + SERVICE_CACHE_TTL_MS, pending: null };
+          return serviceCatalogCache.data;
+        })
+        .catch((error) => {
+          serviceCatalogCache.pending = null;
+          throw error;
+        });
+    }
+    try {
+      data = await serviceCatalogCache.pending;
+    } catch {
+      return { ok: false, erro: 'Não foi possível consultar os serviços.' };
+    }
+  }
 
   const catFilter = String(categoria || '').trim().toLowerCase();
   const list = (data || [])
@@ -468,7 +488,7 @@ export const ferramentasSchema = [
     type: 'function',
     function: {
       name: 'listarServicos',
-      description: 'Lista os serviços ativos da oficina com valores e duração. Sempre chame antes de informar preços.',
+      description: 'Consulte o catálogo de serviços ativos somente se a pessoa pedir os serviços oferecidos ou perguntar o preço/valor de algum serviço. Não use para saudações, dúvidas gerais ou diagnóstico visual sem pedido de preço.',
       parameters: {
         type: 'object',
         properties: {

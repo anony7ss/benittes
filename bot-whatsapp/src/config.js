@@ -17,7 +17,7 @@ export const config = {
   opencodeApiKey: process.env.OPENCODE_API_KEY || process.env.OPENAI_API_KEY || '',
   opencodeBaseUrl: process.env.OPENCODE_BASE_URL || 'https://opencode.ai/zen/go/v1',
   opencodeModel: process.env.OPENCODE_MODEL || 'qwen3.8-flash',
-  opencodeVisionModel: process.env.OPENCODE_VISION_MODEL || 'deepseek-v4.1-flash',
+  opencodeVisionModel: process.env.OPENCODE_VISION_MODEL || 'deepseek-v4-flash-vision-exp',
   groqApiKey: process.env.GROQ_API_KEY || '',
   groqWhisperModel: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo',
   workshopName: process.env.WORKSHOP_NAME || 'Benittes Oficina Mecânica',

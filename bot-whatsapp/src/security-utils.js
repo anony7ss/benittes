@@ -104,6 +104,16 @@ function startsWithBytes(buffer, bytes, offset = 0) {
   return bytes.every((byte, index) => buffer[offset + index] === byte);
 }
 
+/** Retorna o MIME real de imagens aceitas, usando a assinatura dos bytes. */
+export function getSupportedImageMime(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (startsWithBytes(buffer, [0x52, 0x49, 0x46, 0x46]) && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (startsWithBytes(buffer, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) return 'image/png';
+  if (startsWithBytes(buffer, [0xFF, 0xD8, 0xFF])) return 'image/jpeg';
+  if (startsWithBytes(buffer, [0x47, 0x49, 0x46, 0x38])) return 'image/gif';
+  return null;
+}
+
 /** Confere assinaturas comuns antes de entregar bytes ao Baileys. */
 export function isSupportedMediaBuffer(buffer, mediaType) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 4) return false;
@@ -134,5 +144,6 @@ export default {
   isSafeWhatsAppJid,
   readResponseBodyWithLimit,
   readAsyncIterableWithLimit,
+  getSupportedImageMime,
   isSupportedMediaBuffer,
 };
