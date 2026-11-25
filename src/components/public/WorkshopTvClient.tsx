@@ -223,18 +223,20 @@ export function WorkshopTvClient() {
         @media (max-width: 640px) {
           .tv-panel-root { padding: 12px !important; }
           .tv-header {
-            align-items: flex-start !important;
-            flex-direction: column;
-            gap: 12px !important;
-            padding-bottom: 12px !important;
-            margin-bottom: 12px !important;
+            align-items: center !important;
+            flex-direction: row;
+            gap: 8px !important;
+            padding-bottom: 10px !important;
+            margin-bottom: 10px !important;
           }
-          .tv-brand { align-items: flex-start !important; gap: 10px !important; min-width: 0; }
-          .tv-brand-logo { width: 36px !important; height: 36px !important; flex: 0 0 36px; }
-          .tv-brand h1 { font-size: 16px !important; }
-          .tv-brand span { font-size: 11px !important; }
-          .tv-header-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
-          .tv-clock { margin-left: auto !important; font-size: 22px !important; }
+          .tv-brand { align-items: center !important; gap: 8px !important; min-width: 0; }
+          .tv-brand-logo { width: 32px !important; height: 32px !important; flex: 0 0 32px; }
+          .tv-brand h1 { font-size: 14px !important; line-height: 1.2 !important; }
+          .tv-brand span { font-size: 10px !important; }
+          .tv-header-actions { width: auto; flex: 0 0 auto; gap: 6px; }
+          .tv-header-actions .tv-btn { width: 34px; height: 34px; padding: 0; justify-content: center; font-size: 0; }
+          .tv-header-actions .tv-btn svg { width: 15px; height: 15px; }
+          .tv-clock { display: none; }
           .tv-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
           .tv-column { padding: 12px !important; }
           .tv-column h2 { font-size: 15px !important; }
