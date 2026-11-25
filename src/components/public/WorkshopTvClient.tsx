@@ -211,6 +211,36 @@ export function WorkshopTvClient() {
         .tv-panel-root {
           font-family: var(--font-sans, "Plus Jakarta Sans", Inter, system-ui, -apple-system, sans-serif);
         }
+        .tv-header-actions { display: flex; align-items: center; gap: 10px; }
+        .tv-columns {
+          flex: 1;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 18px;
+          align-items: stretch;
+          min-width: 0;
+        }
+        @media (max-width: 640px) {
+          .tv-panel-root { padding: 12px !important; }
+          .tv-header {
+            align-items: flex-start !important;
+            flex-direction: column;
+            gap: 12px !important;
+            padding-bottom: 12px !important;
+            margin-bottom: 12px !important;
+          }
+          .tv-brand { align-items: flex-start !important; gap: 10px !important; min-width: 0; }
+          .tv-brand-logo { width: 36px !important; height: 36px !important; flex: 0 0 36px; }
+          .tv-brand h1 { font-size: 16px !important; }
+          .tv-brand span { font-size: 11px !important; }
+          .tv-header-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
+          .tv-clock { margin-left: auto !important; font-size: 22px !important; }
+          .tv-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+          .tv-column { padding: 12px !important; }
+          .tv-column h2 { font-size: 15px !important; }
+          .tv-item { padding: 11px 12px !important; gap: 8px !important; }
+          .tv-item-reference { font-size: 15px !important; }
+        }
         .tv-btn {
           display: inline-flex;
           align-items: center;
@@ -244,6 +274,7 @@ export function WorkshopTvClient() {
         }
       `}</style>
       <header
+        className="tv-header"
         style={{
           display: "flex",
           alignItems: "center",
@@ -255,8 +286,8 @@ export function WorkshopTvClient() {
           transition: smoothTheme,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div className="admin-workspace-logo" style={{ width: 44, height: 44 }}>
+        <div className="tv-brand" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="admin-workspace-logo tv-brand-logo" style={{ width: 44, height: 44 }}>
             <img src="/benittes-logo.png" alt="Benittes Oficina Mecânica" />
           </div>
           <div>
@@ -269,7 +300,7 @@ export function WorkshopTvClient() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="tv-header-actions">
           <button
             type="button"
             className="tv-btn"
@@ -287,26 +318,21 @@ export function WorkshopTvClient() {
           >
             <RefreshCw size={14} className={refreshing ? "tv-spin" : undefined} /> Atualizar
           </button>
-          <strong style={{ fontSize: 28, fontVariantNumeric: "tabular-nums", marginLeft: 4, color: palette.ink, transition: smoothTheme }}>
+          <strong className="tv-clock" style={{ fontSize: 28, fontVariantNumeric: "tabular-nums", marginLeft: 4, color: palette.ink, transition: smoothTheme }}>
             {clock}
           </strong>
         </div>
       </header>
 
       <div
-        style={{
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: 18,
-          alignItems: "stretch",
-        }}
+        className="tv-columns"
       >
         {columns.map((col) => {
           const Icon = col.icon;
           return (
             <section
               key={col.key}
+              className="tv-column"
               style={{
                 backgroundColor: palette.colBg,
                 border: `1px solid ${palette.border}`,
@@ -356,6 +382,7 @@ export function WorkshopTvClient() {
                   {col.items.map((item) => (
                     <div
                       key={item.id}
+                      className="tv-item"
                       style={{
                         backgroundColor: palette.cardBg,
                         border: `1px solid ${palette.cardBorder}`,
@@ -369,7 +396,7 @@ export function WorkshopTvClient() {
                       }}
                     >
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: palette.ink, transition: smoothTheme }}>
+                        <div className="tv-item-reference" style={{ fontSize: 17, fontWeight: 700, marginBottom: 4, color: palette.ink, transition: smoothTheme }}>
                           {item.reference}
                         </div>
                         <div style={{ fontSize: 13.5, color: palette.muted, transition: smoothTheme }}>
