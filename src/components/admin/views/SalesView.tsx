@@ -306,7 +306,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
         </p>
       )}
 
-      <section className="admin-stat-grid">
+      <section className="admin-stat-grid admin-stat-grid-trio">
         <div className="admin-stat-card">
           <div className="admin-stat-card-head">
             <span className="admin-stat-label">Faturamento Total</span>

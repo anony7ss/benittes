@@ -2571,14 +2571,14 @@ html.dark .admin-stat-card:hover {
 }
 
 @media (max-width: 768px) {
-  .admin-report-stats > .admin-stat-card {
+  .admin-stat-grid-trio > .admin-stat-card {
     box-shadow: none;
     overflow-wrap: anywhere;
   }
-  .admin-report-stats > .admin-stat-card:first-child {
+  .admin-stat-grid-trio > .admin-stat-card:first-child {
     border-right: 1px solid var(--admin-line);
   }
-  .admin-report-stats > .admin-stat-card:last-child {
+  .admin-stat-grid-trio > .admin-stat-card:last-child {
     grid-column: 1 / -1;
     border-top: 1px solid var(--admin-line);
   }
