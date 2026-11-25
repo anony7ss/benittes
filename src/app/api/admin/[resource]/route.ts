@@ -265,11 +265,11 @@ export async function GET(
       ]);
       return NextResponse.json({
         messages: msgs.data ?? [],
-        clients: (cli.data ?? []).map((r) => fromDomainRow("clients", r as Record<string, unknown>)),
-        appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as Record<string, unknown>)),
-        workOrders: (os.data ?? []).map((r) => fromDomainRow("work-orders", r as Record<string, unknown>)),
-        inventory: (inv.data ?? []).map((r) => fromDomainRow("inventory", r as Record<string, unknown>)),
-        sales: (sls.data ?? []).map((r) => fromDomainRow("sales", r as Record<string, unknown>)),
+        clients: (cli.data ?? []).map((r) => fromDomainRow("clients", r as unknown as Record<string, unknown>)),
+        appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as unknown as Record<string, unknown>)),
+        workOrders: (os.data ?? []).map((r) => fromDomainRow("work-orders", r as unknown as Record<string, unknown>)),
+        inventory: (inv.data ?? []).map((r) => fromDomainRow("inventory", r as unknown as Record<string, unknown>)),
+        sales: (sls.data ?? []).map((r) => fromDomainRow("sales", r as unknown as Record<string, unknown>)),
       });
     }
 
@@ -282,9 +282,9 @@ export async function GET(
       ]);
       return NextResponse.json({
         messages: msgs.data ?? [],
-        appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as Record<string, unknown>)),
-        inventory: (inv.data ?? []).map((r) => fromDomainRow("inventory", r as Record<string, unknown>)),
-        finance: (fin.data ?? []).map((r) => fromDomainRow("finance", r as Record<string, unknown>)),
+        appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as unknown as Record<string, unknown>)),
+        inventory: (inv.data ?? []).map((r) => fromDomainRow("inventory", r as unknown as Record<string, unknown>)),
+        finance: (fin.data ?? []).map((r) => fromDomainRow("finance", r as unknown as Record<string, unknown>)),
       });
     }
 
@@ -348,7 +348,7 @@ export async function GET(
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     if (domainTable) {
-      let mapped = (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>));
+      let mapped = (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>));
       if (requestedOrder === "title.asc") {
         mapped = mapped.sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
       }
@@ -392,7 +392,7 @@ export async function POST(
         .select(returningColumnsForTable(table));
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({
-        data: (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>)),
+        data: (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>)),
       });
     }
 
@@ -400,7 +400,7 @@ export async function POST(
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     const mapped = domainTable
-      ? (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>))
+      ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
       : (data ?? []);
 
     if ((resource === "work-orders" || resource === "quotes") && mapped[0]) {
@@ -509,7 +509,7 @@ export async function PATCH(
       .select(returningColumnsForTable(table));
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     const mapped = domainTable
-      ? (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>))
+      ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
       : (data ?? []);
 
     if ((resource === "work-orders" || resource === "sales") && mapped[0]) {
