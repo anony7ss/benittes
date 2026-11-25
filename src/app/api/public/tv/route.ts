@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { clientAddress, enforceRateLimits, rateLimitedResponse } from "../../../../lib/security/http";
 
 function getAdminClient() {
   const url = (
@@ -28,8 +29,12 @@ function publicBoardRow(row: Record<string, unknown>) {
   };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!(await enforceRateLimits([
+      { scope: "public-tv-ip", subject: clientAddress(request), maxHits: 60, windowSeconds: 300 },
+    ]))) return rateLimitedResponse();
+
     const supabase = getAdminClient();
     const { data, error } = await supabase
       .from("work_orders")

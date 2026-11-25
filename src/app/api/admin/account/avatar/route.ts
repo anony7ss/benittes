@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { invalidOriginResponse, isSameOriginRequest, readBoundedJson } from "../../../../../lib/security/http";
+import { enforceRateLimits, invalidOriginResponse, isSameOriginRequest, rateLimitedResponse, readBoundedJson } from "../../../../../lib/security/http";
 import { getServiceSupabase, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 
 export async function GET(request: NextRequest) {
@@ -15,6 +15,14 @@ export async function PUT(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  try {
+    if (!(await enforceRateLimits([
+      { scope: "account-avatar-user", subject: staff.user.id, maxHits: 20, windowSeconds: 3600 },
+    ]))) return rateLimitedResponse();
+  } catch {
+    return NextResponse.json({ error: "Atualização da foto temporariamente indisponível." }, { status: 503 });
+  }
+
   const body = await readBoundedJson<{ photo?: unknown }>(request, 66 * 1024);
   if (!body.ok) return body.response;
   const photo = body.value?.photo;

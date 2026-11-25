@@ -1477,11 +1477,29 @@ html.dark .admin-stat-card:hover {
     grid-template-columns: 1fr;
   }
   .quote-stepper {
-    grid-template-columns: 1fr;
-    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
   }
   .quote-stepper-track {
-    display: none !important;
+    display: block !important;
+    left: 10% !important;
+    right: 10% !important;
+  }
+  .quote-stepper > * {
+    gap: 5px !important;
+    padding: 0 1px !important;
+    min-width: 0;
+  }
+  .quote-stepper > * > div:last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .quote-stepper > * > div:last-child > div:first-child {
+    font-size: 11px !important;
+  }
+  .quote-stepper > * > div:last-child > div:last-child {
+    font-size: 9px !important;
+    line-height: 1.25;
   }
 }
 
@@ -2682,9 +2700,15 @@ html.dark .admin-stat-card:hover {
   }
   .admin-three-col,
   .admin-form-grid,
-  .admin-inbox,
-  .admin-kanban {
+  .admin-inbox {
     grid-template-columns: 1fr;
+  }
+  .admin-kanban {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    overflow-x: auto;
+    align-items: stretch;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
   }
   .admin-inbox-list {
     border-right: 0;

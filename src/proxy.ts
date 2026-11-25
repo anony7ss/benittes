@@ -10,7 +10,7 @@ export function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.simplesapi.com.br${isDev ? " ws://localhost:* ws://127.0.0.1:* ws://192.168.0.103:*" : ""}`,
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${isDev ? " ws://localhost:* ws://127.0.0.1:* ws://192.168.0.103:*" : ""}`,
     "frame-src 'self' https://maps.google.com https://www.google.com",
     "media-src 'self' data: blob: https:",
     "object-src 'none'",
