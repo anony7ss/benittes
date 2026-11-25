@@ -36,13 +36,15 @@ export async function POST(request: NextRequest) {
 
     const code = String(randomInt(100000, 1000000));
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    const { error: updateError } = await service.from("panel_members").update({
+    const { data: updated, error: updateError } = await service.from("panel_members").update({
       two_factor_code: null,
       two_factor_code_hash: hashTwoFactorCode(member.user_id, code),
       two_factor_expires_at: expiresAt,
       two_factor_temp_token_expires_at: expiresAt,
-    }).eq("user_id", member.user_id).eq("two_factor_temp_token", tempToken).eq("active", true).eq("two_factor_enabled", true);
-    if (updateError) return NextResponse.json({ error: "Não foi possível reenviar o código." }, { status: 503 });
+    }).eq("user_id", member.user_id).eq("two_factor_temp_token", tempToken).eq("active", true).eq("two_factor_enabled", true)
+      .select("user_id")
+      .maybeSingle();
+    if (updateError || !updated) return NextResponse.json({ error: "Não foi possível reenviar o código." }, { status: 503 });
 
     const { error: outboxError } = await service.from("whatsapp_outbox").insert({
       phone: member.phone,

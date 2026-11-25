@@ -248,7 +248,7 @@ export async function GET(
   try {
     const staff = await requirePanelStaff(request);
     if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-    const supabase = staff.supabase;
+    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
 
     if (resource === "me") {
       return NextResponse.json({ member: staff.member }, { headers: { "Cache-Control": "no-store" } });
@@ -383,7 +383,7 @@ export async function POST(
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, false) : body;
-    const supabase = staff.supabase;
+    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
 
     if (table === "workshop_settings") {
       const { data, error } = await supabase
@@ -501,7 +501,7 @@ export async function PATCH(
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, true) : body;
-    const supabase = staff.supabase;
+    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
     const { data, error } = await supabase
       .from(table)
       .update(payload)
