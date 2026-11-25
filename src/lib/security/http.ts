@@ -110,3 +110,26 @@ export function rateLimitedResponse(): NextResponse {
 export function invalidOriginResponse(): NextResponse {
   return NextResponse.json({ error: "Origem da requisição inválida." }, { status: 403 });
 }
+
+export function databaseErrorResponse(error: { code?: string | null }): NextResponse {
+  const code = error.code ?? "";
+  if (code === "23505") {
+    return NextResponse.json({ error: "Já existe um registro com esses dados." }, { status: 409 });
+  }
+  if (code === "23503") {
+    return NextResponse.json(
+      { error: "Este registro possui vínculos e não pode ser alterado desta forma." },
+      { status: 409 },
+    );
+  }
+  if (["23502", "23514", "22P02", "22001", "22007"].includes(code)) {
+    return NextResponse.json({ error: "Revise os dados informados." }, { status: 400 });
+  }
+  if (code === "42501") {
+    return NextResponse.json({ error: "Você não tem permissão para executar esta ação." }, { status: 403 });
+  }
+  return NextResponse.json(
+    { error: "Não foi possível concluir a operação." },
+    { status: 500, headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
+}

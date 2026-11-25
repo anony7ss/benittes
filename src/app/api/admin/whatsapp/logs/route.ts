@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceSupabase, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
-import { enforceRateLimits, invalidOriginResponse, isSameOriginRequest, rateLimitedResponse } from "../../../../../lib/security/http";
+import { databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, rateLimitedResponse } from "../../../../../lib/security/http";
 
 export async function GET(request: NextRequest) {
   const staff = await requirePanelStaff(request);
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(120);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return databaseErrorResponse(error);
   return NextResponse.json({ logs: (data ?? []).reverse() }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -42,6 +42,6 @@ export async function DELETE(request: NextRequest) {
     .delete()
     .neq("id", "00000000-0000-0000-0000-000000000000");
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return databaseErrorResponse(error);
   return NextResponse.json({ ok: true });
 }

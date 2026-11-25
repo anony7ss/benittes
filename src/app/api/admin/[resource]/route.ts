@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { DOMAIN_TABLE_BY_MODULE, fromDomainRow, toDomainPayload } from "../../../../lib/domainTables";
-import { consumeRateLimit, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
+import { consumeRateLimit, databaseErrorResponse, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
 import { getServiceSupabase, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 
 const TABLE_ALIASES: Record<string, string> = {
@@ -15,25 +15,6 @@ const TABLE_ALIASES: Record<string, string> = {
   site_content: "site_content",
   panel_records: "panel_records",
 };
-
-function getServerClient(authHeader: string | null) {
-  const url = (
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.PUBLIC_SUPABASE_URL ||
-    ""
-  ).replace(/\/$/, "");
-  const key =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    "";
-  if (!url || !key) {
-    throw new Error("Supabase não configurado no servidor.");
-  }
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: authHeader ? { headers: { Authorization: authHeader } } : undefined,
-  });
-}
 
 function defaultOrderForTable(table: string): string | null {
   if (table === "workshop_settings") return "updated_at.desc";
@@ -63,7 +44,7 @@ function returningColumnsForTable(table: string): string {
 }
 
 async function syncFinalizedOrderOrSale(
-  supabase: ReturnType<typeof getServerClient>,
+  supabase: SupabaseClient,
   resource: string,
   row: {
     id: string;
@@ -248,7 +229,7 @@ export async function GET(
   try {
     const staff = await requirePanelStaff(request);
     if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
+    const supabase = staff.supabase as unknown as SupabaseClient;
 
     if (resource === "me") {
       return NextResponse.json({ member: staff.member }, { headers: { "Cache-Control": "no-store" } });
@@ -305,12 +286,14 @@ export async function GET(
       return NextResponse.json({ error: "Seleção de campos inválida." }, { status: 400 });
     }
     const rawLimit = searchParams.get("limit") ?? "500";
-    const limit = Number(rawLimit);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-      return NextResponse.json({ error: "Limite inválido (use de 1 a 500)." }, { status: 400 });
+    const requestedLimit = Number(rawLimit);
+    if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+      return NextResponse.json({ error: "Limite inválido (use um número inteiro positivo)." }, { status: 400 });
     }
+    // Keep large client requests compatible while bounding every database read.
+    const limit = Math.min(requestedLimit, 500);
 
-    type DynamicResult = { data: unknown[] | null; error: { message: string } | null };
+    type DynamicResult = { data: unknown[] | null; error: { message: string; code?: string } | null };
     type DynamicQuery = PromiseLike<DynamicResult> & {
       filter(column: string, operator: string, value: string): DynamicQuery;
       order(column: string, options: { ascending: boolean }): DynamicQuery;
@@ -345,7 +328,7 @@ export async function GET(
     query = query.limit(limit);
 
     const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
 
     if (domainTable) {
       let mapped = (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>));
@@ -356,9 +339,9 @@ export async function GET(
     }
 
     return NextResponse.json({ data: data ?? [] }, { headers: { "Cache-Control": "no-store" } });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro interno." },
+      { error: "Não foi possível concluir a operação." },
       { status: 500 },
     );
   }
@@ -383,21 +366,21 @@ export async function POST(
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, false) : body;
-    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
+    const supabase = staff.supabase as unknown as SupabaseClient;
 
     if (table === "workshop_settings") {
       const { data, error } = await supabase
         .from(table)
         .upsert(payload, { onConflict: "key" })
         .select(returningColumnsForTable(table));
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+      if (error) return databaseErrorResponse(error);
       return NextResponse.json({
         data: (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>)),
       });
     }
 
     const { data, error } = await supabase.from(table).insert(payload).select(returningColumnsForTable(table));
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
 
     const mapped = domainTable
       ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
@@ -470,9 +453,9 @@ export async function POST(
     }
 
     return NextResponse.json({ data: mapped });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro interno." },
+      { error: "Não foi possível concluir a operação." },
       { status: 500 },
     );
   }
@@ -501,13 +484,13 @@ export async function PATCH(
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, true) : body;
-    const supabase = staff.supabase as unknown as ReturnType<typeof getServerClient>;
+    const supabase = staff.supabase as unknown as SupabaseClient;
     const { data, error } = await supabase
       .from(table)
       .update(payload)
       .eq(idColumn, id)
       .select(returningColumnsForTable(table));
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
     const mapped = domainTable
       ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
       : (data ?? []);
@@ -521,9 +504,9 @@ export async function PATCH(
     }
 
     return NextResponse.json({ data: mapped });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro interno." },
+      { error: "Não foi possível concluir a operação." },
       { status: 500 },
     );
   }
@@ -534,7 +517,7 @@ export async function DELETE(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
-  const { domainTable, table } = resolveTable(resource);
+  const { table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
   }
@@ -549,11 +532,11 @@ export async function DELETE(
   try {
     const supabase = staff.supabase;
     const { error } = await supabase.from(table).delete().eq(idColumn, id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
     return NextResponse.json({ ok: true });
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro interno." },
+      { error: "Não foi possível concluir a operação." },
       { status: 500 },
     );
   }

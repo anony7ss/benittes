@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
-import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
+import { clientAddress, databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 const HEARTBEAT_STALE_MS = 90_000;
 
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return databaseErrorResponse(error);
   }
 
   const isOnline = isBotHeartbeatFresh(data?.last_heartbeat);
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: "id" },
       );
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
     return NextResponse.json({ ok: true, action });
   }
 
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       )
       .select("*")
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
     return NextResponse.json({ ok: true, session: data });
   }
 
@@ -190,7 +190,7 @@ export async function POST(request: NextRequest) {
       .upsert(patch, { onConflict: "id" })
       .select("*")
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return databaseErrorResponse(error);
     return NextResponse.json({ ok: true, session: data });
   }
 

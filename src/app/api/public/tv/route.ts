@@ -52,7 +52,7 @@ export async function GET() {
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Não foi possível carregar o painel TV." }, { status: 503 });
   }
 }

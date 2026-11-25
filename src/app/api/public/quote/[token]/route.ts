@@ -168,7 +168,7 @@ export async function GET(
     return NextResponse.json(payload, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Não foi possível carregar o orçamento." }, { status: 503 });
   }
 }
@@ -340,7 +340,7 @@ export async function POST(
 
     const updatedPayload = await buildPublicPayload(supabase, cleanToken);
     return NextResponse.json(updatedPayload, { headers: { "Cache-Control": "no-store" } });
-  } catch (err) {
+  } catch {
     return NextResponse.json({ error: "Não foi possível processar a resposta." }, { status: 503 });
   }
 }

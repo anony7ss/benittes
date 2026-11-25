@@ -57,7 +57,7 @@ export function ReportsView() {
       const [data, osData, salesData, finData] = await Promise.all([
         selectRows<PanelRecord>(selectedModule, {
           order: "created_at.desc",
-          limit: "1000",
+          limit: "500",
         }),
         selectRows<PanelRecord>("work-orders", { order: "created_at.desc", limit: "500" }).catch(() => []),
         selectRows<PanelRecord>("sales", { order: "created_at.desc", limit: "500" }).catch(() => []),

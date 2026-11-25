@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
-import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
+import { clientAddress, databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 function canManageBot(role: unknown): boolean {
   return role === "owner" || role === "manager";
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       supabase.from("whatsapp_outbox").select("*", { count: "exact", head: true }).not("kind", "like", "2fa_%").eq("status", "failed"),
     ]);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return databaseErrorResponse(error);
   return NextResponse.json({
     items: items ?? [],
     stats: {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       sent: sent ?? 0,
       failed: failed ?? 0,
     },
-  });
+  }, { headers: { "Cache-Control": "no-store, max-age=0" } });
 }
 
 export async function POST(request: NextRequest) {
@@ -72,6 +72,6 @@ export async function POST(request: NextRequest) {
     .select("*")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return databaseErrorResponse(error);
   return NextResponse.json({ ok: true, item: data });
 }
