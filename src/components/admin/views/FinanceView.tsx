@@ -1,6 +1,6 @@
 "use client";
 
-import { SkeletonTable } from "../Skeletons";
+import { SkeletonChart, SkeletonStatCards, SkeletonTable } from "../Skeletons";
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   ArrowDownLeft,
@@ -123,7 +123,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
     "finance",
     session.user.id,
   );
-  const { rows: workOrderRows } = useModuleRecords("work-orders", session.user.id);
+  const { rows: workOrderRows, loading: workOrdersLoading } = useModuleRecords("work-orders", session.user.id);
   const { clients } = useClientVehicleCatalog();
 
   const [tab, setTab] = useState<FinanceTab>("all");
@@ -384,6 +384,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
         </p>
       )}
 
+      {loading || workOrdersLoading ? <SkeletonStatCards count={4} /> : (
       <section className="admin-stat-grid">
         <div className="admin-stat-card">
           <div className="admin-stat-card-head">
@@ -437,25 +438,36 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
           </div>
         </div>
       </section>
+      )}
 
       <section className="admin-two-col" style={{ marginBottom: 20 }}>
         <div className="admin-panel">
           <div className="admin-panel-head">
             <h2>Entradas vs Saídas (6 meses)</h2>
           </div>
-          <CashflowBarChart data={cashflowData} />
+          {loading ? (
+            <SkeletonChart variant="bars" />
+          ) : (
+            <div className="admin-data-enter"><CashflowBarChart data={cashflowData} /></div>
+          )}
         </div>
 
         <div className="admin-panel">
           <div className="admin-panel-head">
             <h2>Distribuição por categoria</h2>
           </div>
-          <DonutBreakdownChart
-            slices={categorySlices}
-            centerLabel="Movimentado"
-            centerValue={money(totalMovimentado)}
-            emptyText="Cadastre lançamentos para ver a distribuição"
-          />
+          {loading ? (
+            <SkeletonChart variant="donut" />
+          ) : (
+            <div className="admin-data-enter">
+              <DonutBreakdownChart
+                slices={categorySlices}
+                centerLabel="Movimentado"
+                centerValue={money(totalMovimentado)}
+                emptyText="Cadastre lançamentos para ver a distribuição"
+              />
+            </div>
+          )}
         </div>
       </section>
 

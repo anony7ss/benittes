@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Search } from "lucide-react";
-import { getSession, insertRow, selectRows, type PanelRecord } from "../../lib/supabase";
+import { insertRow, selectRows, type PanelRecord } from "../../lib/supabase";
 import { resolveServicePrice, type ServicePriceResolution, type VehiclePriceProfile } from "../../lib/servicePricing";
 import { detail, money } from "./utils";
 
@@ -227,62 +226,6 @@ export function VehiclePicker({
         </option>
       ))}
     </select>
-  );
-}
-
-export type PlateLookupResult = {
-  plate: string;
-  marca: string | null;
-  modelo: string | null;
-  ano: string | null;
-  cor: string | null;
-  combustivel: string | null;
-  chassi: string | null;
-};
-
-export function PlateLookupButton({
-  plate,
-  onFound,
-}: {
-  plate: string;
-  onFound: (data: PlateLookupResult) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  async function handleClick() {
-    const clean = plate.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (clean.length < 7 || busy) return;
-    setBusy(true);
-    try {
-      const sess = await getSession();
-      const res = await fetch("/api/admin/vehicles/plate-ocr", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(sess?.access_token ? { Authorization: `Bearer ${sess.access_token}` } : {}),
-        },
-        body: JSON.stringify({ plate: clean }),
-      });
-      if (!res.ok) return;
-      const json = (await res.json()) as PlateLookupResult;
-      if (json.plate) onFound(json);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      className="admin-secondary"
-      style={{ flexShrink: 0, padding: "0 11px", minHeight: 40 }}
-      disabled={busy || plate.trim().replace(/[^A-Z0-9]/gi, "").length < 7}
-      onClick={() => void handleClick()}
-      title="Consultar placa na API e preencher dados"
-    >
-      <Search size={13} />
-      {busy ? "..." : "Preencher"}
-    </button>
   );
 }
 

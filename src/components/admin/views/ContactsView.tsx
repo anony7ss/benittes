@@ -192,7 +192,7 @@ export function ContactsView() {
                 <button
                   key={msg.id}
                   type="button"
-                  className={`admin-inbox-item${isSelected ? " selected" : ""}`}
+                  className={`admin-inbox-item admin-data-enter${isSelected ? " selected" : ""}`}
                   onClick={() => void handleSelect(msg)}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>

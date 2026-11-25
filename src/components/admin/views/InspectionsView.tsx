@@ -8,7 +8,6 @@ import { AdminStatusBadge, statusLabels } from "../StatusBadge";
 import { asText, dateText, detail, useModuleRecords, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
-  PlateLookupButton,
   VehiclePicker,
   clientDisplayName,
   ensureClientAndVehicle,
@@ -350,30 +349,12 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                       });
                     }}
                   />
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      className="admin-input"
-                      placeholder="ABC1D23"
-                      value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
-                    />
-                    <PlateLookupButton
-                      plate={form.vehicle}
-                      onFound={(res) => {
-                        const info = [res.marca, res.modelo, res.ano, res.cor].filter(Boolean).join(" · ");
-                        setForm((prev) => ({
-                          ...prev,
-                          vehicle: res.plate,
-                          description:
-                            info && !prev.description.includes(info)
-                              ? prev.description
-                                ? `${info}\n${prev.description}`
-                                : info
-                              : prev.description,
-                        }));
-                      }}
-                    />
-                  </div>
+                  <input
+                    className="admin-input"
+                    placeholder="ABC1D23"
+                    value={form.vehicle}
+                    onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+                  />
                 </div>
 
                 <div className="admin-field">

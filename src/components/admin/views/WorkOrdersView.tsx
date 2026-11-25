@@ -18,7 +18,6 @@ import {
 } from "../utils";
 import {
   ClientPicker,
-  PlateLookupButton,
   ServicePicker,
   VehiclePicker,
   clientDisplayName,
@@ -488,7 +487,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
       ) : loading ? (
         <SkeletonKanban columns={3} />
       ) : (
-        <div className="admin-kanban">
+        <div className="admin-kanban admin-data-enter">
           {LANES.map((lane) => {
             const laneRows = filtered.filter((r) =>
               (lane.statuses as readonly string[]).includes(r.status),
@@ -843,30 +842,12 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       }));
                     }}
                   />
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      className="admin-input"
-                      placeholder="ABC1D23"
-                      value={form.vehicle}
-                      onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))}
-                    />
-                    <PlateLookupButton
-                      plate={form.vehicle}
-                      onFound={(res) => {
-                        const info = [res.marca, res.modelo, res.ano, res.cor].filter(Boolean).join(" · ");
-                        setForm((prev) => ({
-                          ...prev,
-                          ...workOrderVehiclePatch(prev, res.plate, null, { make: res.marca, model: res.modelo, year: res.ano }),
-                          description:
-                            info && !prev.description.includes(info)
-                              ? prev.description
-                                ? `${info}\n${prev.description}`
-                                : info
-                              : prev.description,
-                        }));
-                      }}
-                    />
-                  </div>
+                  <input
+                    className="admin-input"
+                    placeholder="ABC1D23"
+                    value={form.vehicle}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))}
+                  />
                 </div>
 
                 <div className="admin-field">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock, Coffee, LogIn, LogOut, RefreshCw } from "lucide-react";
 import type { PanelMember, Session } from "../../../lib/supabase";
 import { AdminStatusBadge } from "../StatusBadge";
+import { SkeletonBox, SkeletonTable } from "../Skeletons";
 import { dateText, detail, todayIso, useModuleRecords } from "../utils";
 
 type PunchType = "entrada" | "inicio_intervalo" | "fim_intervalo" | "saida";
@@ -143,7 +144,12 @@ export function TimeClockView({
               {clock || "--:--:--"}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--admin-muted)", marginTop: 4 }}>
-              Horas trabalhadas hoje: <strong style={{ color: "var(--admin-ink)" }}>{formatDuration(workedToday)}</strong>
+              Horas trabalhadas hoje:{" "}
+              {loading ? (
+                <span style={{ display: "inline-flex", verticalAlign: "middle" }}><SkeletonBox width={66} height={14} radius={4} /></span>
+              ) : (
+                <strong style={{ color: "var(--admin-ink)" }}>{formatDuration(workedToday)}</strong>
+              )}
             </div>
           </div>
 
@@ -163,7 +169,12 @@ export function TimeClockView({
           </div>
         </div>
 
-        {myTodayPunches.length > 0 && (
+        {loading ? (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--admin-line)" }}>
+            <SkeletonBox width={92} height={28} radius={6} />
+            <SkeletonBox width={104} height={28} radius={6} />
+          </div>
+        ) : myTodayPunches.length > 0 && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--admin-line)" }}>
             {myTodayPunches.map((p, i) => (
               <span
@@ -184,6 +195,7 @@ export function TimeClockView({
         )}
       </section>
 
+      {loading ? <SkeletonTable rows={4} /> : (
       <div className="admin-table-wrap">
         <table className="admin-table">
           <thead>
@@ -240,6 +252,7 @@ export function TimeClockView({
           </tbody>
         </table>
       </div>
+      )}
     </>
   );
 }

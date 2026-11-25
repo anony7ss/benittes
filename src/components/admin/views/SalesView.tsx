@@ -1,6 +1,6 @@
 "use client";
 
-import { SkeletonTable } from "../Skeletons";
+import { SkeletonChart, SkeletonStatCards, SkeletonTable } from "../Skeletons";
 import { useMemo, useState, type FormEvent } from "react";
 import { FileText, Pencil, Plus, Receipt, RefreshCw, Search, ShoppingBag, Trash2, TrendingUp, X } from "lucide-react";
 import { type PanelRecord } from "../../../lib/supabase";
@@ -10,7 +10,6 @@ import { AreaTrendChart, DonutBreakdownChart } from "../AdminCharts";
 import { asText, dateText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
-  PlateLookupButton,
   ServicePicker,
   VehiclePicker,
   clientDisplayName,
@@ -68,8 +67,9 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
     "sales",
     session.user.id,
   );
-  const { rows: financeRows } = useModuleRecords("finance", session.user.id);
+  const { rows: financeRows, loading: financeLoading } = useModuleRecords("finance", session.user.id);
   const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
+  const summaryLoading = loading || financeLoading;
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fiscalRow, setFiscalRow] = useState<PanelRecord | null>(null);
@@ -375,6 +375,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
         </p>
       )}
 
+      {summaryLoading ? <SkeletonStatCards count={3} /> : (
       <section className="admin-stat-grid admin-stat-grid-trio">
         <div className="admin-stat-card">
           <div className="admin-stat-card-head">
@@ -415,25 +416,36 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
           </div>
         </div>
       </section>
+      )}
 
       <section className="admin-two-col" style={{ marginBottom: 20 }}>
         <div className="admin-panel">
           <div className="admin-panel-head">
             <h2>Faturamento dos últimos 7 dias</h2>
           </div>
-          <AreaTrendChart data={trendData} />
+          {summaryLoading ? (
+            <SkeletonChart variant="bars" />
+          ) : (
+            <div className="admin-data-enter"><AreaTrendChart data={trendData} /></div>
+          )}
         </div>
 
         <div className="admin-panel">
           <div className="admin-panel-head">
             <h2>Vendas por forma de pagamento</h2>
           </div>
-          <DonutBreakdownChart
-            slices={paymentSlices}
-            centerLabel="Movimentado"
-            centerValue={money(validRevenue)}
-            emptyText="Registre vendas para ver as formas de pagamento"
-          />
+          {summaryLoading ? (
+            <SkeletonChart variant="donut" />
+          ) : (
+            <div className="admin-data-enter">
+              <DonutBreakdownChart
+                slices={paymentSlices}
+                centerLabel="Movimentado"
+                centerValue={money(validRevenue)}
+                emptyText="Registre vendas para ver as formas de pagamento"
+              />
+            </div>
+          )}
         </div>
       </section>
 
@@ -630,21 +642,12 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                       }));
                     }}
                   />
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      className="admin-input"
-                      value={form.vehicle}
-                      onChange={(event) => setForm((f) => ({ ...f, ...saleVehiclePatch(f, event.target.value) }))}
-                      placeholder="Modelo / Placa"
-                    />
-                    <PlateLookupButton
-                      plate={form.vehicle}
-                      onFound={(result) => setForm((prev) => ({
-                        ...prev,
-                        ...saleVehiclePatch(prev, result.plate, null, { make: result.marca, model: result.modelo, year: result.ano }),
-                      }))}
-                    />
-                  </div>
+                  <input
+                    className="admin-input"
+                    value={form.vehicle}
+                    onChange={(event) => setForm((f) => ({ ...f, ...saleVehiclePatch(f, event.target.value) }))}
+                    placeholder="Modelo / Placa"
+                  />
                 </div>
 
                 <label className="admin-field">

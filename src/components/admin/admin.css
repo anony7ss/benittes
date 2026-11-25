@@ -1244,6 +1244,39 @@ body:has(.admin-shell) {
 .admin-page .admin-table tbody tr:nth-child(5) { animation-delay: 160ms; }
 .admin-page .admin-table tbody tr:nth-child(n + 6) { animation-delay: 195ms; }
 
+.admin-data-enter {
+  animation: adminRowEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.admin-dashboard-data-list {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-dashboard-data-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
+.admin-dashboard-data-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
+.admin-dashboard-data-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
+.admin-dashboard-data-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
+.admin-dashboard-data-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
+
+.admin-inbox-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
+.admin-inbox-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
+.admin-inbox-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
+.admin-inbox-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
+.admin-inbox-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
+
+.admin-dashboard-row-skeleton {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--admin-line);
+  border-radius: 6px;
+  background: var(--admin-soft);
+}
+
 .admin-page-title {
   display: flex;
   justify-content: space-between;
@@ -2096,6 +2129,13 @@ html.dark .admin-stat-card:hover {
   );
   background-size: 200% 100%;
   animation: adminShimmer 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-data-enter,
+  .admin-skeleton {
+    animation: none;
+  }
 }
 
 /* ==========================================================================

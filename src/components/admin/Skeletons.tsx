@@ -18,6 +18,105 @@ export function SkeletonBox({
   );
 }
 
+export function SkeletonStatCards({ count = 4 }: { count?: number }) {
+  return (
+    <section
+      className={`admin-stat-grid${count === 3 ? " admin-stat-grid-trio" : ""}`}
+      role="status"
+      aria-label="Carregando indicadores"
+      aria-busy="true"
+    >
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="admin-stat-card" aria-hidden="true">
+          <div className="admin-stat-card-head">
+            <SkeletonBox height={11} width="58%" radius={4} />
+            <SkeletonBox height={22} width={22} radius={6} />
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <SkeletonBox height={28} width={112} radius={6} />
+            <SkeletonBox height={12} width="72%" radius={4} />
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function SkeletonChart({
+  variant = "bars",
+  height = 220,
+}: {
+  variant?: "bars" | "donut";
+  height?: number;
+}) {
+  return (
+    <div
+      role="status"
+      aria-label="Carregando gráfico"
+      aria-busy="true"
+      style={{ height, display: "grid", alignItems: "center" }}
+    >
+      {variant === "donut" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", alignItems: "center", gap: 18 }} aria-hidden="true">
+          <div style={{ display: "grid", placeItems: "center" }}>
+            <SkeletonBox width={124} height={124} radius={999} />
+          </div>
+          <div style={{ display: "grid", gap: 12 }}>
+            {["72%", "88%", "58%", "76%"].map((width, index) => (
+              <div key={index} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <SkeletonBox width={10} height={10} radius={999} />
+                <SkeletonBox width={width} height={11} radius={4} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", gap: 10, height: "100%", padding: "20px 8px 4px" }} aria-hidden="true">
+          {[34, 58, 44, 76, 52, 88, 64, 46].map((barHeight, index) => (
+            <div key={index} style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", height: "100%", flex: "1 1 0" }}>
+              <SkeletonBox width="72%" height={barHeight} radius={4} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SkeletonDashboardRows({
+  count = 4,
+  variant = "record",
+}: {
+  count?: number;
+  variant?: "metric" | "record";
+}) {
+  return (
+    <div className="admin-dashboard-data-list" role="status" aria-label="Carregando registros" aria-busy="true">
+      {Array.from({ length: count }).map((_, index) => (
+        <div className="admin-dashboard-row-skeleton" key={index} aria-hidden="true">
+          {variant === "metric" ? (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                <SkeletonBox width={16} height={16} radius={4} />
+                <SkeletonBox width="58%" height={13} radius={4} />
+              </div>
+              <SkeletonBox width={28} height={16} radius={4} />
+            </>
+          ) : (
+            <>
+              <div style={{ display: "grid", gap: 7, flex: 1 }}>
+                <SkeletonBox width="62%" height={13} radius={4} />
+                <SkeletonBox width="48%" height={11} radius={4} />
+              </div>
+              <SkeletonBox width={58} height={22} radius={999} />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function SkeletonTable({ rows = 6 }: { rows?: number }) {
   return (
     <div className="admin-table-wrap" style={{ padding: 18 }}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { SkeletonTable } from "../Skeletons";
+import { SkeletonBox, SkeletonChart, SkeletonStatCards, SkeletonTable } from "../Skeletons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, DollarSign, Download, FileSpreadsheet, Percent, RefreshCw } from "lucide-react";
 import { selectRows, type PanelRecord } from "../../../lib/supabase";
@@ -288,6 +288,7 @@ export function ReportsView() {
         </div>
       </section>
 
+      {loading ? <SkeletonStatCards count={3} /> : (
       <section className="admin-stat-grid admin-stat-grid-trio">
         <div className="admin-stat-card">
           <div className="admin-stat-card-head">
@@ -328,6 +329,7 @@ export function ReportsView() {
           </div>
         </div>
       </section>
+      )}
 
       <div className="admin-toolbar" style={{ marginBottom: 14 }}>
         <div className="admin-filter-pills">
@@ -363,7 +365,17 @@ export function ReportsView() {
               Período selecionado
             </span>
           </div>
-          <div style={{ display: "grid", gap: 10, fontSize: 13.5 }}>
+          {loading ? (
+            <div style={{ display: "grid", gap: 10 }} role="status" aria-label="Carregando DRE" aria-busy="true">
+              {["64%", "54%", "60%", "48%", "58%", "52%", "72%"].map((width, index) => (
+                <div key={index} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "8px 0", borderBottom: "1px solid var(--admin-line)" }}>
+                  <SkeletonBox width={width} height={index === 6 ? 16 : 13} />
+                  <SkeletonBox width={88} height={14} />
+                </div>
+              ))}
+            </div>
+          ) : (
+          <div className="admin-data-enter" style={{ display: "grid", gap: 10, fontSize: 13.5 }}>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--admin-line)" }}>
               <span>(+) Receita de Serviços (OS concluídas)</span>
               <strong style={{ color: "var(--admin-green)" }}>{money(dreSummary.receitaServicos)}</strong>
@@ -395,6 +407,7 @@ export function ReportsView() {
               </strong>
             </div>
           </div>
+          )}
         </section>
       )}
 
@@ -416,6 +429,7 @@ export function ReportsView() {
               />
             </label>
           </div>
+          {loading ? <SkeletonStatCards count={2} /> : (
           <div className="admin-stat-grid" style={{ marginBottom: 0 }}>
             <div className="admin-stat-card">
               <div className="admin-stat-card-head">
@@ -434,15 +448,22 @@ export function ReportsView() {
               <span className="admin-stat-sub">Calculado sobre serviços e vendas concluídos</span>
             </div>
           </div>
+          )}
         </section>
       )}
 
-      {trendData.length > 0 && (
+      {loading ? (
         <section className="admin-panel" style={{ marginBottom: 14 }}>
-          <AreaTrendChart
-            data={trendData}
-            subtitle={`Evolução diária · ${MODULES.find((m) => m.id === selectedModule)?.label ?? "Relatório"}`}
-          />
+          <SkeletonChart variant="bars" />
+        </section>
+      ) : trendData.length > 0 && (
+        <section className="admin-panel" style={{ marginBottom: 14 }}>
+          <div className="admin-data-enter">
+            <AreaTrendChart
+              data={trendData}
+              subtitle={`Evolução diária · ${MODULES.find((m) => m.id === selectedModule)?.label ?? "Relatório"}`}
+            />
+          </div>
         </section>
       )}
 

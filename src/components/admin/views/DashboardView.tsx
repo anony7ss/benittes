@@ -22,6 +22,7 @@ import {
 import { routeFor } from "../../../admin/navigation";
 import { AdminStatusBadge } from "../StatusBadge";
 import { RevenueChart, type RevenuePeriod } from "../RevenueChart";
+import { SkeletonChart, SkeletonDashboardRows, SkeletonStatCards } from "../Skeletons";
 import { dateText, detail, money, todayIso } from "../utils";
 
 export function DashboardView() {
@@ -31,6 +32,7 @@ export function DashboardView() {
   const [inventory, setInventory] = useState<PanelRecord[]>([]);
   const [sales, setSales] = useState<PanelRecord[]>([]);
   const [finance, setFinance] = useState<PanelRecord[]>([]);
+  const [loading, setLoading] = useState(true);
   const [chartPeriod, setChartPeriod] = useState<RevenuePeriod>(6);
   const [error, setError] = useState("");
 
@@ -51,7 +53,8 @@ export function DashboardView() {
         setSales(res.sales);
         setFinance(financeRows);
       })
-      .catch((reason: Error) => setError(reason.message));
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setLoading(false));
   }, []);
 
   const today = todayIso();
@@ -138,6 +141,7 @@ export function DashboardView() {
 
       {error && <p className="admin-form-error" style={{ marginBottom: 16 }}>{error}</p>}
 
+      {loading ? <SkeletonStatCards count={4} /> : (
       <section className="admin-stat-grid">
         <a href={routeFor("relatorios")} className="admin-stat-card">
           <div className="admin-stat-card-head">
@@ -195,6 +199,7 @@ export function DashboardView() {
           </div>
         </a>
       </section>
+      )}
 
       <div className="admin-bento">
         <section className="admin-panel">
@@ -207,11 +212,17 @@ export function DashboardView() {
               Ver finanças <ArrowUpRight size={14} />
             </a>
           </div>
-          <RevenueChart
-            data={chartData}
-            period={chartPeriod}
-            onPeriodChange={setChartPeriod}
-          />
+          {loading ? (
+            <SkeletonChart variant="bars" height={228} />
+          ) : (
+            <div className="admin-data-enter">
+              <RevenueChart
+                data={chartData}
+                period={chartPeriod}
+                onPeriodChange={setChartPeriod}
+              />
+            </div>
+          )}
         </section>
 
         <section className="admin-panel">
@@ -221,9 +232,11 @@ export function DashboardView() {
               <h2>Atenção operacional</h2>
             </div>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
+          {loading ? <SkeletonDashboardRows count={3} variant="metric" /> : (
+          <div className="admin-dashboard-data-list">
             <a
               href={routeFor("estoque")}
+              className="admin-data-enter"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -243,6 +256,7 @@ export function DashboardView() {
 
             <a
               href={routeFor("veiculos")}
+              className="admin-data-enter"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -262,6 +276,7 @@ export function DashboardView() {
 
             <a
               href={routeFor("agenda")}
+              className="admin-data-enter"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -279,6 +294,7 @@ export function DashboardView() {
               <strong>{appointments.filter((a) => a.status !== "cancelado" && a.status !== "concluido").length}</strong>
             </a>
           </div>
+          )}
         </section>
       </div>
 
@@ -293,16 +309,19 @@ export function DashboardView() {
               Abrir quadro <ArrowUpRight size={14} />
             </a>
           </div>
-          {workOrders.length === 0 ? (
-            <div className="admin-empty">
+          {loading ? (
+            <SkeletonDashboardRows count={3} />
+          ) : workOrders.length === 0 ? (
+            <div className="admin-empty admin-data-enter">
               <strong>Nenhuma ordem de serviço</strong>
               <p>Abra uma OS para acompanhar diagnóstico, peças e execução.</p>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
+            <div className="admin-dashboard-data-list">
               {workOrders.slice(0, 5).map((os) => (
                 <div
                   key={os.id}
+                  className="admin-data-enter"
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -337,16 +356,19 @@ export function DashboardView() {
               Ver caixa <ArrowUpRight size={14} />
             </a>
           </div>
-          {messages.length === 0 ? (
-            <div className="admin-empty">
+          {loading ? (
+            <SkeletonDashboardRows count={3} />
+          ) : messages.length === 0 ? (
+            <div className="admin-empty admin-data-enter">
               <strong>Nenhuma mensagem</strong>
               <p>Contatos enviados pelo formulário público aparecerão aqui.</p>
             </div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
+            <div className="admin-dashboard-data-list">
               {messages.slice(0, 5).map((msg) => (
                 <div
                   key={msg.id}
+                  className="admin-data-enter"
                   style={{
                     display: "flex",
                     alignItems: "center",

@@ -21,7 +21,6 @@ import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, detail, todayIso, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
-  PlateLookupButton,
   ServicePicker,
   VehiclePicker,
   clientDisplayName,
@@ -401,7 +400,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                         <button
                           key={ev.id}
                           type="button"
-                          className={`admin-calendar-event ${ev.status}`}
+                          className={`admin-calendar-event ${ev.status} admin-data-enter`}
                           onClick={(e) => {
                             e.stopPropagation();
                             openEdit(ev);
@@ -506,7 +505,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                           <button
                             key={ev.id}
                             type="button"
-                            className={`admin-calendar-event ${ev.status}`}
+                            className={`admin-calendar-event ${ev.status} admin-data-enter`}
                             onClick={() => openEdit(ev)}
                             style={{ whiteSpace: "normal", display: "grid", gap: 2, padding: 8 }}
                           >
@@ -552,7 +551,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
             const startsAt = detail(row, "starts_at");
             const horario = detail(row, "horario");
             return (
-              <div key={row.id} className="admin-panel">
+              <div key={row.id} className="admin-panel admin-data-enter">
                 <div
                   style={{
                     display: "flex",
@@ -778,33 +777,12 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                       });
                     }}
                   />
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <input
-                      className="admin-input"
-                      placeholder="ABC1D23"
-                      value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })}
-                    />
-                    <PlateLookupButton
-                      plate={form.vehicle}
-                      onFound={(res) => {
-                        const info = [res.marca, res.modelo, res.ano, res.cor].filter(Boolean).join(" · ");
-                        setForm((prev) => ({
-                          ...prev,
-                          vehicle: res.plate,
-                          marca: res.marca ?? "",
-                          modelo: res.modelo ?? "",
-                          ano: res.ano ?? "",
-                          description:
-                            info && !prev.description.includes(info)
-                              ? prev.description
-                                ? `${info}\n${prev.description}`
-                                : info
-                              : prev.description,
-                        }));
-                      }}
-                    />
-                  </div>
+                  <input
+                    className="admin-input"
+                    placeholder="ABC1D23"
+                    value={form.vehicle}
+                    onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })}
+                  />
                 </div>
 
                 <div className="admin-field">

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "@/styles/site.css";
 import { Icon } from "@/components/public/Icon";
 import { Mark } from "@/components/public/Mark";
@@ -10,12 +11,15 @@ export default async function SiteLayout({ children }: { children: ReactNode }) 
   await headers();
 
   return (
-    <SiteShell
-      mark={<Mark />}
-      menuIcon={<Icon name="list" />}
-      whatsappIcon={<Icon name="whatsapp-logo" size={26} />}
-    >
-      {children}
-    </SiteShell>
+    <>
+      <SiteShell
+        mark={<Mark />}
+        menuIcon={<Icon name="list" />}
+        whatsappIcon={<Icon name="whatsapp-logo" size={26} />}
+      >
+        {children}
+      </SiteShell>
+      <SpeedInsights />
+    </>
   );
 }
