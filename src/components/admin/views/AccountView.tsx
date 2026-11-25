@@ -24,6 +24,7 @@ import {
   type Session,
 } from "../../../lib/supabase";
 import { useProfilePhoto } from "../ProfilePhoto";
+import { usePagination } from "../Pagination";
 import { SkeletonTable } from "../Skeletons";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, modalBackdropProps } from "../utils";
@@ -299,6 +300,7 @@ export function AccountView({
         .some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [auditLogs, auditSearch]);
+  const { pageItems: auditPage, controls: auditPagination } = usePagination(filteredAudit);
 
   const initials = (fullName.trim() || session.user.email || "B")
     .split(/\s+/)
@@ -1068,7 +1070,7 @@ export function AccountView({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredAudit.map((entry) => (
+                  {auditPage.map((entry) => (
                     <tr key={entry.id}>
                       <td>{asText(entry.actor_email)}</td>
                       <td>
@@ -1085,6 +1087,7 @@ export function AccountView({
               </table>
             </div>
           )}
+          {auditPagination}
         </section>
       )}
 

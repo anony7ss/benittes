@@ -1,6 +1,7 @@
 "use client";
 
 import { SkeletonTable } from "../Skeletons";
+import { usePagination } from "../Pagination";
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
@@ -55,6 +56,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
       return haystack.includes(q);
     });
   }, [rows, search]);
+  const { pageItems, controls: pagination } = usePagination(filtered);
 
   function openCreate() {
     setEditing(null);
@@ -144,6 +146,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
           <p>Cadastre um novo cliente ou altere o termo de busca.</p>
         </div>
       ) : (
+        <>
         <div className="admin-table-wrap">
           <table className="admin-table">
             <thead>
@@ -158,7 +161,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
+              {pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{row.title || row.customer_name || "—"}</div>
@@ -200,6 +203,8 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
             </tbody>
           </table>
         </div>
+        {pagination}
+        </>
       )}
 
       {modalOpen && (

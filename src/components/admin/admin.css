@@ -1906,6 +1906,35 @@ html.dark .admin-stat-card:hover {
 /* ==========================================================================
    TABLES & STATUS BADGES
    ========================================================================== */
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--admin-muted);
+  font-size: 12px;
+}
+.admin-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-pagination button {
+  min-height: 32px;
+  padding: 5px 10px;
+}
+@media (max-width: 520px) {
+  .admin-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .admin-pagination > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 .admin-table-wrap {
   width: 100%;
   max-width: 100%;
