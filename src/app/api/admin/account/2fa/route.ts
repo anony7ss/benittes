@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { randomInt } from "node:crypto";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 import { hashTwoFactorCode, safeHashEquals } from "../../../../../lib/security/twoFactor";
-import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { getServiceSupabase, getSupabaseEnv, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     action?: unknown;
     phone?: unknown;
     code?: unknown;
+    password?: unknown;
   }>(request, 3 * 1024);
   if (!parsed.ok) return parsed.response;
 
@@ -59,6 +61,14 @@ export async function POST(request: NextRequest) {
       if (!validBrPhone(phone) || (isDisableCode && !current.two_factor_enabled)) {
         return NextResponse.json({ error: "Informe um número de WhatsApp válido com DDD." }, { status: 400 });
       }
+
+      const password = typeof parsed.value.password === "string" ? parsed.value.password : "";
+      if (!password || password.length > 1024) return NextResponse.json({ error: "Confirme sua senha atual." }, { status: 400 });
+      const { url, anonKey } = getSupabaseEnv();
+      if (!url || !anonKey) return NextResponse.json({ error: "Não foi possível confirmar a senha." }, { status: 503 });
+      const authClient = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+      const { error: passwordError } = await authClient.auth.signInWithPassword({ email: current.email, password });
+      if (passwordError) return NextResponse.json({ error: "Senha atual incorreta." }, { status: 401 });
 
       const code = String(randomInt(100000, 1000000));
       const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();

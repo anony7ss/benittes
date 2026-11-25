@@ -70,6 +70,7 @@ export function AccountView({
   // 2FA WhatsApp
   const [twoFactorPhone, setTwoFactorPhone] = useState("");
   const [savedTwoFactorPhone, setSavedTwoFactorPhone] = useState("");
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [twoFactorStep, setTwoFactorStep] = useState<"idle" | "awaiting_code" | "awaiting_disable_code">("idle");
   const [twoFactorCode, setTwoFactorCode] = useState("");
@@ -182,6 +183,7 @@ export function AccountView({
         body: JSON.stringify({
           action: twoFactorStep === "awaiting_disable_code" ? "send_disable_code" : "send_code",
           phone: twoFactorPhone,
+          password: twoFactorPassword,
         }),
       });
       const json = (await res.json()) as { phone?: string; error?: string };
@@ -232,6 +234,7 @@ export function AccountView({
       setTwoFactorEnabled(json.two_factor_enabled ?? true);
       setTwoFactorStep("idle");
       setTwoFactorCode("");
+      setTwoFactorPassword("");
       setTwoFactorMsg({
         text: json.two_factor_enabled === false ? "2FA desativado." : "2FA via WhatsApp ativado com sucesso.",
         type: "success",
@@ -259,6 +262,7 @@ export function AccountView({
         body: JSON.stringify({
           action: "send_disable_code",
           phone: twoFactorPhone,
+          password: twoFactorPassword,
           code: twoFactorCode,
         }),
       });
@@ -768,6 +772,19 @@ export function AccountView({
                       if (twoFactorStep !== "idle") setTwoFactorStep("idle");
                     }}
                     placeholder="5511999999999"
+                  />
+                </div>
+
+                <div className="admin-field" style={{ flex: "1 1 220px", minWidth: 0 }}>
+                  <label>Senha atual para confirmar alterações</label>
+                  <input
+                    className="admin-input"
+                    type="password"
+                    autoComplete="current-password"
+                    value={twoFactorPassword}
+                    onChange={(e) => setTwoFactorPassword(e.target.value)}
+                    placeholder="Digite sua senha atual"
+                    required={twoFactorStep === "idle"}
                   />
                 </div>
 

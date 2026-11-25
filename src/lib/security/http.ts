@@ -63,7 +63,8 @@ export function isSameOriginRequest(request: NextRequest): boolean {
 }
 
 export function clientAddress(request: NextRequest): string {
-  const forwarded = request.headers.get("x-vercel-forwarded-for") || request.headers.get("x-forwarded-for");
+  // Reverse proxies append the actual peer address after any client-supplied XFF values.
+  const forwarded = request.headers.get("x-forwarded-for");
   const lastAddress = forwarded?.split(",").map((part) => part.trim()).filter(Boolean).at(-1);
   const candidate = lastAddress || request.headers.get("x-real-ip")?.trim();
   return candidate && candidate.length <= 64 ? candidate : "unknown";
