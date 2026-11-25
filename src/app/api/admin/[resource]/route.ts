@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { DOMAIN_TABLE_BY_MODULE, fromDomainRow, toDomainPayload } from "../../../../lib/domainTables";
+import { consumeRateLimit, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
+import { getServiceSupabase, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 
 const TABLE_ALIASES: Record<string, string> = {
   contacts: "contact_messages",
@@ -38,6 +40,26 @@ function defaultOrderForTable(table: string): string | null {
   if (table === "site_content") return "key.asc";
   if (table === "panel_members") return "created_at.asc";
   return "created_at.desc";
+}
+
+function resolveTable(resource: string): { domainTable: string | undefined; table: string | undefined } {
+  const domainTable = Object.hasOwn(DOMAIN_TABLE_BY_MODULE, resource)
+    ? DOMAIN_TABLE_BY_MODULE[resource]
+    : undefined;
+  const alias = Object.hasOwn(TABLE_ALIASES, resource) ? TABLE_ALIASES[resource] : undefined;
+  return { domainTable, table: domainTable ?? alias };
+}
+
+function idColumnForTable(table: string): string {
+  if (table === "workshop_settings" || table === "site_content") return "key";
+  if (table === "panel_members") return "user_id";
+  return "id";
+}
+
+function returningColumnsForTable(table: string): string {
+  return table === "panel_members"
+    ? "user_id,email,full_name,role,active,created_at,updated_at,phone,two_factor_enabled"
+    : "*";
 }
 
 async function syncFinalizedOrderOrSale(
@@ -159,15 +181,20 @@ async function syncFinalizedOrderOrSale(
           .filter((l) => l !== null)
           .join("\n");
 
-        await supabase.from("whatsapp_outbox").insert({
+        const mayNotify = await consumeRateLimit("os-finished-notice", row.id, 1, 86400).catch(() => false);
+        if (mayNotify) {
+          const { error: outboxError } = await getServiceSupabase().from("whatsapp_outbox").insert({
           phone: normalized,
           message: msg,
           kind: "os_finished",
           related_id: row.id,
           status: "pending",
         });
-        details.notified_finished = true;
-        changed = true;
+          if (!outboxError) {
+            details.notified_finished = true;
+            changed = true;
+          }
+        }
       } catch {
         // ignore outbox failure
       }
@@ -217,25 +244,14 @@ export async function GET(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
-  const authHeader = request.headers.get("authorization");
 
   try {
-    const supabase = getServerClient(authHeader);
+    const staff = await requirePanelStaff(request);
+    if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+    const supabase = staff.supabase;
 
     if (resource === "me") {
-      const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
-      if (!token) return NextResponse.json({ member: null }, { status: 401 });
-      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-      if (userErr || !userData.user) {
-        return NextResponse.json({ member: null }, { status: 401 });
-      }
-      const { data, error } = await supabase
-        .from("panel_members")
-        .select("*")
-        .eq("user_id", userData.user.id)
-        .limit(1);
-      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-      return NextResponse.json({ member: data?.[0] ?? null });
+      return NextResponse.json({ member: staff.member }, { headers: { "Cache-Control": "no-store" } });
     }
 
     if (resource === "dashboard") {
@@ -272,16 +288,27 @@ export async function GET(
       });
     }
 
-    const domainTable = DOMAIN_TABLE_BY_MODULE[resource];
-    const table = domainTable ?? TABLE_ALIASES[resource];
+    const { domainTable, table } = resolveTable(resource);
     if (!table) {
       return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
     }
 
     const searchParams = request.nextUrl.searchParams;
     const requestedOrder = searchParams.get("order");
-    const columns = domainTable ? "*" : (searchParams.get("select") ?? "*");
-    const limit = searchParams.get("limit") ?? "500";
+    const requestedColumns = searchParams.get("select") ?? "*";
+    const columns = table === "panel_members"
+      ? "user_id,email,full_name,role,active,created_at,updated_at,phone,two_factor_enabled"
+      : domainTable
+        ? "*"
+        : requestedColumns;
+    if (!domainTable && table !== "panel_members" && !/^(?:\*|[A-Za-z_][A-Za-z0-9_]*(?:,[A-Za-z_][A-Za-z0-9_]*|,\*)*)$/.test(columns)) {
+      return NextResponse.json({ error: "Seleção de campos inválida." }, { status: 400 });
+    }
+    const rawLimit = searchParams.get("limit") ?? "500";
+    const limit = Number(rawLimit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+      return NextResponse.json({ error: "Limite inválido (use de 1 a 500)." }, { status: 400 });
+    }
 
     type DynamicResult = { data: unknown[] | null; error: { message: string } | null };
     type DynamicQuery = PromiseLike<DynamicResult> & {
@@ -295,19 +322,27 @@ export async function GET(
       for (const [column, expression] of searchParams.entries()) {
         if (column === "select" || column === "order" || column === "limit") continue;
         const separator = expression.indexOf(".");
-        if (separator < 1) continue;
+        if (separator < 1 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)) {
+          return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
+        }
         const operator = expression.slice(0, separator);
         const value = expression.slice(separator + 1);
+        if (!["eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in"].includes(operator) || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) {
+          return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
+        }
         query = query.filter(column, operator as "eq", value);
       }
     }
 
+    if (requestedOrder && !/^[A-Za-z_][A-Za-z0-9_]*\.(?:asc|desc)$/i.test(requestedOrder) && requestedOrder !== "title.asc") {
+      return NextResponse.json({ error: "Ordenação inválida." }, { status: 400 });
+    }
     const sqlOrder = domainTable ? defaultOrderForTable(table) : (requestedOrder ?? defaultOrderForTable(table));
     if (sqlOrder) {
       const [column, direction] = sqlOrder.split(".");
       query = query.order(column, { ascending: direction !== "desc" });
     }
-    if (limit) query = query.limit(Number(limit));
+    query = query.limit(limit);
 
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -317,18 +352,10 @@ export async function GET(
       if (requestedOrder === "title.asc") {
         mapped = mapped.sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
       }
-      if ((resource === "work-orders" || resource === "sales") && mapped[0]) {
-      mapped[0] = (await syncFinalizedOrderOrSale(
-        supabase,
-        resource,
-        mapped[0] as Parameters<typeof syncFinalizedOrderOrSale>[2],
-      )) as (typeof mapped)[number];
+      return NextResponse.json({ data: mapped }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ data: mapped });
-    }
-
-    return NextResponse.json({ data: data ?? [] });
+    return NextResponse.json({ data: data ?? [] }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Erro interno." },
@@ -342,29 +369,34 @@ export async function POST(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
-  const domainTable = DOMAIN_TABLE_BY_MODULE[resource];
-  const table = domainTable ?? TABLE_ALIASES[resource];
+  const { domainTable, table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
   }
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Origem da requisição inválida." }, { status: 403 });
+  const staff = await requirePanelStaff(request);
+  if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const parsed = await readBoundedJson<Record<string, unknown>>(request, 1024 * 1024);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, false) : body;
-    const supabase = getServerClient(request.headers.get("authorization"));
+    const supabase = staff.supabase;
 
     if (table === "workshop_settings") {
       const { data, error } = await supabase
         .from(table)
         .upsert(payload, { onConflict: "key" })
-        .select("*");
+        .select(returningColumnsForTable(table));
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({
         data: (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>)),
       });
     }
 
-    const { data, error } = await supabase.from(table).insert(payload).select("*");
+    const { data, error } = await supabase.from(table).insert(payload).select(returningColumnsForTable(table));
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
     const mapped = domainTable
@@ -383,13 +415,16 @@ export async function POST(
       const digits = String(created.phone || "").replace(/\D/g, "");
       if (digits.length >= 10) {
         try {
-          const { data: botCfg } = await supabase
+          const maySend = await consumeRateLimit("quote-message-user", staff.user.id, 40, 86400).catch(() => false)
+            && await consumeRateLimit("quote-message-record", created.id, 1, 86400).catch(() => false);
+          const service = getServiceSupabase();
+          const { data: botCfg } = await service
             .from("whatsapp_bot_session")
             .select("auto_send_quotes")
             .eq("id", "default")
             .maybeSingle();
 
-          if (botCfg?.auto_send_quotes !== false) {
+          if (maySend && botCfg?.auto_send_quotes !== false) {
             const normalized =
               digits.length <= 11 && !digits.startsWith("55") ? `55${digits}` : digits;
             const moneyText = Number(created.amount ?? 0).toLocaleString("pt-BR", {
@@ -412,7 +447,7 @@ export async function POST(
               .filter((line) => line !== null)
               .join("\n");
 
-            await supabase.from("whatsapp_outbox").insert({
+            await service.from("whatsapp_outbox").insert({
               phone: normalized,
               message: msg,
               kind: resource === "work-orders" ? "os_quote" : "quote",
@@ -448,28 +483,30 @@ export async function PATCH(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
-  const domainTable = DOMAIN_TABLE_BY_MODULE[resource];
-  const table = domainTable ?? TABLE_ALIASES[resource];
+  const { domainTable, table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
   }
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Origem da requisição inválida." }, { status: 403 });
+  const staff = await requirePanelStaff(request);
+  if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
   const id = request.nextUrl.searchParams.get("id");
-  const idColumn =
-    table === "workshop_settings"
-      ? "key"
-      : (request.nextUrl.searchParams.get("idColumn") || "id");
+  const idColumn = idColumnForTable(table);
   if (!id) return NextResponse.json({ error: "ID ausente." }, { status: 400 });
 
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const parsed = await readBoundedJson<Record<string, unknown>>(request, 1024 * 1024);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, true) : body;
-    const supabase = getServerClient(request.headers.get("authorization"));
+    const supabase = staff.supabase;
     const { data, error } = await supabase
       .from(table)
       .update(payload)
       .eq(idColumn, id)
-      .select("*");
+      .select(returningColumnsForTable(table));
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     const mapped = domainTable
       ? (data ?? []).map((r) => fromDomainRow(resource, r as Record<string, unknown>))
@@ -497,21 +534,20 @@ export async function DELETE(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
-  const domainTable = DOMAIN_TABLE_BY_MODULE[resource];
-  const table = domainTable ?? TABLE_ALIASES[resource];
+  const { domainTable, table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
   }
+  if (!isSameOriginRequest(request)) return NextResponse.json({ error: "Origem da requisição inválida." }, { status: 403 });
+  const staff = await requirePanelStaff(request);
+  if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
   const id = request.nextUrl.searchParams.get("id");
-  const idColumn =
-    table === "workshop_settings"
-      ? "key"
-      : (request.nextUrl.searchParams.get("idColumn") || "id");
+  const idColumn = idColumnForTable(table);
   if (!id) return NextResponse.json({ error: "ID ausente." }, { status: 400 });
 
   try {
-    const supabase = getServerClient(request.headers.get("authorization"));
+    const supabase = staff.supabase;
     const { error } = await supabase.from(table).delete().eq(idColumn, id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });

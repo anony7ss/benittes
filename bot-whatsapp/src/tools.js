@@ -19,7 +19,7 @@ function moneyBR(val) {
 function phoneMatchesVariations(rawPhone, variations) {
   const clean = String(rawPhone || '').replace(/\D/g, '');
   if (!clean) return false;
-  return variations.some((v) => clean.endsWith(v.slice(-8)) || v.endsWith(clean.slice(-8)));
+  return variations.some((v) => clean === String(v || '').replace(/\D/g, ''));
 }
 
 async function notifyOwner(message) {
@@ -122,9 +122,8 @@ export async function consultarStatusOS({ placa = '' }, context = {}) {
 
   const matchRow = (row) => {
     const rowPlate = String(row.vehicle_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (cleanPlaca && rowPlate === cleanPlaca) return true;
-    if (variations.length > 0 && phoneMatchesVariations(row.phone, variations)) return true;
-    return false;
+    if (variations.length === 0 || !phoneMatchesVariations(row.phone, variations)) return false;
+    return !cleanPlaca || rowPlate === cleanPlaca;
   };
 
   const osList = (osRows || []).filter(matchRow).slice(0, 5).map((r) => ({
@@ -192,8 +191,8 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
     if (r.status === 'cancelado' || r.status === 'concluido') return false;
     const apr = String(r.details?.aprovacao || 'pendente');
     if (apr !== 'pendente') return false;
-    if (cleanPlaca && String(r.vehicle_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlaca) return true;
-    return phoneMatchesVariations(r.phone, variations);
+    if (!phoneMatchesVariations(r.phone, variations)) return false;
+    return !cleanPlaca || String(r.vehicle_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlaca;
   });
 
   if (pendingOs) {
@@ -207,12 +206,16 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
       ? (pendingOs.status === 'novo' ? 'em_andamento' : pendingOs.status)
       : 'cancelado';
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('work_orders')
       .update({ status: nextStatus, details: nextDetails })
-      .eq('id', pendingOs.id);
+      .eq('id', pendingOs.id)
+      .eq('status', pendingOs.status)
+      .eq('details', pendingOs.details || {})
+      .select('id')
+      .maybeSingle();
 
-    if (error) return { ok: false, erro: 'Falha ao atualizar a Ordem de Serviço.' };
+    if (error || !data) return { ok: false, erro: 'Este orçamento já recebeu uma resposta.' };
 
     logAction('Orçamento OS', `${pendingOs.reference} (${pendingOs.vehicle_plate || phone}) -> ${isApproved ? 'APROVADO' : 'RECUSADO'}`);
     await notifyOwner(
@@ -245,8 +248,8 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
 
   const pendingQuote = (quoteRows || []).find((r) => {
     if (r.status === 'cancelado' || r.status === 'concluido') return false;
-    if (cleanPlaca && String(r.vehicle_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlaca) return true;
-    return phoneMatchesVariations(r.phone, variations);
+    if (!phoneMatchesVariations(r.phone, variations)) return false;
+    return !cleanPlaca || String(r.vehicle_plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === cleanPlaca;
   });
 
   if (pendingQuote) {
@@ -258,12 +261,16 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
     };
     const nextStatus = isApproved ? 'concluido' : 'cancelado';
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('quotes')
       .update({ status: nextStatus, details: nextDetails })
-      .eq('id', pendingQuote.id);
+      .eq('id', pendingQuote.id)
+      .eq('status', pendingQuote.status)
+      .eq('details', pendingQuote.details || {})
+      .select('id')
+      .maybeSingle();
 
-    if (error) return { ok: false, erro: 'Falha ao atualizar o Orçamento.' };
+    if (error || !data) return { ok: false, erro: 'Este orçamento já recebeu uma resposta.' };
 
     logAction('Orçamento', `${pendingQuote.reference} (${pendingQuote.vehicle_plate || phone}) -> ${isApproved ? 'APROVADO' : 'RECUSADO'}`);
     await notifyOwner(

@@ -4,7 +4,7 @@ import { SkeletonTable } from "../Skeletons";
 import { useMemo, useState } from "react";
 import { Pencil, Plus, Search, Trash2, Users, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
-import { AdminStatusBadge, statusLabels } from "../StatusBadge";
+import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, detail, useModuleRecords, modalBackdropProps } from "../utils";
 
 type ClientForm = {
@@ -27,15 +27,12 @@ const emptyForm: ClientForm = {
   description: "",
 };
 
-const STATUS_OPTIONS = ["novo", "em_andamento", "aguardando", "concluido", "cancelado"] as const;
-
 export function ClientsView({ session }: { session: { user: { id: string } } }) {
   const { rows, loading, error, setError, saveRecord, removeRecord } = useModuleRecords(
     "clients",
     session.user.id,
   );
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("todos");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<ClientForm>(emptyForm);
@@ -44,7 +41,6 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((row) => {
-      if (statusFilter !== "todos" && row.status !== statusFilter) return false;
       if (!q) return true;
       const haystack = [
         row.title,
@@ -58,7 +54,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search]);
 
   function openCreate() {
     setEditing(null);
@@ -137,25 +133,6 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="admin-filter-pills">
-          <button
-            type="button"
-            className={`admin-pill ${statusFilter === "todos" ? "active" : ""}`}
-            onClick={() => setStatusFilter("todos")}
-          >
-            Todos ({rows.length})
-          </button>
-          {STATUS_OPTIONS.map((status) => (
-            <button
-              key={status}
-              type="button"
-              className={`admin-pill ${statusFilter === status ? "active" : ""}`}
-              onClick={() => setStatusFilter(status)}
-            >
-              {statusLabels[status] ?? status}
-            </button>
-          ))}
-        </div>
       </div>
 
       {loading ? (
@@ -164,7 +141,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
         <div className="admin-empty">
           <Users size={24} />
           <strong>Nenhum cliente encontrado</strong>
-          <p>Cadastre um novo cliente ou ajuste os filtros de busca.</p>
+          <p>Cadastre um novo cliente ou altere o termo de busca.</p>
         </div>
       ) : (
         <div className="admin-table-wrap">

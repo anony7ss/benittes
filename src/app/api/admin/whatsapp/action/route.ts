@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 const HEARTBEAT_STALE_MS = 90_000;
 
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
   const isAdmin = staff.member.role === "owner" || staff.member.role === "manager";
+  if (!isAdmin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
@@ -31,24 +33,50 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     session: data
       ? {
-          ...data,
+          id: data.id,
           is_online: isOnline,
           status: isOnline ? data.status : "disconnected",
-          qr_code: isAdmin && isOnline ? data.qr_code : null,
-          owner_phone: isAdmin ? data.owner_phone : null,
+          qr_code: isOnline ? data.qr_code : null,
+          phone_connected: data.phone_connected,
+          profile_name: data.profile_name,
+          ai_enabled: data.ai_enabled,
+          auto_send_quotes: data.auto_send_quotes,
+          notify_on_human_transfer: data.notify_on_human_transfer,
+          notify_on_quote_response: data.notify_on_quote_response,
+          closed_auto_reply_enabled: data.closed_auto_reply_enabled,
+          closed_auto_reply_message: data.closed_auto_reply_message,
+          owner_phone: data.owner_phone,
+          ai_model: data.ai_model,
+          audio_mode: data.audio_mode,
+          audio_voice: data.audio_voice,
         }
       : null,
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
   if (staff.member.role !== "owner" && staff.member.role !== "manager") {
     return NextResponse.json({ error: "Apenas administradores podem alterar o bot." }, { status: 403 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  let allowed = false;
+  try {
+    allowed = await enforceRateLimits([
+      { scope: "whatsapp-action-user", subject: staff.user.id, maxHits: 40, windowSeconds: 900 },
+      { scope: "whatsapp-action-ip", subject: clientAddress(request), maxHits: 80, windowSeconds: 900 },
+    ]);
+  } catch {
+    return NextResponse.json({ error: "Ações do bot temporariamente indisponíveis." }, { status: 503 });
+  }
+  if (!allowed) return rateLimitedResponse();
+
+  const parsed = await readBoundedJson<Record<string, unknown>>(request, 8 * 1024);
+  if (!parsed.ok) return parsed.response;
+  const body = parsed.value;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
   const action = String(body.action || "");
   const supabase = getServiceSupabase();
 
@@ -99,7 +127,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "toggle_ai") {
-    const enabled = Boolean(body.ai_enabled);
+    if (typeof body.ai_enabled !== "boolean") return NextResponse.json({ error: "Valor inválido para IA." }, { status: 400 });
+    const enabled = body.ai_enabled;
     const { data, error } = await supabase
       .from("whatsapp_bot_session")
       .upsert(
@@ -133,12 +162,16 @@ export async function POST(request: NextRequest) {
       patch.closed_auto_reply_enabled = body.closed_auto_reply_enabled;
     }
     if (typeof body.closed_auto_reply_message === "string") {
+      if (body.closed_auto_reply_message.length > 1000) return NextResponse.json({ error: "A mensagem automática excede o limite." }, { status: 400 });
       patch.closed_auto_reply_message = body.closed_auto_reply_message.trim() || null;
     }
     if (typeof body.owner_phone === "string") {
-      patch.owner_phone = normalizeBrPhone(body.owner_phone) || null;
+      const ownerPhone = normalizeBrPhone(body.owner_phone);
+      if (ownerPhone && !/^55\d{10,11}$/.test(ownerPhone)) return NextResponse.json({ error: "Telefone inválido." }, { status: 400 });
+      patch.owner_phone = ownerPhone || null;
     }
     if (typeof body.ai_model === "string") {
+      if (body.ai_model.length > 100) return NextResponse.json({ error: "Modelo inválido." }, { status: 400 });
       patch.ai_model = body.ai_model.trim() || null;
     }
     if (
@@ -148,6 +181,7 @@ export async function POST(request: NextRequest) {
       patch.audio_mode = body.audio_mode;
     }
     if (typeof body.audio_voice === "string") {
+      if (body.audio_voice.length > 100) return NextResponse.json({ error: "Voz inválida." }, { status: 400 });
       patch.audio_voice = body.audio_voice.trim() || "pt-BR-FranciscaNeural";
     }
 

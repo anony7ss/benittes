@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 function getAdminClient() {
   const url = (
@@ -28,10 +29,30 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function publicQuoteItems(value: unknown): Array<{ id: string; name: string; type: "servico" | "peca"; qty: number; unit_price: number; approved?: boolean }> {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 200).flatMap((item) => {
+    const row = asObj(item);
+    const id = typeof row.id === "string" ? row.id.slice(0, 100) : "";
+    const name = typeof row.name === "string" ? row.name.trim().slice(0, 180) : "";
+    const qty = Number(row.qty ?? 1);
+    const unitPrice = Number(row.unit_price ?? 0);
+    if (!id || !name || !Number.isInteger(qty) || qty < 1 || qty > 1000 || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) return [];
+    return [{
+      id,
+      name,
+      type: row.type === "peca" ? "peca" : "servico",
+      qty,
+      unit_price: unitPrice,
+      ...(typeof row.approved === "boolean" ? { approved: row.approved } : {}),
+    }];
+  });
+}
+
 async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, token: string) {
   const { data: quote, error: quoteErr } = await supabase
     .from("quotes")
-    .select("*")
+    .select("id,reference,customer_name,vehicle_plate,total,notes,status,valid_until,details,created_at,updated_at")
     .contains("details", { public_token: token })
     .maybeSingle();
 
@@ -99,7 +120,7 @@ async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, t
       observacao_cliente: (quoteDetails.observacao_cliente as string | null) ?? null,
       motivo_recusa: (quoteDetails.motivo_recusa as string | null) ?? null,
       aprovacao_parcial: Boolean(quoteDetails.aprovacao_parcial),
-      items: Array.isArray(quoteDetails.items) ? quoteDetails.items : [],
+      items: publicQuoteItems(quoteDetails.items),
       created_at: quote.created_at,
       updated_at: quote.updated_at,
     },
@@ -109,7 +130,7 @@ async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, t
           reference: workOrder.reference ?? quote.reference ?? "Ordem de Serviço",
           status: workOrder.status ?? "novo",
           diagnosis: workOrder.diagnosis ?? null,
-          notes: workOrder.notes ?? null,
+          notes: null,
           total: Number(workOrder.total ?? quote.total ?? 0),
           created_at: workOrder.created_at,
           updated_at: workOrder.updated_at,
@@ -123,15 +144,20 @@ async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, t
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ token: string }> },
 ) {
   try {
     const { token } = await context.params;
     const cleanToken = String(token ?? "").trim();
-    if (!cleanToken || cleanToken.length < 8 || cleanToken.length > 64) {
+    if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
       return NextResponse.json({ error: "Link inválido." }, { status: 400 });
     }
+
+    if (!(await enforceRateLimits([
+      { scope: "public-quote-get-ip", subject: clientAddress(request), maxHits: 120, windowSeconds: 300 },
+      { scope: "public-quote-get-token", subject: cleanToken.toLowerCase(), maxHits: 60, windowSeconds: 300 },
+    ]))) return rateLimitedResponse();
 
     const supabase = getAdminClient();
     const payload = await buildPublicPayload(supabase, cleanToken);
@@ -143,10 +169,7 @@ export async function GET(
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao carregar ficha." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Não foi possível carregar o orçamento." }, { status: 503 });
   }
 }
 
@@ -154,18 +177,29 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ token: string }> },
 ) {
+  if (!isSameOriginRequest(request)) return invalidOriginResponse();
   try {
     const { token } = await context.params;
     const cleanToken = String(token ?? "").trim();
-    if (!cleanToken || cleanToken.length < 8 || cleanToken.length > 64) {
+    if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
       return NextResponse.json({ error: "Link inválido." }, { status: 400 });
     }
 
-    const body = (await request.json().catch(() => null)) as {
+    if (!(await enforceRateLimits([
+      { scope: "public-quote-response-ip", subject: clientAddress(request), maxHits: 20, windowSeconds: 900 },
+      { scope: "public-quote-response-token", subject: cleanToken.toLowerCase(), maxHits: 8, windowSeconds: 900 },
+    ]))) return rateLimitedResponse();
+
+    const parsed = await readBoundedJson<{
       action?: unknown;
       note?: unknown;
       approved_item_ids?: unknown;
-    } | null;
+    } | null>(request, 8 * 1024);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.value;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
+    }
 
     const action = body?.action === "approve" || body?.action === "reject" ? body.action : null;
     if (!action) {
@@ -174,18 +208,21 @@ export async function POST(
 
     const note = String(body?.note ?? "").trim().slice(0, 500);
     const approvedItemIds = Array.isArray(body?.approved_item_ids)
-      ? body.approved_item_ids.map((id) => String(id))
+      ? body.approved_item_ids.map((id) => typeof id === "string" ? id : "")
       : null;
+    if (approvedItemIds && (approvedItemIds.length > 200 || approvedItemIds.some((id) => !id || id.length > 100) || new Set(approvedItemIds).size !== approvedItemIds.length)) {
+      return NextResponse.json({ error: "A lista de itens não é válida." }, { status: 400 });
+    }
     const supabase = getAdminClient();
 
     const { data: quote, error: quoteErr } = await supabase
       .from("quotes")
-      .select("*")
+      .select("id,reference,total,status,valid_until,details,updated_at")
       .contains("details", { public_token: cleanToken })
       .maybeSingle();
 
     if (quoteErr) {
-      return NextResponse.json({ error: quoteErr.message }, { status: 500 });
+      return NextResponse.json({ error: "Não foi possível carregar o orçamento." }, { status: 503 });
     }
     if (!quote) {
       return NextResponse.json({ error: "Orçamento não encontrado." }, { status: 404 });
@@ -193,6 +230,10 @@ export async function POST(
 
     const existingDetails = asObj(quote.details);
     const currentApproval = String(existingDetails.aprovacao ?? "pendente");
+    const validity = quote.valid_until ?? (typeof existingDetails.validade === "string" ? existingDetails.validade : null);
+    if (validity && Number.isFinite(new Date(validity).getTime()) && new Date(`${validity.slice(0, 10)}T23:59:59`).getTime() < Date.now()) {
+      return NextResponse.json({ error: "A validade deste orçamento terminou." }, { status: 410 });
+    }
 
     if (currentApproval === "aprovado" || quote.status === "concluido") {
       return NextResponse.json(
@@ -213,8 +254,12 @@ export async function POST(
       const rawItems = Array.isArray(existingDetails.items)
         ? (existingDetails.items as Array<Record<string, unknown>>)
         : [];
+      if (rawItems.length > 200) return NextResponse.json({ error: "Este orçamento contém itens demais para aprovação online." }, { status: 400 });
       let nextItems = rawItems;
       let nextTotal = Number(quote.total ?? 0);
+      if (!Number.isFinite(nextTotal) || nextTotal < 0 || nextTotal > 10_000_000) {
+        return NextResponse.json({ error: "Valor do orçamento inválido." }, { status: 400 });
+      }
       let isPartial = false;
 
       if (rawItems.length > 0 && approvedItemIds) {
@@ -224,19 +269,28 @@ export async function POST(
             { status: 400 },
           );
         }
+        const knownItemIds = new Set(rawItems.map((item) => String(item.id ?? "")));
+        if (approvedItemIds.some((id) => !knownItemIds.has(id))) {
+          return NextResponse.json({ error: "A lista contém itens que não pertencem a este orçamento." }, { status: 400 });
+        }
         nextItems = rawItems.map((it) => ({
           ...it,
           approved: approvedItemIds.includes(String(it.id ?? "")),
         }));
         const approvedOnly = nextItems.filter((it) => it.approved === true);
-        nextTotal = approvedOnly.reduce(
-          (acc, it) => acc + Math.max(1, Number(it.qty ?? 1)) * Math.max(0, Number(it.unit_price ?? 0)),
-          0,
-        );
+        nextTotal = approvedOnly.reduce((acc, it) => {
+          const qty = Number(it.qty ?? 1);
+          const unitPrice = Number(it.unit_price ?? 0);
+          if (!Number.isInteger(qty) || qty < 1 || qty > 1000 || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) {
+            throw new Error("Invalid quote item data");
+          }
+          return acc + qty * unitPrice;
+        }, 0);
+        if (!Number.isFinite(nextTotal) || nextTotal > 10_000_000) return NextResponse.json({ error: "Total de itens inválido." }, { status: 400 });
         isPartial = approvedOnly.length < rawItems.length;
       }
 
-      const { error: updErr } = await supabase
+      const { data, error: updErr } = await supabase
         .from("quotes")
         .update({
           status: "concluido",
@@ -251,13 +305,17 @@ export async function POST(
             ...(note ? { observacao_cliente: note } : {}),
           },
         })
-        .eq("id", quote.id);
+        .eq("id", quote.id)
+        .eq("status", quote.status)
+        .eq("updated_at", quote.updated_at)
+        .select("id")
+        .maybeSingle();
 
-      if (updErr) {
-        return NextResponse.json({ error: updErr.message }, { status: 500 });
+      if (updErr || !data) {
+        return NextResponse.json({ error: "Este orçamento recebeu outra resposta. Atualize a página." }, { status: 409 });
       }
     } else {
-      const { error: updErr } = await supabase
+      const { data, error: updErr } = await supabase
         .from("quotes")
         .update({
           status: "cancelado",
@@ -269,19 +327,20 @@ export async function POST(
             ...(note ? { motivo_recusa: note } : {}),
           },
         })
-        .eq("id", quote.id);
+        .eq("id", quote.id)
+        .eq("status", quote.status)
+        .eq("updated_at", quote.updated_at)
+        .select("id")
+        .maybeSingle();
 
-      if (updErr) {
-        return NextResponse.json({ error: updErr.message }, { status: 500 });
+      if (updErr || !data) {
+        return NextResponse.json({ error: "Este orçamento recebeu outra resposta. Atualize a página." }, { status: 409 });
       }
     }
 
     const updatedPayload = await buildPublicPayload(supabase, cleanToken);
-    return NextResponse.json(updatedPayload);
+    return NextResponse.json(updatedPayload, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao processar resposta." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Não foi possível processar a resposta." }, { status: 503 });
   }
 }

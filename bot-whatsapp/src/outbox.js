@@ -38,6 +38,7 @@ export async function processarOutboxPendente() {
       if (claimErr || !claimed?.length) continue;
 
       try {
+        const isTwoFactorMessage = String(item.kind || '').startsWith('2fa_');
         const cleanDigits = String(item.phone || '').replace(/\D/g, '');
         const normalized = cleanDigits.length <= 11 && !cleanDigits.startsWith('55')
           ? `55${cleanDigits}`
@@ -60,7 +61,7 @@ export async function processarOutboxPendente() {
           phone: normalized,
           direction: 'outgoing',
           senderName: 'Sistema (Direto)',
-          body: item.message,
+          body: isTwoFactorMessage ? '[código de verificação oculto]' : item.message,
         });
 
         await supabase
@@ -69,6 +70,7 @@ export async function processarOutboxPendente() {
             status: 'sent',
             sent_at: new Date().toISOString(),
             error: null,
+            ...(isTwoFactorMessage ? { message: '[mensagem de verificação removida]' } : {}),
           })
           .eq('id', item.id);
 

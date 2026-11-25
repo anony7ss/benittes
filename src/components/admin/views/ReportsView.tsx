@@ -288,7 +288,7 @@ export function ReportsView() {
         </div>
       </section>
 
-      <section className="admin-stat-grid">
+      <section className="admin-stat-grid admin-report-stats">
         <div className="admin-stat-card">
           <div className="admin-stat-card-head">
             <span className="admin-stat-label">Total de Registros</span>

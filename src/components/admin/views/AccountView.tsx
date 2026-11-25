@@ -71,7 +71,7 @@ export function AccountView({
   const [twoFactorPhone, setTwoFactorPhone] = useState("");
   const [savedTwoFactorPhone, setSavedTwoFactorPhone] = useState("");
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [twoFactorStep, setTwoFactorStep] = useState<"idle" | "awaiting_code">("idle");
+  const [twoFactorStep, setTwoFactorStep] = useState<"idle" | "awaiting_code" | "awaiting_disable_code">("idle");
   const [twoFactorCode, setTwoFactorCode] = useState("");
   const [twoFactorSaving, setTwoFactorSaving] = useState(false);
   const [twoFactorMsg, setTwoFactorMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -180,14 +180,14 @@ export function AccountView({
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          action: "send_code",
+          action: twoFactorStep === "awaiting_disable_code" ? "send_disable_code" : "send_code",
           phone: twoFactorPhone,
         }),
       });
       const json = (await res.json()) as { phone?: string; error?: string };
       if (!res.ok) throw new Error(json.error || "Não foi possível enviar o código.");
       if (json.phone) setTwoFactorPhone(json.phone);
-      setTwoFactorStep("awaiting_code");
+      setTwoFactorStep(twoFactorStep === "awaiting_disable_code" ? "awaiting_disable_code" : "awaiting_code");
       setTwoFactorCode("");
       setTwoFactorMsg({
         text: "Código de 6 dígitos enviado para seu WhatsApp. Digite abaixo para confirmar.",
@@ -215,7 +215,7 @@ export function AccountView({
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          action: "verify_enable",
+          action: twoFactorStep === "awaiting_disable_code" ? "disable" : "verify_enable",
           phone: twoFactorPhone,
           code: twoFactorCode,
         }),
@@ -229,11 +229,11 @@ export function AccountView({
       const nextPhone = json.phone ?? twoFactorPhone;
       setTwoFactorPhone(nextPhone);
       setSavedTwoFactorPhone(nextPhone);
-      setTwoFactorEnabled(true);
+      setTwoFactorEnabled(json.two_factor_enabled ?? true);
       setTwoFactorStep("idle");
       setTwoFactorCode("");
       setTwoFactorMsg({
-        text: "2FA via WhatsApp ativado com sucesso.",
+        text: json.two_factor_enabled === false ? "2FA desativado." : "2FA via WhatsApp ativado com sucesso.",
         type: "success",
       });
     } catch (reason) {
@@ -257,19 +257,16 @@ export function AccountView({
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          action: "disable",
+          action: "send_disable_code",
           phone: twoFactorPhone,
+          code: twoFactorCode,
         }),
       });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(json.error || "Não foi possível desativar o 2FA.");
-      setTwoFactorEnabled(false);
-      setTwoFactorStep("idle");
+      const json = (await res.json()) as { error?: string; phone?: string };
+      if (!res.ok) throw new Error(json.error || "Não foi possível atualizar o 2FA.");
+      setTwoFactorStep("awaiting_disable_code");
       setTwoFactorCode("");
-      setTwoFactorMsg({
-        text: "2FA desativado.",
-        type: "success",
-      });
+      setTwoFactorMsg({ text: "Enviamos um código para o WhatsApp cadastrado. Digite-o para desativar o 2FA.", type: "success" });
     } catch (reason) {
       setTwoFactorMsg({
         text: reason instanceof Error ? reason.message : "Erro ao desativar 2FA.",
@@ -745,7 +742,7 @@ export function AccountView({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                if (twoFactorStep === "awaiting_code") {
+                if (twoFactorStep !== "idle") {
                   void handleVerifyEnable2FA(e);
                 } else {
                   void handleSend2FACode();
@@ -768,13 +765,13 @@ export function AccountView({
                     value={twoFactorPhone}
                     onChange={(e) => {
                       setTwoFactorPhone(e.target.value);
-                      if (twoFactorStep === "awaiting_code") setTwoFactorStep("idle");
+                      if (twoFactorStep !== "idle") setTwoFactorStep("idle");
                     }}
                     placeholder="5511999999999"
                   />
                 </div>
 
-                {twoFactorStep === "awaiting_code" && (
+                {twoFactorStep !== "idle" && (
                   <div className="admin-field" style={{ flex: "0 1 180px", minWidth: 140 }}>
                     <label>Código recebido</label>
                     <input
@@ -791,14 +788,14 @@ export function AccountView({
                 )}
 
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  {twoFactorStep === "awaiting_code" ? (
+                  {twoFactorStep !== "idle" ? (
                     <>
                       <button
                         type="submit"
                         className="admin-primary"
                         disabled={twoFactorSaving || twoFactorCode.length !== 6}
                       >
-                        {twoFactorSaving ? "Validando…" : "Confirmar e ativar"}
+                        {twoFactorSaving ? "Validando…" : twoFactorStep === "awaiting_disable_code" ? "Confirmar desativação" : "Confirmar e ativar"}
                       </button>
                       <button
                         type="button"
@@ -823,7 +820,7 @@ export function AccountView({
                     </button>
                   ) : null}
 
-                  {twoFactorEnabled && (
+                  {twoFactorEnabled && twoFactorStep !== "awaiting_disable_code" && (
                     <button
                       type="button"
                       className="admin-secondary"

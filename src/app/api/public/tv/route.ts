@@ -16,6 +16,18 @@ function getAdminClient() {
   });
 }
 
+function publicBoardRow(row: Record<string, unknown>) {
+  const plateDigits = String(row.vehicle_plate ?? "").replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  return {
+    reference: typeof row.reference === "string" ? row.reference.slice(0, 40) : "",
+    customer_name: "Cliente",
+    vehicle_plate: plateDigits.length >= 2 ? `***-**${plateDigits.slice(-2)}` : "—",
+    status: row.status,
+    updated_at: row.updated_at,
+    created_at: row.created_at,
+  };
+}
+
 export async function GET() {
   try {
     const supabase = getAdminClient();
@@ -27,23 +39,20 @@ export async function GET() {
       .limit(60);
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Não foi possível carregar o painel TV." }, { status: 503 });
     }
 
     const rows = data ?? [];
     return NextResponse.json(
       {
-        inBox: rows.filter((r) => r.status === "em_andamento"),
-        waiting: rows.filter((r) => r.status === "novo" || r.status === "aguardando"),
-        ready: rows.filter((r) => r.status === "concluido").slice(0, 10),
+        inBox: rows.filter((r) => r.status === "em_andamento").map((r) => publicBoardRow(r)),
+        waiting: rows.filter((r) => r.status === "novo" || r.status === "aguardando").map((r) => publicBoardRow(r)),
+        ready: rows.filter((r) => r.status === "concluido").slice(0, 10).map((r) => publicBoardRow(r)),
         updatedAt: new Date().toISOString(),
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Erro ao carregar painel TV." },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Não foi possível carregar o painel TV." }, { status: 503 });
   }
 }

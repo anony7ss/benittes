@@ -29,8 +29,8 @@ export function getUserSupabase(authHeader: string | null) {
 }
 
 export function getServiceSupabase() {
-  const { url, anonKey, serviceRoleKey } = getSupabaseEnv();
-  const key = serviceRoleKey || anonKey;
+  const { url, serviceRoleKey } = getSupabaseEnv();
+  const key = serviceRoleKey;
   if (!url || !key) throw new Error("Supabase não configurado no servidor.");
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -48,13 +48,17 @@ export async function requirePanelStaff(request: NextRequest) {
 
   const { data: member } = await supabase
     .from("panel_members")
-    .select("*")
+    .select("user_id,email,full_name,role,active,created_at,updated_at,phone,two_factor_enabled")
     .eq("user_id", userData.user.id)
     .eq("active", true)
     .maybeSingle();
 
   if (!member) return null;
   return { user: userData.user, member, supabase };
+}
+
+export function isPanelOwnerOrManager(member: { role?: unknown } | null | undefined): boolean {
+  return member?.role === "owner" || member?.role === "manager";
 }
 
 export function normalizeBrPhone(raw: string): string {

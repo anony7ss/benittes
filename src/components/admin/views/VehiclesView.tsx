@@ -93,10 +93,13 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         plate?: string;
         marca?: string | null;
         modelo?: string | null;
+        versao?: string | null;
+        titulo?: string | null;
         ano?: string | null;
         cor?: string | null;
         combustivel?: string | null;
         chassi?: string | null;
+        notice?: string | null;
         error?: string;
       };
       if (!res.ok) {
@@ -105,7 +108,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
       }
       const marca = json.marca || form.marca;
       const modelo = json.modelo || form.modelo;
-      const summary = [marca, modelo].filter(Boolean).join(" ").trim();
+      const summary = json.titulo || [marca, json.versao || modelo].filter(Boolean).join(" ").trim();
       setCustomBrandInput(Boolean(marca));
       setCustomModelInput(Boolean(modelo));
       setForm((prev) => ({
@@ -119,7 +122,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         combustivel: json.combustivel || prev.combustivel,
         chassi: json.chassi || prev.chassi,
       }));
-      setPlateNotice("Dados preenchidos pela placa! Confira os campos e salve.");
+      setPlateNotice(json.notice || "Consulta concluída. Confira os campos preenchidos e complete o que não veio na base.");
     } catch {
       setPlateNotice("Erro de conexão ao consultar placa.");
     } finally {
@@ -880,8 +883,10 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     <option value="Gasolina">Gasolina</option>
                     <option value="Etanol">Etanol</option>
                     <option value="Diesel">Diesel</option>
+                    <option value="GNV">GNV</option>
                     <option value="Híbrido">Híbrido</option>
                     <option value="Elétrico">Elétrico</option>
+                    {!['Flex', 'Gasolina', 'Etanol', 'Diesel', 'GNV', 'Híbrido', 'Elétrico'].includes(form.combustivel) && form.combustivel && <option value={form.combustivel}>{form.combustivel}</option>}
                   </select>
                 </div>
                 <div className="admin-field">

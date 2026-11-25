@@ -1,126 +1,128 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomInt } from "node:crypto";
+import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
+import { hashTwoFactorCode, safeHashEquals } from "../../../../../lib/security/twoFactor";
 import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+
+const CODE_TTL_MS = 10 * 60 * 1000;
+
+function validBrPhone(phone: string): boolean {
+  return /^55\d{10,11}$/.test(phone);
+}
 
 export async function GET(request: NextRequest) {
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-
   return NextResponse.json({
     phone: staff.member.phone ?? "",
     two_factor_enabled: Boolean(staff.member.two_factor_enabled),
-  });
+  }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  const parsed = await readBoundedJson<{
+    action?: unknown;
+    phone?: unknown;
+    code?: unknown;
+  }>(request, 3 * 1024);
+  if (!parsed.ok) return parsed.response;
 
-  const body = (await request.json().catch(() => ({}))) as {
-    action?: "send_code" | "verify_enable" | "disable";
-    phone?: string;
-    code?: string;
-    two_factor_enabled?: boolean;
-  };
+  const action = typeof parsed.value?.action === "string" ? parsed.value.action : "";
+  const submittedCode = typeof parsed.value?.code === "string" ? parsed.value.code.replace(/\D/g, "") : "";
+  try {
+    if (!(await enforceRateLimits([
+      { scope: "2fa-settings-ip", subject: clientAddress(request), maxHits: 20, windowSeconds: 900 },
+      { scope: "2fa-settings-user", subject: staff.user.id, maxHits: 10, windowSeconds: 600 },
+    ]))) return rateLimitedResponse();
 
-  const action =
-    body.action ??
-    (body.two_factor_enabled === false ? "disable" : "send_code");
-  const phone = normalizeBrPhone(body.phone || staff.member.phone || "");
-  const supabase = getServiceSupabase();
-
-  if (action === "disable") {
-    const { error } = await supabase
+    const service = getServiceSupabase();
+    const { data: current, error: currentError } = await service
       .from("panel_members")
-      .update({
-        phone: phone || null,
-        two_factor_enabled: false,
+      .select("user_id,email,active,phone,two_factor_enabled,two_factor_code_hash,two_factor_expires_at,two_factor_pending_phone")
+      .eq("user_id", staff.user.id)
+      .eq("active", true)
+      .maybeSingle();
+    if (currentError || !current) return NextResponse.json({ error: "Não foi possível atualizar a segurança da conta." }, { status: 503 });
+
+    if (action === "send_code" || action === "send_disable_code") {
+      if (!(await enforceRateLimits([
+        { scope: "2fa-settings-send", subject: staff.user.id, maxHits: 3, windowSeconds: 900 },
+      ]))) return rateLimitedResponse();
+
+      const isDisableCode = action === "send_disable_code";
+      const phone = isDisableCode
+        ? normalizeBrPhone(current.phone ?? "")
+        : normalizeBrPhone(typeof parsed.value.phone === "string" ? parsed.value.phone : "");
+      if (!validBrPhone(phone) || (isDisableCode && !current.two_factor_enabled)) {
+        return NextResponse.json({ error: "Informe um número de WhatsApp válido com DDD." }, { status: 400 });
+      }
+
+      const code = String(randomInt(100000, 1000000));
+      const expiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();
+      const { data: updated, error: updateError } = await service.from("panel_members").update({
         two_factor_code: null,
-        two_factor_expires_at: null,
-      })
-      .eq("user_id", staff.user.id);
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ ok: true, phone, two_factor_enabled: false });
-  }
-
-  if (phone.length < 12) {
-    return NextResponse.json(
-      { error: "Informe um número de WhatsApp válido (com DDD) para ativar o 2FA." },
-      { status: 400 },
-    );
-  }
-
-  if (action === "send_code") {
-    const code = String(randomInt(100000, 1000000));
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-    const { error } = await supabase
-      .from("panel_members")
-      .update({
-        two_factor_code: code,
+        two_factor_code_hash: hashTwoFactorCode(staff.user.id, code),
         two_factor_expires_at: expiresAt,
-      })
-      .eq("user_id", staff.user.id);
+        two_factor_pending_phone: phone,
+      }).eq("user_id", staff.user.id).eq("active", true).select("user_id").maybeSingle();
+      if (updateError || !updated) return NextResponse.json({ error: "Não foi possível enviar o código de verificação." }, { status: 503 });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-    const { error: outboxError } = await supabase.from("whatsapp_outbox").insert({
-      phone,
-      kind: "2fa_setup_code",
-      status: "pending",
-      message:
-        `🔐 *Benittes Oficina — Confirmação de 2FA*\n\n` +
-        `Seu código para ativar a verificação em duas etapas é: *${code}*\n` +
-        `Válido por 10 minutos.`,
-    });
-
-    if (outboxError) {
-      return NextResponse.json({ error: outboxError.message }, { status: 400 });
+      const { error: outboxError } = await service.from("whatsapp_outbox").insert({
+        phone,
+        kind: isDisableCode ? "2fa_disable_code" : "2fa_setup_code",
+        status: "pending",
+        message: `🔐 *Benittes Oficina — Confirmação de segurança*\n\nSeu código é: *${code}*\nVálido por 10 minutos.`,
+      });
+      if (outboxError) {
+        await service.from("panel_members").update({
+          two_factor_code_hash: null,
+          two_factor_expires_at: null,
+          two_factor_pending_phone: null,
+        }).eq("user_id", staff.user.id);
+        return NextResponse.json({ error: "Não foi possível enviar o código de verificação." }, { status: 503 });
+      }
+      return NextResponse.json({ ok: true, phone }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    return NextResponse.json({ ok: true, sent: true, phone });
-  }
+    if (action !== "verify_enable" && action !== "disable") {
+      return NextResponse.json({ error: "Ação inválida." }, { status: 400 });
+    }
+    if (!/^\d{6}$/.test(submittedCode) || !current.two_factor_code_hash ||
+        !current.two_factor_expires_at || Date.now() > new Date(current.two_factor_expires_at).getTime() ||
+        !current.two_factor_pending_phone ||
+        !safeHashEquals(current.two_factor_code_hash, hashTwoFactorCode(staff.user.id, submittedCode))) {
+      return NextResponse.json({ error: "Código inválido ou expirado." }, { status: 400 });
+    }
 
-  // verify_enable
-  const submittedCode = String(body.code ?? "").replace(/\D/g, "");
-  if (submittedCode.length !== 6) {
-    return NextResponse.json(
-      { error: "Informe o código de 6 dígitos enviado no WhatsApp." },
-      { status: 400 },
-    );
-  }
+    if (action === "disable" && (!current.two_factor_enabled || current.two_factor_pending_phone !== current.phone)) {
+      return NextResponse.json({ error: "Solicite um código novo para confirmar a desativação." }, { status: 400 });
+    }
 
-  const { data: current, error: fetchError } = await supabase
-    .from("panel_members")
-    .select("two_factor_code, two_factor_expires_at")
-    .eq("user_id", staff.user.id)
-    .maybeSingle();
-
-  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 400 });
-
-  const expectedCode = String(current?.two_factor_code ?? "");
-  const expiresAt = current?.two_factor_expires_at ? new Date(current.two_factor_expires_at).getTime() : 0;
-
-  if (!expectedCode || submittedCode !== expectedCode) {
-    return NextResponse.json({ error: "Código inválido. Verifique e tente novamente." }, { status: 400 });
-  }
-
-  if (!expiresAt || Date.now() > expiresAt) {
-    return NextResponse.json({ error: "Código expirado. Solicite um novo código." }, { status: 400 });
-  }
-
-  const { error: updateError } = await supabase
-    .from("panel_members")
-    .update({
-      phone,
-      two_factor_enabled: true,
+    const disabling = action === "disable";
+    const { data: consumed, error: consumeError } = await service.from("panel_members").update({
+      phone: disabling ? current.phone : current.two_factor_pending_phone,
+      two_factor_enabled: !disabling,
       two_factor_code: null,
+      two_factor_code_hash: null,
       two_factor_expires_at: null,
+      two_factor_pending_phone: null,
     })
-    .eq("user_id", staff.user.id);
+      .eq("user_id", staff.user.id)
+      .eq("active", true)
+      .eq("two_factor_code_hash", current.two_factor_code_hash)
+      .eq("two_factor_pending_phone", current.two_factor_pending_phone)
+      .gt("two_factor_expires_at", new Date().toISOString())
+      .select("phone,two_factor_enabled")
+      .maybeSingle();
+    if (consumeError || !consumed) return NextResponse.json({ error: "Código inválido ou expirado." }, { status: 400 });
 
-  if (updateError) return NextResponse.json({ error: updateError.message }, { status: 400 });
-
-  return NextResponse.json({ ok: true, phone, two_factor_enabled: true });
+    return NextResponse.json({ ok: true, phone: consumed.phone ?? "", two_factor_enabled: consumed.two_factor_enabled }, {
+      headers: { "Cache-Control": "no-store" },
+    });
+  } catch {
+    return NextResponse.json({ error: "Não foi possível atualizar a segurança da conta." }, { status: 503 });
+  }
 }

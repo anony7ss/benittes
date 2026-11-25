@@ -179,15 +179,16 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
   }
 
   function generatePublicToken(): string {
-    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-      return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
+      throw new Error("Este navegador não oferece geração segura de links.");
     }
-    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
   async function ensurePublicToken(row: PanelRecord): Promise<string> {
     const existing = String(detail(row, "public_token") ?? "").trim();
-    if (existing) return existing;
+    if (/^[a-f0-9]{64}$/i.test(existing)) return existing;
     const token = generatePublicToken();
     const existingDetails =
       row.details && typeof row.details === "object" ? row.details : {};
