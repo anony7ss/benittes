@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowUpRight,
+  ArrowRight,
   CalendarDays,
   Car,
   ClipboardList,
@@ -129,8 +129,8 @@ export function DashboardView() {
           <a className="admin-secondary" href={routeFor("ordens-de-servico")}>
             <ClipboardList size={15} /> Abrir OS
           </a>
-          <a className="admin-primary" href={routeFor("agenda")}>
-            Novo horário <ArrowUpRight size={16} />
+          <a className="admin-primary admin-dashboard-new-appointment" href={routeFor("agenda")}>
+            Novo horário <ArrowRight className="admin-dashboard-appointment-arrow" size={16} aria-hidden="true" />
           </a>
         </div>
       </div>
