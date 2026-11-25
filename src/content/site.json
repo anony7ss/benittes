@@ -1,0 +1,56 @@
+{
+  "identidade": {
+    "nome": "Benittes Oficina Mecânica",
+    "logo": "/benittes-logo.png"
+  },
+  "guias": [
+    {
+      "slug": "diagnostico",
+      "nome": "Diagnóstico automotivo",
+      "resumo": "Do sintoma à investigação da causa.",
+      "icone": "engine",
+      "contexto": "Uma luz no painel, uma falha intermitente ou uma partida mais demorada são pistas. O histórico do veículo ajuda a orientar a avaliação antes de qualquer decisão sobre peças.",
+      "observar": ["Em que momento a falha aparece?", "Qual luz ou mensagem apareceu no painel?", "Houve alguma intervenção recente?"]
+    },
+    {
+      "slug": "manutencao-preventiva",
+      "nome": "Manutenção preventiva",
+      "resumo": "Tempo, quilometragem e histórico de revisão.",
+      "icone": "wrench",
+      "contexto": "O plano de manutenção do fabricante considera tanto o tempo quanto a distância percorrida. Consultar o manual e os registros das últimas revisões ajuda a identificar o que precisa de atenção.",
+      "observar": ["Qual é a quilometragem atual?", "Quando foi feita a última revisão?", "Quais itens já foram substituídos?"]
+    },
+    {
+      "slug": "freios",
+      "nome": "Sistema de freios",
+      "resumo": "Pedal, discos, pastilhas e sinais de desgaste.",
+      "icone": "disc",
+      "contexto": "Mudanças na resposta do pedal, vibrações e ruídos durante a frenagem merecem avaliação. Relate o que percebeu sem tentar reproduzir uma situação de risco.",
+      "observar": ["O pedal mudou de curso ou resistência?", "Em qual condição surgiu o ruído?", "Alguma luz de advertência acendeu?"]
+    },
+    {
+      "slug": "suspensao-e-direcao",
+      "nome": "Suspensão e direção",
+      "resumo": "Estabilidade e contato com o piso.",
+      "icone": "steering-wheel",
+      "contexto": "Puxadas para um lado, batidas em irregularidades e desgaste desigual dos pneus podem ter diferentes origens. As condições da via e o histórico de impactos ajudam a descrever o comportamento.",
+      "observar": ["Em que tipo de piso percebeu o sintoma?", "O volante vibra ou fica desalinhado?", "Houve impacto recente em buraco ou guia?"]
+    }
+  ],
+  "fotos": [
+    { "id": "bloco", "nome": "Bloco do motor", "detalhe": "O conjunto mecânico visto de perto.", "alt": "Detalhe lateral de um motor desmontado na bancada" },
+    { "id": "bancada", "nome": "Trabalho de bancada", "detalhe": "A escala do trabalho manual.", "alt": "Mãos com luvas trabalhando no cabeçote de um motor" },
+    { "id": "cofre", "nome": "Sob o capô", "detalhe": "Uma vista do compartimento do motor.", "alt": "Capô aberto sobre o compartimento do motor na oficina" }
+  ],
+  "perguntas": [
+    ["Quais dados do veículo devo separar?", "Placa, modelo, ano, quilometragem e histórico recente de manutenção. Se houver algum sintoma, anote quando ele começou e em quais condições aparece (frio, quente, em movimento ou parado)."],
+    ["Como confirmar se um serviço está disponível?", "Os guias apresentam os principais temas de manutenção. A disponibilidade de box, ferramentas e peças para cada modelo deve ser confirmada diretamente com a equipe pelo WhatsApp ou telefone."],
+    ["Como funciona o agendamento de revisão ou diagnóstico?", "Você pode solicitar um horário pela página de contato ou diretamente pelo WhatsApp oficial. A equipe confirma a disponibilidade de box e orienta sobre o melhor horário para deixar o veículo."],
+    ["Como é definido e aprovado o valor de um reparo?", "O orçamento depende da avaliação presencial, das peças necessárias e do tempo de mão de obra. Enviamos uma ficha digital pelo WhatsApp para você conferir cada item e aprovar — inclusive de forma parcial — antes de iniciarmos o serviço."],
+    ["Consigo acompanhar o andamento do meu carro?", "Sim. Ao aprovar o orçamento, você recebe um link exclusivo da ficha de acompanhamento onde é possível ver cada etapa em tempo real: orçamento, aprovado, na oficina, no box e concluído."],
+    ["Os serviços e peças possuem garantia?", "Sim. Todos os serviços executados e as peças fornecidas pela oficina contam com garantia legal e termo especificado na ordem de serviço entregue na retirada do veículo."],
+    ["Vocês trabalham com peças originais ou de reposição?", "Trabalhamos com peças genuínas e de reposição de primeira linha (OEM). Sempre apresentamos as opções disponíveis no orçamento para que você escolha antes da execução."],
+    ["Quanto tempo leva uma revisão preventiva completa?", "Uma revisão básica (óleo, filtros, freios e fluidos) costuma ser concluída no mesmo dia. Serviços mais complexos têm o prazo estimado informado já no orçamento."],
+    ["Posso levar minhas próprias peças para instalação?", "Em alguns casos específicos, sim, mediante avaliação prévia da equipe técnica sobre compatibilidade e qualidade. Consulte a oficina antes de agendar; nesses casos, a garantia cobre apenas a mão de obra."]
+  ]
+}

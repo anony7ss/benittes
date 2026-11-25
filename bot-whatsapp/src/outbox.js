@@ -1,0 +1,123 @@
+import { supabase } from './supabase.js';
+import { sendHumanizedMessage } from './queue.js';
+import { logAction, logError, logInfo } from './terminal.js';
+import { resolverJidWhatsApp } from './phone-utils.js';
+import { registrarMensagemChat } from './web-sync.js';
+
+let isProcessing = false;
+let realtimeSubscription = null;
+let pollInterval = null;
+let currentSocket = null;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function processarOutboxPendente() {
+  if (isProcessing || !currentSocket) return;
+  isProcessing = true;
+
+  try {
+    const { data: pending, error } = await supabase
+      .from('whatsapp_outbox')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(20);
+
+    if (error || !pending?.length) return;
+
+    for (const item of pending) {
+      if (!currentSocket) break;
+
+      const { data: claimed, error: claimErr } = await supabase
+        .from('whatsapp_outbox')
+        .update({ status: 'processing' })
+        .eq('id', item.id)
+        .eq('status', 'pending')
+        .select('id');
+
+      if (claimErr || !claimed?.length) continue;
+
+      try {
+        const cleanDigits = String(item.phone || '').replace(/\D/g, '');
+        const normalized = cleanDigits.length <= 11 && !cleanDigits.startsWith('55')
+          ? `55${cleanDigits}`
+          : cleanDigits;
+        const jid = await resolverJidWhatsApp(currentSocket, normalized);
+
+        if (!jid) {
+          throw new Error(`Número inválido para WhatsApp: ${item.phone}`);
+        }
+
+        if (typeof currentSocket.assertSessions === 'function') {
+          await currentSocket.assertSessions([jid], true).catch(() => {});
+        }
+        if (typeof currentSocket.presenceSubscribe === 'function') {
+          await currentSocket.presenceSubscribe(jid).catch(() => {});
+        }
+
+        await sendHumanizedMessage(currentSocket, jid, item.message);
+        await registrarMensagemChat({
+          phone: normalized,
+          direction: 'outgoing',
+          senderName: 'Sistema (Direto)',
+          body: item.message,
+        });
+
+        await supabase
+          .from('whatsapp_outbox')
+          .update({
+            status: 'sent',
+            sent_at: new Date().toISOString(),
+            error: null,
+          })
+          .eq('id', item.id);
+
+        logAction('Outbox', `Enviado (${item.kind || 'direct'}) para ${normalized}`);
+      } catch (err) {
+        const retryCount = Number(item.retry_count || 0) + 1;
+        await supabase
+          .from('whatsapp_outbox')
+          .update({
+            status: retryCount >= 3 ? 'failed' : 'pending',
+            retry_count: retryCount,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          .eq('id', item.id);
+
+        logError('Outbox', `Falha ao enviar para ${item.phone}: ${err instanceof Error ? err.message : err}`);
+      }
+
+      await sleep(900);
+    }
+  } finally {
+    isProcessing = false;
+  }
+}
+
+export function iniciarProcessadorOutbox(socket) {
+  currentSocket = socket;
+
+  if (realtimeSubscription) {
+    try { supabase.removeChannel(realtimeSubscription); } catch {}
+  }
+  if (pollInterval) clearInterval(pollInterval);
+
+  realtimeSubscription = supabase
+    .channel('whatsapp-outbox-watch')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'whatsapp_outbox' },
+      () => {
+        processarOutboxPendente().catch(() => {});
+      },
+    )
+    .subscribe();
+
+  pollInterval = setInterval(() => {
+    processarOutboxPendente().catch(() => {});
+  }, 6000);
+  if (pollInterval.unref) pollInterval.unref();
+
+  logInfo('Outbox', 'Processador de envios diretos (Orçamentos/OS e 2FA) ativo.');
+  processarOutboxPendente().catch(() => {});
+}

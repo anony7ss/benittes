@@ -1,0 +1,3 @@
+# Identidade
+
+A assinatura combina um velocímetro, um ponteiro azul e um detalhe quadriculado com o nome em preto e azul. Branco, preto e um único azul de marca formam a paleta do site, com áreas brancas em todas as seções. Poppins dá unidade às manchetes, menus, instruções e leitura corrente, com pesos distintos para marcar a hierarquia. As fotografias coloridas usam a licença Pexels e aparecem em um carrossel controlado por botões, sem reprodução automática. Os arquivos WOFF2 da fonte são servidos localmente sob a licença SIL Open Font License 1.1. O conteúdo usa espaço em branco generoso, filetes finos e ícones Phosphor. Em telas estreitas a fotografia mantém sua área e os guias passam para uma coluna.
