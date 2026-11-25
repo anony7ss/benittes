@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { flushSync } from "react-dom";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Clock, Moon, RefreshCw, Sun, Tv, Wrench } from "lucide-react";
 import "@/components/admin/admin.css";
 
@@ -46,57 +45,14 @@ export function WorkshopTvClient() {
     }
   }, []);
 
-  function toggleTheme(event: ReactMouseEvent<HTMLButtonElement>) {
+  function toggleTheme() {
     const next: "light" | "dark" = theme === "dark" ? "light" : "dark";
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    const endRadius = Math.hypot(
-      Math.max(x, window.innerWidth - x),
-      Math.max(y, window.innerHeight - y),
-    );
-
-    const applyTheme = () => {
-      setTheme(next);
-      try {
-        window.localStorage.setItem("benittes-tv-theme", next);
-      } catch {
-        // ignore storage errors
-      }
-    };
-
-    const docWithTransition = document as Document & {
-      startViewTransition?: (cb: () => void) => { ready: Promise<void> };
-    };
-
-    if (!docWithTransition.startViewTransition) {
-      applyTheme();
-      return;
+    setTheme(next);
+    try {
+      window.localStorage.setItem("benittes-tv-theme", next);
+    } catch {
+      // The theme still changes for this page view if storage is unavailable.
     }
-
-    const transition = docWithTransition.startViewTransition(() => {
-      flushSync(applyTheme);
-    });
-
-    transition.ready
-      .then(() => {
-        document.documentElement.animate(
-          {
-            clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${endRadius}px at ${x}px ${y}px)`,
-            ],
-          },
-          {
-            duration: 520,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-            pseudoElement: "::view-transition-new(root)",
-          },
-        );
-      })
-      .catch(() => {
-        // ignore
-      });
   }
 
   const isDark = theme === "dark";
@@ -234,8 +190,17 @@ export function WorkshopTvClient() {
           .tv-brand h1 { font-size: 14px !important; line-height: 1.2 !important; }
           .tv-brand span { font-size: 10px !important; }
           .tv-header-actions { width: auto; flex: 0 0 auto; gap: 6px; }
-          .tv-header-actions .tv-btn { width: 34px; height: 34px; padding: 0; justify-content: center; font-size: 0; }
-          .tv-header-actions .tv-btn svg { width: 15px; height: 15px; }
+          .tv-header-actions .tv-btn {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0;
+            line-height: 0;
+          }
+          .tv-header-actions .tv-btn svg { display: block; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
           .tv-clock { display: none; }
           .tv-columns { grid-template-columns: minmax(0, 1fr); gap: 12px; }
           .tv-column { padding: 12px !important; }
@@ -306,8 +271,9 @@ export function WorkshopTvClient() {
           <button
             type="button"
             className="tv-btn"
-            onClick={(e) => toggleTheme(e)}
+            onClick={toggleTheme}
             title={isDark ? "Mudar para tema claro" : "Mudar para tema escuro"}
+            aria-label={isDark ? "Mudar para tema claro" : "Mudar para tema escuro"}
           >
             {isDark ? <Sun size={14} /> : <Moon size={14} />}
             {isDark ? "Tema claro" : "Tema escuro"}
@@ -317,6 +283,8 @@ export function WorkshopTvClient() {
             className="tv-btn"
             onClick={() => void load()}
             disabled={refreshing}
+            aria-label={refreshing ? "Atualizando painel" : "Atualizar painel"}
+            title={refreshing ? "Atualizando painel" : "Atualizar"}
           >
             <RefreshCw size={14} className={refreshing ? "tv-spin" : undefined} /> Atualizar
           </button>
