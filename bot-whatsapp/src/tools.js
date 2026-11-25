@@ -19,91 +19,6 @@ function moneyBR(val) {
   return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function positiveAmount(value) {
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
-
-function normalizeCatalogText(value) {
-  return String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function pricingMode(service) {
-  const mode = String(service?.details?.pricing_mode || '');
-  if (['fixed', 'vehicle', 'assessment'].includes(mode)) return mode;
-  return positiveAmount(service?.base_price) ? 'fixed' : 'assessment';
-}
-
-function resolveBotServicePrice(service, rules, vehicle) {
-  const mode = pricingMode(service);
-  if (mode === 'fixed') {
-    const amount = positiveAmount(service?.details?.preco_promo) || positiveAmount(service?.base_price);
-    return amount
-      ? { amount, mode, message: 'Valor fixo cadastrado.' }
-      : { amount: null, mode: 'assessment', message: 'O valor precisa ser confirmado pela oficina.' };
-  }
-  if (mode === 'assessment') {
-    return { amount: null, mode, message: 'O valor é definido após avaliação.' };
-  }
-
-  const make = normalizeCatalogText(vehicle?.marca);
-  const model = normalizeCatalogText(vehicle?.modelo);
-  const year = Number(vehicle?.ano);
-  if ((!make && !model) || !Number.isInteger(year) || year < 1900 || year > 2200) {
-    return { amount: null, mode, message: 'Informe marca, modelo e ano para consultar a tarifa correta.' };
-  }
-
-  const now = new Date();
-  const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(now);
-  const matched = (rules || []).flatMap((rule) => {
-    if (rule.active === false || rule.service_id !== service.id) return [];
-    const ruleMake = normalizeCatalogText(rule.vehicle_make);
-    const ruleModel = normalizeCatalogText(rule.vehicle_model);
-    const amount = positiveAmount(rule.price);
-    const yearFrom = rule.year_from == null ? null : Number(rule.year_from);
-    const yearTo = rule.year_to == null ? null : Number(rule.year_to);
-    if ((!ruleMake && !ruleModel) || !amount) return [];
-    if (ruleMake && ruleMake !== make) return [];
-    if (ruleModel && ruleModel !== model) return [];
-    if (yearFrom !== null && (!Number.isInteger(yearFrom) || year < yearFrom)) return [];
-    if (yearTo !== null && (!Number.isInteger(yearTo) || year > yearTo)) return [];
-    if (rule.valid_from && rule.valid_from > today) return [];
-    if (rule.valid_until && rule.valid_until < today) return [];
-    const yearSpecificity = yearFrom == null && yearTo == null
-      ? 0
-      : yearFrom != null && yearTo != null
-        ? 10000 - Math.min(9999, yearTo - yearFrom)
-        : 1000;
-    return [{ amount, specificity: (ruleModel ? 1_000_000 : 0) + (ruleMake ? 100_000 : 0) + yearSpecificity }];
-  });
-
-  if (matched.length === 0) {
-    return { amount: null, mode, message: 'Não há tarifa cadastrada para este carro; a oficina precisa avaliar e confirmar o valor.' };
-  }
-  const specificity = Math.max(...matched.map((item) => item.specificity));
-  const best = matched.filter((item) => item.specificity === specificity);
-  const amounts = new Set(best.map((item) => item.amount));
-  if (amounts.size > 1) {
-    return { amount: null, mode, message: 'A oficina precisa revisar tarifas conflitantes antes de confirmar o valor.' };
-  }
-  return { amount: best[0].amount, mode, message: 'Tarifa correspondente ao veículo.' };
-}
-
-function hasFinalApprovalPrice(record) {
-  const total = positiveAmount(record?.total);
-  if (!total) return false;
-  const items = Array.isArray(record?.details?.items) ? record.details.items : [];
-  const approved = items.filter((item) => item?.approved !== false);
-  return approved.every((item) => positiveAmount(item?.unit_price) !== null);
-}
-
 function phoneMatchesVariations(rawPhone, variations) {
   const clean = String(rawPhone || '').replace(/\D/g, '');
   if (!clean) return false;
@@ -130,29 +45,19 @@ async function notifyOwner(message, requiredSetting = null) {
   } catch {}
 }
 
-export async function listarServicos(args = {}) {
-  if (typeof args === 'string') args = { categoria: args };
+export async function listarServicos(categoria = '') {
   let data = serviceCatalogCache.data;
   if (!data || serviceCatalogCache.expiresAt <= Date.now()) {
     if (!serviceCatalogCache.pending) {
-      serviceCatalogCache.pending = Promise.all([
-        supabase.from('services')
-          .select('id, name, category, description, base_price, details')
-          .eq('active', true)
-          .order('name', { ascending: true })
-          .limit(100),
-        supabase.from('service_price_rules')
-          .select('service_id, vehicle_make, vehicle_model, year_from, year_to, price, valid_from, valid_until, active')
-          .eq('active', true)
-          .limit(500),
-      ])
-        .then(([servicesResult, rulesResult]) => {
-          if (servicesResult.error || rulesResult.error) throw servicesResult.error || rulesResult.error;
-          serviceCatalogCache = {
-            data: { services: servicesResult.data || [], rules: rulesResult.data || [] },
-            expiresAt: Date.now() + SERVICE_CACHE_TTL_MS,
-            pending: null,
-          };
+      serviceCatalogCache.pending = supabase
+        .from('services')
+        .select('id, name, category, description, base_price, details')
+        .eq('active', true)
+        .order('name', { ascending: true })
+        .limit(100)
+        .then(({ data: rows, error }) => {
+          if (error) throw error;
+          serviceCatalogCache = { data: rows || [], expiresAt: Date.now() + SERVICE_CACHE_TTL_MS, pending: null };
           return serviceCatalogCache.data;
         })
         .catch((error) => {
@@ -167,28 +72,19 @@ export async function listarServicos(args = {}) {
     }
   }
 
-  const catFilter = normalizeCatalogText(args.categoria);
-  const serviceFilter = normalizeCatalogText(args.nome_servico || args.servico);
-  const vehicle = { marca: args.marca, modelo: args.modelo, ano: args.ano };
-  const list = (data?.services || [])
-    .filter((service) => !catFilter || normalizeCatalogText(service.category).includes(catFilter))
-    .filter((service) => !serviceFilter || normalizeCatalogText(service.name).includes(serviceFilter))
-    .map((service) => {
-      const resolution = resolveBotServicePrice(service, data?.rules || [], vehicle);
-      return {
-        nome: service.name,
-        categoria: service.category || 'Geral',
-        valor: resolution.amount === null ? null : moneyBR(resolution.amount),
-        preco_definido: resolution.amount !== null,
-        preco_modo: resolution.mode === 'vehicle' ? 'por veículo' : resolution.mode === 'assessment' ? 'sob avaliação' : 'fixo',
-        orientacao_preco: resolution.message,
-        preco_promocional: positiveAmount(service.details?.preco_promo) ? moneyBR(service.details.preco_promo) : null,
-        duracao: service.details?.duracao || null,
-        descricao: service.description || null,
-      };
-    });
+  const catFilter = String(categoria || '').trim().toLowerCase();
+  const list = (data || [])
+    .filter((s) => !catFilter || String(s.category || '').toLowerCase().includes(catFilter))
+    .map((s) => ({
+      nome: s.name,
+      categoria: s.category || 'Geral',
+      valor: moneyBR(s.base_price),
+      preco_promocional: s.details?.preco_promo ? moneyBR(s.details.preco_promo) : null,
+      duracao: s.details?.duracao || null,
+      descricao: s.description || null,
+    }));
 
-  return { ok: true, total: list.length, veiculo_consultado: Boolean(vehicle.marca || vehicle.modelo || vehicle.ano), servicos: list };
+  return { ok: true, total: list.length, servicos: list };
 }
 
 export async function consultarEstabelecimento() {
