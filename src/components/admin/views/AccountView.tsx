@@ -8,6 +8,7 @@ import {
   History,
   KeyRound,
   Pencil,
+  Plus,
   Search,
   ShieldCheck,
   User,
@@ -92,6 +93,11 @@ export function AccountView({
   const [editMemberName, setEditMemberName] = useState("");
   const [editMemberRole, setEditMemberRole] = useState("advisor");
   const [savingMember, setSavingMember] = useState(false);
+  const [createMemberOpen, setCreateMemberOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberPassword, setNewMemberPassword] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("advisor");
 
   useEffect(() => {
     setFullName(member.full_name ?? "");
@@ -424,6 +430,36 @@ export function AccountView({
       setEditingMember(null);
     } catch (reason) {
       setTeamError(reason instanceof Error ? reason.message : "Erro ao salvar membro.");
+    } finally {
+      setSavingMember(false);
+    }
+  }
+
+  async function handleCreateMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingMember(true);
+    setTeamError("");
+    try {
+      const response = await fetch("/api/admin/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          full_name: newMemberName,
+          email: newMemberEmail,
+          password: newMemberPassword,
+          role: newMemberRole,
+        }),
+      });
+      const result = await response.json() as { member?: PanelMember; error?: string };
+      if (!response.ok || !result.member) throw new Error(result.error || "Não foi possível criar a conta.");
+      setMembers((current) => [...current, result.member!]);
+      setNewMemberName("");
+      setNewMemberEmail("");
+      setNewMemberPassword("");
+      setNewMemberRole("advisor");
+      setCreateMemberOpen(false);
+    } catch (reason) {
+      setTeamError(reason instanceof Error ? reason.message : "Erro ao criar conta.");
     } finally {
       setSavingMember(false);
     }
@@ -855,7 +891,11 @@ export function AccountView({
         <section className="admin-panel">
           <div className="admin-panel-head">
             <h2>Membros da equipe ({members.length})</h2>
-            <Users size={16} />
+            {member.role === "owner" ? (
+              <button type="button" className="admin-primary" onClick={() => setCreateMemberOpen(true)}>
+                <Plus size={15} /> Criar conta
+              </button>
+            ) : <Users size={16} />}
           </div>
 
           {teamError && (
@@ -948,6 +988,48 @@ export function AccountView({
             </div>
           )}
         </section>
+      )}
+
+      {createMemberOpen && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setCreateMemberOpen(false))}>
+          <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div>
+                <h2>Criar conta da equipe</h2>
+                <p>A conta poderá entrar no painel assim que for criada.</p>
+              </div>
+              <button type="button" className="admin-icon-btn" onClick={() => setCreateMemberOpen(false)} aria-label="Fechar">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={(event) => void handleCreateMember(event)}>
+              <div className="admin-form-grid">
+                <div className="admin-field wide">
+                  <label>Nome completo</label>
+                  <input className="admin-input" required maxLength={120} value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} />
+                </div>
+                <div className="admin-field wide">
+                  <label>E-mail</label>
+                  <input className="admin-input" type="email" required maxLength={254} value={newMemberEmail} onChange={(event) => setNewMemberEmail(event.target.value)} />
+                </div>
+                <div className="admin-field wide">
+                  <label>Senha inicial (mínimo 12 caracteres)</label>
+                  <input className="admin-input" type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} />
+                </div>
+                <div className="admin-field wide">
+                  <label>Cargo</label>
+                  <select className="admin-select" value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value)}>
+                    {roleOptions.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-secondary" onClick={() => setCreateMemberOpen(false)}>Cancelar</button>
+                <button type="submit" className="admin-primary" disabled={savingMember}>{savingMember ? "Criando…" : "Criar conta"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {activeTab === "auditoria" && canManageTeam && (
