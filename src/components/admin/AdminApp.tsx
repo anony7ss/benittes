@@ -14,6 +14,7 @@ import {
   type PanelMember,
   type Session,
 } from "../../lib/supabase";
+import { ProfilePhotoProvider } from "./ProfilePhoto";
 import { AdminShell } from "./AdminShell";
 import { ConfirmDialogHost } from "./ConfirmDialog";
 import { LoginForm } from "./LoginForm";
@@ -355,35 +356,37 @@ export function AdminApp({ section }: { section?: string }) {
 
   return (
     <div className="admin-root" onClick={handleNavigationClick}>
-      <AdminShell
-        page={activePage}
-        role={member.role}
-        email={session.user.email ?? ""}
-        fullName={member.full_name}
-        onSignOut={() => void handleSignOut()}
-      >
-        {!page ? (
-          <div className="admin-panel">
-            <div className="admin-empty">
-              <strong>Página não encontrada</strong>
-              <p>O módulo solicitado não existe no painel.</p>
+      <ProfilePhotoProvider key={session.user.id} session={session}>
+        <AdminShell
+          page={activePage}
+          role={member.role}
+          email={session.user.email ?? ""}
+          fullName={member.full_name}
+          onSignOut={() => void handleSignOut()}
+        >
+          {!page ? (
+            <div className="admin-panel">
+              <div className="admin-empty">
+                <strong>Página não encontrada</strong>
+                <p>O módulo solicitado não existe no painel.</p>
+              </div>
             </div>
-          </div>
-        ) : !allowed ? (
-          <div className="admin-panel">
-            <div className="admin-empty">
-              <ShieldAlert size={24} style={{ marginBottom: 8 }} />
-              <strong>Sem permissão para este módulo</strong>
-              <p>Solicite acesso ao proprietário ou gerente da oficina.</p>
+          ) : !allowed ? (
+            <div className="admin-panel">
+              <div className="admin-empty">
+                <ShieldAlert size={24} style={{ marginBottom: 8 }} />
+                <strong>Sem permissão para este módulo</strong>
+                <p>Solicite acesso ao proprietário ou gerente da oficina.</p>
+              </div>
             </div>
-          </div>
-        ) : (
-          renderPageView(page, session, member, (next) => {
-            setMember(next);
-            writeCachedMember(session.user.id, next);
-          })
-        )}
-      </AdminShell>
+          ) : (
+            renderPageView(page, session, member, (next) => {
+              setMember(next);
+              writeCachedMember(session.user.id, next);
+            })
+          )}
+        </AdminShell>
+      </ProfilePhotoProvider>
       <ConfirmDialogHost />
     </div>
   );

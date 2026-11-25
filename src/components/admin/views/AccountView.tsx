@@ -22,6 +22,7 @@ import {
   type PanelMember,
   type Session,
 } from "../../../lib/supabase";
+import { useProfilePhoto } from "../ProfilePhoto";
 import { SkeletonTable } from "../Skeletons";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, modalBackdropProps } from "../utils";
@@ -52,7 +53,8 @@ export function AccountView({
 
   // Perfil
   const [fullName, setFullName] = useState(member.full_name ?? "");
-  const [avatarUrl, setAvatarUrl] = useState("");
+  const { avatarUrl, savePhoto } = useProfilePhoto();
+  const [savingPhoto, setSavingPhoto] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ text: string; type: "success" | "error" } | null>(
@@ -95,64 +97,49 @@ export function AccountView({
     setFullName(member.full_name ?? "");
   }, [member.full_name]);
 
-  useEffect(() => {
-    const emailKey = (session.user.email ?? "").trim().toLowerCase();
-    if (!emailKey) return;
-    try {
-      setAvatarUrl(localStorage.getItem(`admin-avatar:${emailKey}`) ?? "");
-    } catch {
-      // ignore storage errors
-    }
-  }, [session.user.email]);
-
-  function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
+  async function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setProfileMsg({ text: "Selecione um arquivo de imagem válido.", type: "error" });
+    if (!file || savingPhoto) return;
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      setProfileMsg({ text: "Selecione uma imagem de até 10 MB.", type: "error" });
       return;
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
+    setSavingPhoto(true);
+    setProfileMsg(null);
+    const url = URL.createObjectURL(file);
+    try {
       const img = new Image();
-      img.onload = () => {
-        const size = 160;
-        const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        const minSide = Math.min(img.width, img.height);
-        const sx = (img.width - minSide) / 2;
-        const sy = (img.height - minSide) / 2;
-        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.86);
-        const emailKey = (session.user.email ?? "").trim().toLowerCase();
-        try {
-          if (emailKey) localStorage.setItem(`admin-avatar:${emailKey}`, dataUrl);
-          window.dispatchEvent(new Event("admin-avatar-change"));
-        } catch {
-          // ignore storage errors
-        }
-        setAvatarUrl(dataUrl);
-        setProfileMsg({ text: "Foto de perfil atualizada.", type: "success" });
-      };
-      img.src = String(reader.result ?? "");
-    };
-    reader.readAsDataURL(file);
+      img.src = url;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 160;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Imagem inválida.");
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 160, 160);
+      await savePhoto(canvas.toDataURL("image/jpeg", 0.86));
+      setProfileMsg({ text: "Foto de perfil salva.", type: "success" });
+    } catch {
+      setProfileMsg({ text: "Não foi possível salvar a foto. Tente novamente.", type: "error" });
+    } finally {
+      URL.revokeObjectURL(url);
+      setSavingPhoto(false);
+    }
   }
 
-  function handleRemoveAvatar() {
-    const emailKey = (session.user.email ?? "").trim().toLowerCase();
+  async function handleRemoveAvatar() {
+    if (savingPhoto) return;
+    setSavingPhoto(true);
+    setProfileMsg(null);
     try {
-      if (emailKey) localStorage.removeItem(`admin-avatar:${emailKey}`);
-      window.dispatchEvent(new Event("admin-avatar-change"));
+      await savePhoto(null);
+      setProfileMsg({ text: "Foto de perfil removida.", type: "success" });
     } catch {
-      // ignore storage errors
+      setProfileMsg({ text: "Não foi possível remover a foto. Tente novamente.", type: "error" });
+    } finally {
+      setSavingPhoto(false);
     }
-    setAvatarUrl("");
   }
 
   useEffect(() => {
@@ -499,6 +486,7 @@ export function AccountView({
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20, flexWrap: "wrap" }}>
               <button
                 type="button"
+                disabled={savingPhoto}
                 onClick={() => avatarInputRef.current?.click()}
                 title="Alterar foto de perfil"
                 style={{
@@ -556,15 +544,17 @@ export function AccountView({
                     type="button"
                     className="admin-link"
                     style={{ fontSize: 12 }}
+                    disabled={savingPhoto}
                     onClick={() => avatarInputRef.current?.click()}
                   >
-                    Alterar foto
+                    {savingPhoto ? "Salvando…" : "Alterar foto"}
                   </button>
                   {avatarUrl && (
                     <button
                       type="button"
                       className="admin-link-muted"
                       style={{ fontSize: 12 }}
+                      disabled={savingPhoto}
                       onClick={handleRemoveAvatar}
                     >
                       Remover

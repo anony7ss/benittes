@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { adminPages, canSeePage, routeFor, type AdminPage } from "../../admin/navigation";
+import { useProfilePhoto } from "./ProfilePhoto";
 import { NotificationCenter } from "./NotificationCenter";
 
 const iconMap: Record<string, typeof LayoutDashboard> = {
@@ -79,22 +80,7 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsCount, setNotificationsCount] = useState(0);
-  const [avatarUrl, setAvatarUrl] = useState("");
-
-  useEffect(() => {
-    const emailKey = email.trim().toLowerCase();
-    const syncAvatar = () => {
-      if (!emailKey) return;
-      try {
-        setAvatarUrl(localStorage.getItem(`admin-avatar:${emailKey}`) ?? "");
-      } catch {
-        // ignore storage errors
-      }
-    };
-    syncAvatar();
-    window.addEventListener("admin-avatar-change", syncAvatar);
-    return () => window.removeEventListener("admin-avatar-change", syncAvatar);
-  }, [email]);
+  const { avatarUrl } = useProfilePhoto();
 
   useLayoutEffect(() => {
     try {
