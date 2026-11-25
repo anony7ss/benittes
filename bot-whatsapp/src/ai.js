@@ -8,6 +8,7 @@ import {
   logIncoming,
   logOutgoing,
   logAction,
+  logInfo,
   logWarn,
   logError,
   startSpinner,
