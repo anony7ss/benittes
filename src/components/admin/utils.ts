@@ -44,7 +44,8 @@ export function whatsappApprovalUrl(row: PanelRecord, kind: "orcamento" | "os"):
     rawDigits.length === 10 || rawDigits.length === 11 ? `55${rawDigits}` : rawDigits;
   const cliente = (row.customer_name ?? "").trim() || "cliente";
   const veiculo = (row.vehicle ?? "").trim() || "não informado";
-  const valor = money(row.amount);
+  const hasFinalPrice = Number(row.amount) > 0;
+  const valor = hasFinalPrice ? money(row.amount) : null;
   const validade = detail(row, "validade") ? dateText(detail(row, "validade")) : null;
   const obs = (row.description ?? "").trim();
 
@@ -55,10 +56,12 @@ export function whatsappApprovalUrl(row: PanelRecord, kind: "orcamento" | "os"):
       : "Segue sua Ordem de Serviço para aprovação:",
     `• *Serviço:* ${row.title}`,
     `• *Veículo:* ${veiculo}`,
-    `• *Valor:* ${valor}`,
+    ...(valor ? [`• *Valor:* ${valor}`] : ["• *Valor:* em definição pela equipe da oficina."]),
     ...(validade ? [`• *Validade:* ${validade}`] : []),
     ...(obs ? [`• *Detalhes:* ${obs}`] : []),
-    "Podemos aprovar e dar andamento?",
+    ...(hasFinalPrice
+      ? ["Podemos aprovar e dar andamento?"]
+      : ["Este envio é apenas informativo; a aprovação será solicitada quando o valor final estiver definido."]),
   ];
 
   const text = encodeURIComponent(lines.join("\n"));
@@ -74,8 +77,7 @@ export function useModuleRecords(moduleName: string, userId: string) {
     setLoading(true);
     setError("");
     try {
-      const data = await selectRows<PanelRecord>("panel_records", {
-        module: `eq.${moduleName}`,
+      const data = await selectRows<PanelRecord>(moduleName, {
         order: "created_at.desc",
         limit: "500",
       });

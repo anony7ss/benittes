@@ -251,6 +251,28 @@ export function QuoteSheetClient({ token }: { token: string }) {
   }, [fetchQuote]);
 
   async function handleDecision(action: "approve" | "reject") {
+    if (action === "approve" && quote) {
+      const items = quote.items ?? [];
+      if (items.length > 0) {
+        const selected = items.filter((item) => selectedItemIds.includes(item.id));
+        if (selected.length === 0) {
+          setError("Selecione ao menos um item com valor definido para aprovar.");
+          return;
+        }
+        if (selected.some((item) => !Number.isFinite(item.unit_price) || item.unit_price <= 0)) {
+          setError("Há itens selecionados sem preço final. Desmarque-os ou fale com a oficina para atualizar o orçamento.");
+          return;
+        }
+        if (selected.reduce((sum, item) => sum + item.qty * item.unit_price, 0) <= 0) {
+          setError("O orçamento precisa ter um valor final maior que zero para ser aprovado.");
+          return;
+        }
+      } else if (!Number.isFinite(quote.amount) || quote.amount <= 0) {
+        setError("Este orçamento ainda não tem um valor final. Fale com a oficina para atualizar a proposta.");
+        return;
+      }
+    }
+
     setSubmitting(action);
     setActionMsg(null);
     setError(null);
@@ -292,6 +314,19 @@ export function QuoteSheetClient({ token }: { token: string }) {
   const isRejected =
     quote?.aprovacao === "recusado" || quote?.status === "cancelado";
   const isPending = Boolean(quote && !isApproved && !isRejected);
+  const quoteItems = quote?.items ?? [];
+  const displayedItems = isPending
+    ? quoteItems.filter((item) => selectedItemIds.includes(item.id))
+    : quoteItems.filter((item) => item.approved !== false);
+  const displayedTotal = quoteItems.length > 0
+    ? displayedItems.length > 0 && displayedItems.every((item) => Number.isFinite(item.unit_price) && item.unit_price > 0)
+      ? displayedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
+      : null
+    : quote && quote.amount > 0 ? quote.amount : null;
+  const selectedItemsHavePendingPrice = displayedItems.some((item) => !Number.isFinite(item.unit_price) || item.unit_price <= 0);
+  const canApprove = quoteItems.length > 0
+    ? displayedItems.length > 0 && !selectedItemsHavePendingPrice && displayedTotal !== null && displayedTotal > 0
+    : Boolean(quote && quote.amount > 0);
   const currentStepIdx = quote
     ? getOsStepIndex(quote.aprovacao, workOrder?.status ?? null)
     : 0;
@@ -676,7 +711,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
                         letterSpacing: "-0.02em",
                       }}
                     >
-                      {money(quote.amount)}
+                      {displayedTotal === null ? "A definir" : money(displayedTotal)}
                     </strong>
                   </div>
                 </div>
@@ -801,7 +836,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
                               </div>
                             </div>
                             <strong style={{ fontSize: 13.5, flexShrink: 0 }}>
-                              {money(itemTotal)}
+                              {item.unit_price > 0 ? money(itemTotal) : "Valor em definição"}
                             </strong>
                           </label>
                         );
@@ -812,13 +847,18 @@ export function QuoteSheetClient({ token }: { token: string }) {
                             Total selecionado ({selectedItemIds.length}/{quote.items.length} itens):
                           </span>
                           <strong>
-                            {money(
-                              quote.items
-                                .filter((it) => selectedItemIds.includes(it.id))
-                                .reduce((acc, it) => acc + Math.max(1, it.qty) * Math.max(0, it.unit_price), 0),
-                            )}
+                            {displayedItems.length === 0
+                              ? "Selecione um item"
+                              : selectedItemsHavePendingPrice
+                                ? "A definir"
+                                : money(displayedTotal ?? 0)}
                           </strong>
                         </div>
+                      )}
+                      {isPending && selectedItemsHavePendingPrice && (
+                        <p style={{ margin: "2px 0 0", color: "var(--admin-muted)", fontSize: 12 }}>
+                          A oficina ainda está confirmando o valor deste item. Você pode aprovar os itens com valor confirmado e pedir a atualização dos demais.
+                        </p>
                       )}
                     </div>
                   ) : null}
@@ -884,7 +924,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
                         type="button"
                         className="admin-primary"
                         style={{ width: "100%", justifyContent: "center" }}
-                        disabled={submitting !== null}
+                        disabled={submitting !== null || !canApprove}
                         onClick={() => void handleDecision("approve")}
                       >
                         <CheckCircle2 size={16} />

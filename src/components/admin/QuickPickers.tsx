@@ -3,36 +3,40 @@
 import { useCallback, useEffect, useState } from "react";
 import { Search } from "lucide-react";
 import { getSession, insertRow, selectRows, type PanelRecord } from "../../lib/supabase";
+import { resolveServicePrice, type ServicePriceResolution, type VehiclePriceProfile } from "../../lib/servicePricing";
 import { detail, money } from "./utils";
 
 export function useClientVehicleCatalog() {
   const [clients, setClients] = useState<PanelRecord[]>([]);
   const [vehicles, setVehicles] = useState<PanelRecord[]>([]);
   const [services, setServices] = useState<PanelRecord[]>([]);
+  const [priceRules, setPriceRules] = useState<PanelRecord[]>([]);
 
   const reload = useCallback(() => {
     let active = true;
     void Promise.all([
-      selectRows<PanelRecord>("panel_records", {
-        module: "eq.clients",
+      selectRows<PanelRecord>("clients", {
         order: "title.asc",
         limit: "500",
       }).catch(() => []),
-      selectRows<PanelRecord>("panel_records", {
-        module: "eq.vehicles",
+      selectRows<PanelRecord>("vehicles", {
         order: "created_at.desc",
         limit: "500",
       }).catch(() => []),
-      selectRows<PanelRecord>("panel_records", {
-        module: "eq.services",
+      selectRows<PanelRecord>("services", {
         order: "title.asc",
         limit: "500",
       }).catch(() => []),
-    ]).then(([cli, veh, srv]) => {
+      selectRows<PanelRecord>("prices", {
+        order: "title.asc",
+        limit: "1000",
+      }).catch(() => []),
+    ]).then(([cli, veh, srv, prices]) => {
       if (!active) return;
       setClients(cli);
       setVehicles(veh);
       setServices(srv.filter((s) => s.status !== "cancelado"));
+      setPriceRules(prices.filter((rule) => rule.status !== "cancelado"));
     });
 
     return () => {
@@ -42,7 +46,7 @@ export function useClientVehicleCatalog() {
 
   useEffect(() => reload(), [reload]);
 
-  return { clients, vehicles, services, reload };
+  return { clients, vehicles, services, priceRules, reload };
 }
 
 export async function ensureClientAndVehicle({
@@ -53,6 +57,7 @@ export async function ensureClientAndVehicle({
   phone,
   vehicle,
   km,
+  vehicleDetails,
   reload,
 }: {
   userId: string;
@@ -62,6 +67,7 @@ export async function ensureClientAndVehicle({
   phone?: string;
   vehicle?: string;
   km?: string;
+  vehicleDetails?: { marca?: string | null; modelo?: string | null; ano?: string | number | null };
   reload?: () => void;
 }) {
   const cleanName = (customerName ?? "").trim();
@@ -101,7 +107,12 @@ export async function ensureClientAndVehicle({
           vehicle: cleanVehicle,
           customer_name: cleanName || null,
           status: "concluido",
-          details: km ? { km } : {},
+          details: {
+            ...(km ? { km } : {}),
+            ...(vehicleDetails?.marca ? { marca: vehicleDetails.marca } : {}),
+            ...(vehicleDetails?.modelo ? { modelo: vehicleDetails.modelo } : {}),
+            ...(vehicleDetails?.ano ? { ano: String(vehicleDetails.ano) } : {}),
+          },
           created_by: userId,
         });
         created = true;
@@ -277,42 +288,58 @@ export function PlateLookupButton({
 
 export function ServicePicker({
   services,
+  priceRules = [],
   value,
+  vehicleProfile = null,
   onSelectService,
 }: {
   services: PanelRecord[];
   value: string;
-  onSelectService: (service: PanelRecord | null) => void;
+  priceRules?: PanelRecord[];
+  vehicleProfile?: VehiclePriceProfile;
+  onSelectService: (service: PanelRecord | null, resolution: ServicePriceResolution | null) => void;
 }) {
   if (services.length === 0) return null;
 
   const matched = services.find(
     (s) => (s.title ?? "").trim().toLowerCase() === value.trim().toLowerCase(),
   );
+  const matchedResolution = matched ? resolveServicePrice(matched, priceRules, vehicleProfile) : null;
 
   return (
-    <select
-      className="admin-select"
-      value={matched?.id ?? ""}
-      onChange={(e) => {
-        const picked = services.find((s) => s.id === e.target.value) ?? null;
-        onSelectService(picked);
-      }}
-      style={{ marginBottom: 6 }}
-    >
-      <option value="">Selecionar serviço salvo…</option>
-      {services.map((s) => {
-        const cat = String(detail(s, "categoria") ?? "").trim();
-        const price =
-          s.amount !== null && s.amount !== undefined ? ` · ${money(s.amount)}` : "";
-        return (
-          <option key={s.id} value={s.id}>
-            {s.title}
-            {cat ? ` (${cat})` : ""}
-            {price}
-          </option>
-        );
-      })}
-    </select>
+    <>
+      <select
+        className="admin-select"
+        value={matched?.id ?? ""}
+        onChange={(e) => {
+          const picked = services.find((s) => s.id === e.target.value) ?? null;
+          onSelectService(picked, picked ? resolveServicePrice(picked, priceRules, vehicleProfile) : null);
+        }}
+        style={{ marginBottom: 6 }}
+      >
+        <option value="">Selecionar serviço salvo…</option>
+        {services.map((s) => {
+          const cat = String(detail(s, "categoria") ?? "").trim();
+          const resolution = resolveServicePrice(s, priceRules, vehicleProfile);
+          const price = resolution.amount !== null
+            ? ` · ${money(resolution.amount)}`
+            : ` · ${resolution.mode === "vehicle" ? "Por veículo" : resolution.mode === "assessment" ? "Sob avaliação" : "Preço a definir"}`;
+          return (
+            <option key={s.id} value={s.id}>
+              {s.title}
+              {cat ? ` (${cat})` : ""}
+              {price}
+            </option>
+          );
+        })}
+      </select>
+      {matchedResolution && (
+        <small style={{ display: "block", margin: "-1px 0 8px", color: "var(--admin-muted)" }}>
+          {matchedResolution.amount !== null
+            ? `${matchedResolution.message} Valor: ${money(matchedResolution.amount)}.`
+            : matchedResolution.message}
+        </small>
+      )}
+    </>
   );
 }

@@ -43,6 +43,76 @@ function returningColumnsForTable(table: string): string {
     : "*";
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+async function validatePricingPayload(
+  supabase: SupabaseClient,
+  resource: string,
+  payload: Record<string, unknown>,
+  isUpdate: boolean,
+  recordId?: string,
+): Promise<string | null> {
+  if (resource === "services" && Object.hasOwn(payload, "details") && isPlainObject(payload.details)) {
+    const details = payload.details;
+    const mode = details.pricing_mode;
+    if (mode !== undefined && mode !== "fixed" && mode !== "vehicle" && mode !== "assessment") {
+      return "Escolha uma forma de precificação válida.";
+    }
+    if (mode === "vehicle" || mode === "assessment") {
+      payload.base_price = 0;
+    } else if (mode === "fixed") {
+      let amount = payload.base_price;
+      if (amount === undefined && isUpdate) {
+        const { data, error } = await supabase.from("services").select("base_price").eq("id", recordId).maybeSingle();
+        if (error) return "Não foi possível validar o valor do serviço.";
+        amount = data?.base_price;
+      }
+      if (!(Number(amount) > 0) || !Number.isFinite(Number(amount))) {
+        return "Um serviço com preço fixo precisa ter um valor maior que zero.";
+      }
+    }
+  }
+
+  if (resource !== "prices") return null;
+  if (Object.hasOwn(payload, "price") && (!(Number(payload.price) > 0) || !Number.isFinite(Number(payload.price)) || Number(payload.price) > 1_000_000)) {
+    return "Informe uma tarifa maior que zero e menor que R$ 1.000.000.";
+  }
+  if (!Object.hasOwn(payload, "service_id")) return null;
+
+  const serviceId = typeof payload.service_id === "string" ? payload.service_id : "";
+  const make = typeof payload.vehicle_make === "string" ? payload.vehicle_make.trim() : "";
+  const model = typeof payload.vehicle_model === "string" ? payload.vehicle_model.trim() : "";
+  const yearFrom = payload.year_from == null ? null : Number(payload.year_from);
+  const yearTo = payload.year_to == null ? null : Number(payload.year_to);
+  if (!serviceId || (!make && !model) || make.length > 100 || model.length > 120) {
+    return "Vincule a tarifa a um serviço e informe a marca ou modelo do veículo.";
+  }
+  if ([yearFrom, yearTo].some((year) => year !== null && (!Number.isInteger(year) || year < 1900 || year > 2200))) {
+    return "Use anos inteiros entre 1900 e 2200.";
+  }
+  if (yearFrom !== null && yearTo !== null && yearTo < yearFrom) {
+    return "A faixa final do ano precisa ser igual ou posterior à inicial.";
+  }
+  for (const key of ["valid_from", "valid_until"]) {
+    const value = payload[key];
+    if (value != null && (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`)))) {
+      return "Informe datas de validade válidas.";
+    }
+  }
+  if (typeof payload.valid_from === "string" && typeof payload.valid_until === "string" && payload.valid_until < payload.valid_from) {
+    return "A validade final precisa ser igual ou posterior à inicial.";
+  }
+
+  const { data: service, error } = await supabase.from("services").select("id,active,base_price,details").eq("id", serviceId).maybeSingle();
+  if (error) return "Não foi possível validar o serviço relacionado à tarifa.";
+  if (!service || service.active === false || !isPlainObject(service.details) || service.details.pricing_mode !== "vehicle") {
+    return "A tarifa precisa estar vinculada a um serviço ativo configurado para preço por aplicação.";
+  }
+  return null;
+}
+
 async function syncFinalizedOrderOrSale(
   supabase: SupabaseClient,
   resource: string,
@@ -367,6 +437,8 @@ export async function POST(
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, false) : body;
     const supabase = staff.supabase as unknown as SupabaseClient;
+    const pricingError = await validatePricingPayload(supabase, resource, payload, false);
+    if (pricingError) return NextResponse.json({ error: pricingError }, { status: 400 });
 
     if (table === "workshop_settings") {
       const { data, error } = await supabase
@@ -394,9 +466,13 @@ export async function POST(
         customer_name: string | null;
         phone: string | null;
         vehicle: string | null;
+        details?: Record<string, unknown>;
       };
       const digits = String(created.phone || "").replace(/\D/g, "");
-      if (digits.length >= 10) {
+      const quoteItems = Array.isArray(created.details?.items) ? created.details.items as Array<Record<string, unknown>> : [];
+      const hasUnpricedItem = quoteItems.some((item) => item.approved !== false && !(Number(item.unit_price) > 0));
+      const hasFinalPrice = Number(created.amount) > 0 && !hasUnpricedItem;
+      if (digits.length >= 10 && hasFinalPrice) {
         try {
           const maySend = await consumeRateLimit("quote-message-user", staff.user.id, 40, 86400).catch(() => false)
             && await consumeRateLimit("quote-message-record", created.id, 1, 86400).catch(() => false);
@@ -485,6 +561,40 @@ export async function PATCH(
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const payload = domainTable ? toDomainPayload(resource, body, true) : body;
     const supabase = staff.supabase as unknown as SupabaseClient;
+    const pricingError = await validatePricingPayload(supabase, resource, payload, true, id);
+    if (pricingError) return NextResponse.json({ error: pricingError }, { status: 400 });
+
+    if (resource === "quotes" || resource === "work-orders") {
+      const incomingDetails = body.details && typeof body.details === "object" && !Array.isArray(body.details)
+        ? body.details as Record<string, unknown>
+        : {};
+      const requestsApproval = resource === "quotes"
+        ? body.status === "concluido" || incomingDetails.aprovacao === "aprovado"
+        : incomingDetails.aprovacao === "aprovado";
+      if (requestsApproval) {
+        const { data: current, error: currentError } = await supabase
+          .from(table)
+          .select("total,details")
+          .eq(idColumn, id)
+          .maybeSingle();
+        if (currentError) return databaseErrorResponse(currentError);
+        if (!current) return NextResponse.json({ error: "Registro não encontrado." }, { status: 404 });
+        const nextAmount = Number(payload.total ?? current.total ?? 0);
+        const currentDetails = current.details && typeof current.details === "object" && !Array.isArray(current.details)
+          ? current.details as Record<string, unknown>
+          : {};
+        const nextDetails = { ...currentDetails, ...incomingDetails };
+        const items = Array.isArray(nextDetails.items) ? nextDetails.items as Array<Record<string, unknown>> : [];
+        const hasUnpricedItem = items.some((item) => item.approved !== false && !(Number(item.unit_price) > 0));
+        if (!(nextAmount > 0) || hasUnpricedItem) {
+          return NextResponse.json(
+            { error: "Defina um valor final maior que zero para todos os itens aprovados antes de solicitar aprovação." },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from(table)
       .update(payload)

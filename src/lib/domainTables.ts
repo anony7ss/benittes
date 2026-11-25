@@ -4,6 +4,7 @@ export const DOMAIN_TABLE_BY_MODULE: Record<string, string> = {
   clients: "clients",
   vehicles: "vehicles",
   services: "services",
+  prices: "service_price_rules",
   appointments: "appointments",
   quotes: "quotes",
   "work-orders": "work_orders",
@@ -121,6 +122,34 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         details: {
           ...details,
           ...(row.category ? { categoria: row.category } : {}),
+        },
+        created_by: asStr(row.created_by),
+        created_at,
+        updated_at,
+      };
+
+    case "prices":
+      return {
+        id,
+        module,
+        title: String(row.name ?? ""),
+        status: row.active === false ? "cancelado" : "concluido",
+        description: asStr(row.notes),
+        amount: asNullableNum(row.price),
+        customer_name: null,
+        customer_email: null,
+        phone: null,
+        vehicle: null,
+        details: {
+          ...details,
+          ...(row.service_id ? { service_id: row.service_id } : {}),
+          ...(row.vehicle_make ? { vehicle_make: row.vehicle_make } : {}),
+          ...(row.vehicle_model ? { vehicle_model: row.vehicle_model } : {}),
+          ...(row.year_from !== null && row.year_from !== undefined ? { year_from: row.year_from } : {}),
+          ...(row.year_to !== null && row.year_to !== undefined ? { year_to: row.year_to } : {}),
+          ...(row.vehicle_application ? { vehicle_application: row.vehicle_application } : {}),
+          ...(row.valid_from ? { valid_from: row.valid_from } : {}),
+          ...(row.valid_until ? { valid_until: row.valid_until } : {}),
         },
         created_by: asStr(row.created_by),
         created_at,
@@ -381,6 +410,29 @@ export function toDomainPayload(
       if (!isUpdate || has("details")) {
         out.category = asStr(details.categoria);
         out.details = details;
+      }
+      if (!isUpdate && input.created_by) out.created_by = input.created_by;
+      return out;
+    }
+
+    case "prices": {
+      const out: Record<string, unknown> = {};
+      if (!isUpdate || has("title")) {
+        const name = asStr(input.title) ?? "Regra de preço";
+        out.name = (name.length >= 2 ? name : `${name} `).slice(0, 160);
+      }
+      if (!isUpdate || has("amount")) out.price = asNonNegNum(input.amount, 0);
+      if (!isUpdate || has("status")) out.active = input.status !== "cancelado";
+      if (!isUpdate || has("description")) out.notes = asStr(input.description);
+      if (!isUpdate || has("details")) {
+        out.service_id = asStr(details.service_id);
+        out.vehicle_make = asStr(details.vehicle_make);
+        out.vehicle_model = asStr(details.vehicle_model);
+        out.year_from = asNullableNum(details.year_from);
+        out.year_to = asNullableNum(details.year_to);
+        out.vehicle_application = asStr(details.vehicle_application);
+        out.valid_from = asStr(details.valid_from);
+        out.valid_until = asStr(details.valid_until);
       }
       if (!isUpdate && input.created_by) out.created_by = input.created_by;
       return out;

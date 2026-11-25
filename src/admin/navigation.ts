@@ -18,6 +18,7 @@ export const adminPages: AdminPage[] = [
   { path: "clientes", label: "Clientes", group: "Oficina", icon: "clients", module: "clients", description: "Base de clientes, contatos e histórico de retorno." },
   { path: "veiculos", label: "Veículos", group: "Oficina", icon: "vehicles", module: "vehicles", description: "Placas, modelos, quilometragem e ficha técnica." },
   { path: "servicos", label: "Serviços", group: "Oficina", icon: "services", module: "services", description: "Catálogo de mão de obra, tempo estimado e valores." },
+  { path: "precos", label: "Preços por veículo", group: "Oficina", icon: "prices", module: "prices", description: "Tarifas específicas por marca, modelo e ano." },
   { path: "estoque", label: "Estoque", group: "Oficina", icon: "inventory", module: "inventory", description: "Peças, insumos, estoque mínimo e margem." },
 
   { path: "contatos", label: "Mensagens", group: "Comercial", icon: "contacts", special: "contacts", description: "Solicitações recebidas pelo formulário do site." },
@@ -46,7 +47,7 @@ export function canSeePage(role: string, page: AdminPage): boolean {
   if (page.special === "contacts") return role === "advisor";
   if (page.special === "settings") return false;
   const roleModules: Record<string, string[]> = {
-    advisor: ["appointments", "work-orders", "quotes", "inspections", "clients", "vehicles", "services", "reports"],
+    advisor: ["appointments", "work-orders", "quotes", "inspections", "clients", "vehicles", "services", "prices", "reports"],
     technician: ["appointments", "work-orders", "inspections", "vehicles", "inventory"],
     finance: ["finance", "sales", "reports"],
   };

@@ -262,32 +262,53 @@ export async function POST(
       }
       let isPartial = false;
 
-      if (rawItems.length > 0 && approvedItemIds) {
-        if (approvedItemIds.length === 0) {
+      if (rawItems.length > 0) {
+        if (approvedItemIds) {
+          const knownItemIds = new Set(rawItems.map((item) => String(item.id ?? "")));
+          if (approvedItemIds.some((id) => !knownItemIds.has(id))) {
+            return NextResponse.json({ error: "A lista contém itens que não pertencem a este orçamento." }, { status: 400 });
+          }
+          nextItems = rawItems.map((it) => ({
+            ...it,
+            approved: approvedItemIds.includes(String(it.id ?? "")),
+          }));
+        } else {
+          nextItems = rawItems.map((it) => ({
+            ...it,
+            approved: it.approved !== false,
+          }));
+        }
+        const approvedOnly = nextItems.filter((it) => it.approved !== false);
+        if (approvedOnly.length === 0) {
+          return NextResponse.json({ error: "Selecione pelo menos um item para aprovar." }, { status: 400 });
+        }
+        if (approvedOnly.some((it) => {
+          const unitPrice = Number(it.unit_price ?? 0);
+          return !Number.isFinite(unitPrice) || unitPrice <= 0;
+        })) {
           return NextResponse.json(
-            { error: "Selecione pelo menos um item para aprovar." },
-            { status: 400 },
+            { error: "Há itens sem preço final. Solicite à oficina a atualização do orçamento antes de aprovar." },
+            { status: 422 },
           );
         }
-        const knownItemIds = new Set(rawItems.map((item) => String(item.id ?? "")));
-        if (approvedItemIds.some((id) => !knownItemIds.has(id))) {
-          return NextResponse.json({ error: "A lista contém itens que não pertencem a este orçamento." }, { status: 400 });
+        if (approvedOnly.some((it) => {
+          const qty = Number(it.qty ?? 1);
+          return !Number.isInteger(qty) || qty < 1 || qty > 1000;
+        })) {
+          return NextResponse.json({ error: "A quantidade de um dos itens é inválida." }, { status: 400 });
         }
-        nextItems = rawItems.map((it) => ({
-          ...it,
-          approved: approvedItemIds.includes(String(it.id ?? "")),
-        }));
-        const approvedOnly = nextItems.filter((it) => it.approved === true);
         nextTotal = approvedOnly.reduce((acc, it) => {
           const qty = Number(it.qty ?? 1);
           const unitPrice = Number(it.unit_price ?? 0);
-          if (!Number.isInteger(qty) || qty < 1 || qty > 1000 || !Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) {
-            throw new Error("Invalid quote item data");
-          }
           return acc + qty * unitPrice;
         }, 0);
-        if (!Number.isFinite(nextTotal) || nextTotal > 10_000_000) return NextResponse.json({ error: "Total de itens inválido." }, { status: 400 });
+        if (!Number.isFinite(nextTotal) || nextTotal <= 0 || nextTotal > 10_000_000) return NextResponse.json({ error: "O total aprovado precisa ter um valor final maior que zero." }, { status: 422 });
         isPartial = approvedOnly.length < rawItems.length;
+      } else if (nextTotal <= 0) {
+        return NextResponse.json(
+          { error: "Este orçamento ainda não tem um valor final. Solicite a atualização à oficina antes de aprovar." },
+          { status: 422 },
+        );
       }
 
       const { data, error: updErr } = await supabase

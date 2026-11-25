@@ -4,6 +4,7 @@ import { SkeletonCards, SkeletonTable } from "../Skeletons";
 import { useMemo, useState, type FormEvent } from "react";
 import { LayoutGrid, List, Pencil, Plus, Power, Search, Tag, Trash2, Wrench, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
+import { pricingModeForService } from "../../../lib/servicePricing";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, detail, money, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 
@@ -15,6 +16,7 @@ type ServiceForm = {
   duracao: string;
   status: string;
   description: string;
+  pricing_mode: "fixed" | "vehicle" | "assessment";
 };
 
 const emptyForm: ServiceForm = {
@@ -25,6 +27,7 @@ const emptyForm: ServiceForm = {
   duracao: "",
   status: "concluido",
   description: "",
+  pricing_mode: "assessment",
 };
 
 const DEFAULT_CATEGORIES = [
@@ -147,6 +150,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
       duracao: String(detail(row, "duracao") ?? ""),
       status: row.status || "concluido",
       description: row.description ?? "",
+      pricing_mode: pricingModeForService(row),
     });
     setCustomCategoryMode(Boolean(cat && !categories.includes(cat)));
     setError("");
@@ -165,6 +169,11 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.title.trim()) return;
+    const basePrice = Number(form.amount.replace(",", "."));
+    if (form.pricing_mode === "fixed" && (!Number.isFinite(basePrice) || basePrice <= 0)) {
+      setError("Informe um preço fixo maior que zero ou escolha outro modelo de cobrança.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -172,14 +181,15 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
         editing?.details && typeof editing.details === "object" ? editing.details : {};
       await saveRecord(editing, {
         title: form.title.trim(),
-        amount: form.amount.trim() === "" ? null : Number(form.amount),
+        amount: form.pricing_mode === "fixed" ? basePrice : null,
         status: form.status,
         description: form.description.trim() || null,
         details: {
           ...existingDetails,
           categoria: form.categoria.trim(),
-          preco_promo: form.preco_promo.trim() === "" ? null : Number(form.preco_promo),
+          preco_promo: form.pricing_mode === "fixed" && form.preco_promo.trim() !== "" ? Number(form.preco_promo) : null,
           duracao: form.duracao.trim(),
+          pricing_mode: form.pricing_mode,
         },
       });
       setModalOpen(false);
@@ -199,6 +209,9 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
         </div>
         {subPage === "services" && (
           <div className="admin-title-actions">
+            <a href="/painel/precos/" className="admin-secondary" style={{ textDecoration: "none" }}>
+              Preços por veículo
+            </a>
             <button type="button" className="admin-primary" onClick={openCreate}>
               <Plus size={16} /> Novo serviço
             </button>
@@ -379,6 +392,14 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                 const categoria = detail(row, "categoria");
                 const duracao = detail(row, "duracao");
                 const promo = detail(row, "preco_promo");
+                const pricingMode = pricingModeForService(row);
+                const amountLabel = pricingMode === "vehicle"
+                  ? "Por veículo"
+                  : pricingMode === "assessment"
+                    ? "Sob avaliação"
+                    : row.amount !== null && row.amount !== undefined && row.amount > 0
+                      ? money(row.amount)
+                      : "Valor pendente";
                 const isActive = row.status === "concluido";
                 return (
                   <tr key={row.id}>
@@ -393,8 +414,8 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     <td>{asText(categoria)}</td>
                     <td>{asText(duracao)}</td>
                     <td>
-                      <strong>{money(row.amount)}</strong>
-                      {promo !== undefined && promo !== null && promo !== "" && (
+                      <strong>{amountLabel}</strong>
+                      {pricingMode === "fixed" && promo !== undefined && promo !== null && promo !== "" && Number(promo) > 0 && (
                         <div style={{ fontSize: 11, color: "var(--admin-orange)" }}>
                           Promo: {money(promo)}
                         </div>
@@ -446,6 +467,14 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
             const categoria = detail(row, "categoria");
             const duracao = detail(row, "duracao");
             const promo = detail(row, "preco_promo");
+                const pricingMode = pricingModeForService(row);
+                const amountLabel = pricingMode === "vehicle"
+                  ? "Por veículo"
+                  : pricingMode === "assessment"
+                    ? "Sob avaliação"
+                    : row.amount !== null && row.amount !== undefined && row.amount > 0
+                      ? money(row.amount)
+                      : "Valor pendente";
             const isActive = row.status === "concluido";
 
             return (
@@ -518,10 +547,12 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     borderTop: "1px solid var(--admin-line)",
                   }}
                 >
-                  <span style={{ fontSize: 11.5, color: "var(--admin-muted)" }}>Valor base</span>
+                  <span style={{ fontSize: 11.5, color: "var(--admin-muted)" }}>
+                    {pricingMode === "fixed" ? "Valor fixo" : "Modelo de preço"}
+                  </span>
                   <div style={{ textAlign: "right" }}>
-                    <strong style={{ fontSize: 17 }}>{money(row.amount)}</strong>
-                    {promo !== null && promo !== undefined && promo !== "" && (
+                    <strong style={{ fontSize: 17 }}>{amountLabel}</strong>
+                    {pricingMode === "fixed" && promo !== null && promo !== undefined && promo !== "" && Number(promo) > 0 && (
                       <div style={{ fontSize: 11, color: "var(--admin-orange)" }}>
                         Promo: {money(promo)}
                       </div>
@@ -542,7 +573,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
             <div className="admin-modal-head">
               <div>
                 <h2>{editing ? "Editar serviço" : "Novo serviço"}</h2>
-                <p>Defina nome, categoria, duração e valores do serviço.</p>
+                <p>Defina se o valor é fixo, varia por veículo ou depende de avaliação.</p>
               </div>
               <button
                 type="button"
@@ -608,6 +639,31 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     placeholder="Ex: 1h30"
                   />
                 </div>
+                <div className="admin-field wide">
+                  <label>Como este serviço é cobrado?</label>
+                  <select
+                    className="admin-select"
+                    value={form.pricing_mode}
+                    onChange={(e) => setForm({ ...form, pricing_mode: e.target.value as ServiceForm["pricing_mode"] })}
+                  >
+                    <option value="fixed">Preço fixo para qualquer veículo</option>
+                    <option value="vehicle">Preço varia por veículo</option>
+                    <option value="assessment">Definir após avaliação</option>
+                  </select>
+                  {form.pricing_mode === "vehicle" && (
+                    <small style={{ display: "block", marginTop: 7 }}>
+                      O catálogo não mostrará um preço genérico. Cadastre as tarifas por carro em{" "}
+                      <a href="/painel/precos/">Preços por veículo</a>.
+                    </small>
+                  )}
+                  {form.pricing_mode === "assessment" && (
+                    <small style={{ display: "block", marginTop: 7 }}>
+                      O cliente verá “Sob avaliação” até a equipe definir o valor final no orçamento.
+                    </small>
+                  )}
+                </div>
+                {form.pricing_mode === "fixed" && (
+                  <>
                 <div className="admin-field">
                   <label>Valor base (R$)</label>
                   <input
@@ -676,6 +732,8 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     Informe o valor/hora e as horas estimadas para preencher o valor base automaticamente.
                   </small>
                 </div>
+                  </>
+                )}
                 <div className="admin-field wide">
                   <label>Descrição</label>
                   <textarea

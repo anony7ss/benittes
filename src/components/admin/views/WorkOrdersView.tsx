@@ -4,6 +4,7 @@ import { SkeletonKanban } from "../Skeletons";
 import { useMemo, useState, type FormEvent } from "react";
 import { Archive, ArchiveRestore, ArrowRight, CheckCircle2, ClipboardList, Eye, GripVertical, MessageCircle, Package, Pencil, Plus, Search, Trash2, Tv, Wrench, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
+import { mergeVehiclePriceProfile, resolveServicePrice } from "../../../lib/servicePricing";
 import { AdminStatusBadge } from "../StatusBadge";
 import {
   asText,
@@ -51,6 +52,12 @@ type FormState = {
   tecnico: string;
   box: string;
   pecas: PartUsage[];
+  service_id: string;
+  pricing_mode: string;
+  pricing_rule_id: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -64,6 +71,12 @@ const emptyForm = (): FormState => ({
   tecnico: "",
   box: "",
   pecas: [],
+  service_id: "",
+  pricing_mode: "",
+  pricing_rule_id: "",
+  vehicle_make: "",
+  vehicle_model: "",
+  vehicle_year: "",
 });
 
 export function WorkOrdersView({ session }: { session: { user: { id: string } } }) {
@@ -76,7 +89,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
     rows: settingsRows,
     saveRecord: saveSettingsRecord,
   } = useModuleRecords("settings", session.user.id);
-  const { clients, vehicles, services, reload: reloadCatalog } = useClientVehicleCatalog();
+  const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
   const [subPage, setSubPage] = useState<"board" | "archived">("board");
   const [selectedPartId, setSelectedPartId] = useState("");
   const [selectedPartQty, setSelectedPartQty] = useState("1");
@@ -115,6 +128,43 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
   const [viewing, setViewing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const serviceVehicleProfile = mergeVehiclePriceProfile(
+    vehicles.find((vehicle) => vehiclePlate(vehicle) === form.vehicle.trim().toUpperCase()),
+    { make: form.vehicle_make, model: form.vehicle_model, year: form.vehicle_year },
+  );
+
+  function workOrderVehiclePatch(previous: FormState, plate: string, picked?: PanelRecord | null, overrides?: { make?: unknown; model?: unknown; year?: unknown }) {
+    const normalizedPlate = plate.trim().toUpperCase();
+    const savedVehicle = picked ?? vehicles.find((vehicle) => vehiclePlate(vehicle) === normalizedPlate) ?? null;
+    const profile = mergeVehiclePriceProfile(savedVehicle, overrides);
+    const service = services.find((item) => item.id === previous.service_id)
+      ?? services.find((item) => item.title.trim().toLowerCase() === previous.title.trim().toLowerCase())
+      ?? null;
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    const variable = resolution.mode === "vehicle";
+    return {
+      vehicle: normalizedPlate,
+      vehicle_make: String(profile?.make ?? ""),
+      vehicle_model: String(profile?.model ?? ""),
+      vehicle_year: String(profile?.year ?? ""),
+      amount: variable ? (resolution.amount === null ? "" : String(resolution.amount)) : previous.amount,
+      pricing_rule_id: variable ? resolution.rule?.id ?? "" : previous.pricing_rule_id,
+    };
+  }
+
+  function workOrderServicePatch(previous: FormState, title: string) {
+    const service = services.find((item) => item.title.trim().toLowerCase() === title.trim().toLowerCase()) ?? null;
+    if (!service) {
+      return { ...previous, title, service_id: "", pricing_mode: "", pricing_rule_id: "", amount: previous.pricing_mode === "vehicle" ? "" : previous.amount };
+    }
+    const profile = mergeVehiclePriceProfile(
+      vehicles.find((vehicle) => vehiclePlate(vehicle) === previous.vehicle.trim().toUpperCase()),
+      { make: previous.vehicle_make, model: previous.vehicle_model, year: previous.vehicle_year },
+    );
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    return { ...previous, title, service_id: service.id, pricing_mode: resolution.mode, pricing_rule_id: resolution.rule?.id ?? "", amount: resolution.amount === null ? "" : String(resolution.amount) };
+  }
 
   const vehicleByPlate = useMemo(() => {
     const map = new Map<string, PanelRecord>();
@@ -200,6 +250,12 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
       tecnico: String(detail(row, "tecnico") ?? ""),
       box: String(detail(row, "box") ?? ""),
       pecas: Array.isArray(rawParts) ? (rawParts as PartUsage[]) : [],
+      service_id: String(detail(row, "service_id") ?? services.find((service) => service.title.trim().toLowerCase() === (row.title ?? "").trim().toLowerCase())?.id ?? ""),
+      pricing_mode: String(detail(row, "pricing_mode") ?? ""),
+      pricing_rule_id: String(detail(row, "pricing_rule_id") ?? ""),
+      vehicle_make: String(detail(row, "marca") ?? ""),
+      vehicle_model: String(detail(row, "modelo") ?? ""),
+      vehicle_year: String(detail(row, "ano") ?? ""),
     });
     setSelectedPartId("");
     setSelectedPartQty("1");
@@ -248,6 +304,13 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
           tecnico: form.tecnico.trim() || null,
           box: form.box.trim() || null,
           pecas: form.pecas,
+          service_id: form.service_id || null,
+          pricing_mode: form.pricing_mode || null,
+          pricing_rule_id: form.pricing_rule_id || null,
+          marca: form.vehicle_make || null,
+          modelo: form.vehicle_model || null,
+          ano: form.vehicle_year || null,
+          price_pending: !(Number(form.amount) > 0),
         },
       });
       await ensureClientAndVehicle({
@@ -257,6 +320,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
         customerName: form.customer_name,
         phone: form.phone,
         vehicle: form.vehicle,
+        vehicleDetails: { marca: form.vehicle_make, modelo: form.vehicle_model, ano: form.vehicle_year },
         reload: reloadCatalog,
       });
       setModalOpen(false);
@@ -377,7 +441,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       </td>
                       <td>{row.title}</td>
                       <td>{asText(row.customer_name)}</td>
-                      <td><strong>{money(row.amount)}</strong></td>
+                      <td><strong>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong></td>
                       <td><AdminStatusBadge status={row.status} /></td>
                       <td>
                         <div style={{ display: "flex", gap: 6 }}>
@@ -541,13 +605,13 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                             type="button"
                             className="admin-secondary"
                             style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5 }}
-                            onClick={() =>
-                              window.open(
-                                whatsappApprovalUrl(row, "os"),
-                                "_blank",
-                                "noopener,noreferrer",
-                              )
-                            }
+                            onClick={() => {
+                              if (!(Number(row.amount) > 0)) {
+                                setError("Defina o valor final antes de pedir aprovação pelo WhatsApp.");
+                                return;
+                              }
+                              window.open(whatsappApprovalUrl(row, "os"), "_blank", "noopener,noreferrer");
+                            }}
                             title="Enviar OS pelo WhatsApp para o cliente aprovar"
                           >
                             <MessageCircle size={12} /> WhatsApp
@@ -557,7 +621,11 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                               type="button"
                               className="admin-secondary"
                               style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5, color: "#22c55e" }}
-                              onClick={() =>
+                              onClick={() => {
+                                if (!(Number(row.amount) > 0)) {
+                                  setError("Defina o valor final antes de aprovar a OS.");
+                                  return;
+                                }
                                 void patchRecord(row.id, {
                                   status: row.status === "novo" ? "em_andamento" : row.status,
                                   details: {
@@ -565,8 +633,8 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                                     aprovacao: "aprovado",
                                     aprovado_em: todayIso(),
                                   },
-                                })
-                              }
+                                });
+                              }}
                             >
                               <CheckCircle2 size={12} /> Aprovar
                             </button>
@@ -625,7 +693,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                             gap: 8,
                           }}
                         >
-                          <strong style={{ fontSize: 13.5 }}>{money(row.amount)}</strong>
+                          <strong style={{ fontSize: 13.5 }}>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong>
                           <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                             <button
                               type="button"
@@ -685,25 +753,23 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                   <label>Título / Serviço *</label>
                   <ServicePicker
                     services={services}
+                    priceRules={priceRules}
                     value={form.title}
-                    onSelectService={(picked) => {
+                    vehicleProfile={serviceVehicleProfile}
+                    onSelectService={(picked, resolution) => {
                       if (!picked) {
-                        setForm({ ...form, title: "" });
+                        setForm((prev) => workOrderServicePatch(prev, ""));
                         return;
                       }
-                      const promo = detail(picked, "preco_promo");
-                      const price =
-                        promo !== undefined && promo !== null && promo !== ""
-                          ? String(promo)
-                          : picked.amount !== null && picked.amount !== undefined
-                            ? String(picked.amount)
-                            : form.amount;
-                      setForm({
-                        ...form,
+                      setForm((prev) => ({
+                        ...prev,
+                        service_id: picked.id,
+                        pricing_mode: resolution?.mode ?? "",
+                        pricing_rule_id: resolution?.rule?.id ?? "",
                         title: picked.title,
-                        amount: price,
-                        description: form.description || picked.description || "",
-                      });
+                        amount: resolution?.amount === null || !resolution ? "" : String(resolution.amount),
+                        description: prev.description || picked.description || "",
+                      }));
                     }}
                   />
                   <input
@@ -711,7 +777,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     required
                     placeholder="Ex: Revisão completa + troca de pastilhas"
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    onChange={(e) => setForm((prev) => workOrderServicePatch(prev, e.target.value))}
                   />
                 </div>
 
@@ -729,12 +795,12 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       const matchVeh = vehicles.find(
                         (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
                       );
-                      setForm({
-                        ...form,
+                      setForm((prev) => ({
+                        ...prev,
                         customer_name: name,
-                        phone: picked.phone ?? form.phone,
-                        vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
-                      });
+                        phone: picked.phone ?? prev.phone,
+                        ...(matchVeh && !prev.vehicle ? workOrderVehiclePatch(prev, vehiclePlate(matchVeh), matchVeh) : {}),
+                      }));
                     }}
                   />
                   <input
@@ -762,22 +828,19 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     value={form.vehicle}
                     clientName={form.customer_name}
                     onSelectVehicle={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, vehicle: "" });
-                        return;
-                      }
+                      if (!picked) { setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, "") })); return; }
                       const ownerName = (picked.customer_name ?? "").trim();
                       const ownerClient = ownerName
                         ? clients.find(
                             (c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase(),
                           )
                         : undefined;
-                      setForm({
-                        ...form,
-                        vehicle: vehiclePlate(picked),
+                      setForm((prev) => ({
+                        ...prev,
+                        ...workOrderVehiclePatch(prev, vehiclePlate(picked), picked),
                         customer_name: form.customer_name || ownerName,
                         phone: form.phone || ownerClient?.phone || "",
-                      });
+                      }));
                     }}
                   />
                   <div style={{ display: "flex", gap: 6 }}>
@@ -785,7 +848,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       className="admin-input"
                       placeholder="ABC1D23"
                       value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))}
                     />
                     <PlateLookupButton
                       plate={form.vehicle}
@@ -793,7 +856,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                         const info = [res.marca, res.modelo, res.ano, res.cor].filter(Boolean).join(" · ");
                         setForm((prev) => ({
                           ...prev,
-                          vehicle: res.plate,
+                          ...workOrderVehiclePatch(prev, res.plate, null, { make: res.marca, model: res.modelo, year: res.ano }),
                           description:
                             info && !prev.description.includes(info)
                               ? prev.description
@@ -990,7 +1053,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                 </div>
                 <div className="admin-field">
                   <label>Valor</label>
-                  <div style={{ fontWeight: 600 }}>{money(viewing.amount)}</div>
+                  <div style={{ fontWeight: 600 }}>{Number(viewing.amount) > 0 ? money(viewing.amount) : "A definir"}</div>
                 </div>
                 <div className="admin-field">
                   <label>Aprovação</label>
@@ -1127,9 +1190,13 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                 <button
                   type="button"
                   className="admin-secondary"
-                  onClick={() =>
-                    window.open(whatsappApprovalUrl(viewing, "os"), "_blank", "noopener,noreferrer")
-                  }
+                  onClick={() => {
+                    if (!(Number(viewing.amount) > 0)) {
+                      setError("Defina o valor final antes de pedir aprovação pelo WhatsApp.");
+                      return;
+                    }
+                    window.open(whatsappApprovalUrl(viewing, "os"), "_blank", "noopener,noreferrer");
+                  }}
                 >
                   <MessageCircle size={14} /> WhatsApp
                 </button>

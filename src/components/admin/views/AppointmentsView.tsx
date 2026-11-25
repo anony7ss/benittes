@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
+import { mergeVehiclePriceProfile } from "../../../lib/servicePricing";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, detail, todayIso, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 import {
@@ -38,6 +39,10 @@ type FormState = {
   horario: string;
   status: string;
   description: string;
+  service_id: string;
+  marca: string;
+  modelo: string;
+  ano: string;
 };
 
 const emptyForm = (defaultDate: string): FormState => ({
@@ -49,6 +54,10 @@ const emptyForm = (defaultDate: string): FormState => ({
   horario: "09:00",
   status: "novo",
   description: "",
+  service_id: "",
+  marca: "",
+  modelo: "",
+  ano: "",
 });
 
 type ViewMode = "calendar" | "week" | "list";
@@ -67,7 +76,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
     "appointments",
     session.user.id,
   );
-  const { clients, vehicles, services, reload: reloadCatalog } = useClientVehicleCatalog();
+  const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
   const [viewMode, setViewMode] = usePersistedViewMode<ViewMode>("appointments", "calendar", [
     "calendar",
     "week",
@@ -86,6 +95,10 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
   const [saving, setSaving] = useState(false);
 
   const today = todayIso();
+  const serviceVehicleProfile = mergeVehiclePriceProfile(
+    vehicles.find((v) => vehiclePlate(v) === form.vehicle.trim().toUpperCase()),
+    { make: form.marca, model: form.modelo, year: form.ano },
+  );
 
   const searchedRows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -170,6 +183,10 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
       horario: String(detail(row, "horario") ?? "09:00"),
       status: row.status ?? "novo",
       description: row.description ?? "",
+      service_id: String(detail(row, "service_id") ?? ""),
+      marca: String(detail(row, "marca") ?? ""),
+      modelo: String(detail(row, "modelo") ?? ""),
+      ano: String(detail(row, "ano") ?? ""),
     });
     setModalOpen(true);
   }
@@ -193,6 +210,10 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
           ...existingDetails,
           starts_at: form.starts_at || todayIso(),
           horario: form.horario || "09:00",
+          service_id: form.service_id || null,
+          marca: form.marca || null,
+          modelo: form.modelo || null,
+          ano: form.ano || null,
         },
       });
       await ensureClientAndVehicle({
@@ -202,6 +223,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
         customerName: form.customer_name,
         phone: form.phone,
         vehicle: form.vehicle,
+        vehicleDetails: { marca: form.marca, modelo: form.modelo, ano: form.ano },
         reload: reloadCatalog,
       });
       setModalOpen(false);
@@ -660,17 +682,20 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                   <label>Serviço *</label>
                   <ServicePicker
                     services={services}
+                    priceRules={priceRules}
                     value={form.title}
+                    vehicleProfile={serviceVehicleProfile}
                     onSelectService={(picked) => {
                       if (!picked) {
-                        setForm({ ...form, title: "" });
+                        setForm((prev) => ({ ...prev, title: "", service_id: "" }));
                         return;
                       }
-                      setForm({
-                        ...form,
+                      setForm((prev) => ({
+                        ...prev,
+                        service_id: picked.id,
                         title: picked.title,
-                        description: form.description || picked.description || "",
-                      });
+                        description: prev.description || picked.description || "",
+                      }));
                     }}
                   />
                   <input
@@ -678,7 +703,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     required
                     placeholder="Ex: Alinhamento e balanceamento"
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    onChange={(e) => setForm({ ...form, title: e.target.value, service_id: "" })}
                   />
                 </div>
 
@@ -701,6 +726,9 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                         customer_name: name,
                         phone: picked.phone ?? form.phone,
                         vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
+                        marca: matchVeh ? String(detail(matchVeh, "marca") ?? "") : form.marca,
+                        modelo: matchVeh ? String(detail(matchVeh, "modelo") ?? "") : form.modelo,
+                        ano: matchVeh ? String(detail(matchVeh, "ano") ?? "") : form.ano,
                       });
                     }}
                   />
@@ -744,6 +772,9 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                         vehicle: vehiclePlate(picked),
                         customer_name: form.customer_name || ownerName,
                         phone: form.phone || ownerClient?.phone || "",
+                        marca: String(detail(picked, "marca") ?? ""),
+                        modelo: String(detail(picked, "modelo") ?? ""),
+                        ano: String(detail(picked, "ano") ?? ""),
                       });
                     }}
                   />
@@ -752,7 +783,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                       className="admin-input"
                       placeholder="ABC1D23"
                       value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+                      onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })}
                     />
                     <PlateLookupButton
                       plate={form.vehicle}
@@ -761,6 +792,9 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                         setForm((prev) => ({
                           ...prev,
                           vehicle: res.plate,
+                          marca: res.marca ?? "",
+                          modelo: res.modelo ?? "",
+                          ano: res.ano ?? "",
                           description:
                             info && !prev.description.includes(info)
                               ? prev.description

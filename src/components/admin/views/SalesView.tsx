@@ -4,11 +4,13 @@ import { SkeletonTable } from "../Skeletons";
 import { useMemo, useState, type FormEvent } from "react";
 import { FileText, Pencil, Plus, Receipt, RefreshCw, Search, ShoppingBag, Trash2, TrendingUp, X } from "lucide-react";
 import { type PanelRecord } from "../../../lib/supabase";
+import { mergeVehiclePriceProfile, resolveServicePrice } from "../../../lib/servicePricing";
 import { AdminStatusBadge } from "../StatusBadge";
 import { AreaTrendChart, DonutBreakdownChart } from "../AdminCharts";
 import { asText, dateText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
+  PlateLookupButton,
   ServicePicker,
   VehiclePicker,
   clientDisplayName,
@@ -36,6 +38,12 @@ type SaleForm = {
   itens: string;
   status: string;
   description: string;
+  service_id: string;
+  pricing_mode: string;
+  pricing_rule_id: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
 };
 
 const emptyForm = (): SaleForm => ({
@@ -47,6 +55,12 @@ const emptyForm = (): SaleForm => ({
   itens: "",
   status: "concluido",
   description: "",
+  service_id: "",
+  pricing_mode: "",
+  pricing_rule_id: "",
+  vehicle_make: "",
+  vehicle_model: "",
+  vehicle_year: "",
 });
 
 export function SalesView({ session }: { session: { user: { id: string } } }) {
@@ -55,7 +69,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
     session.user.id,
   );
   const { rows: financeRows } = useModuleRecords("finance", session.user.id);
-  const { clients, vehicles, services, reload: reloadCatalog } = useClientVehicleCatalog();
+  const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [fiscalRow, setFiscalRow] = useState<PanelRecord | null>(null);
@@ -111,6 +125,43 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<SaleForm>(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const serviceVehicleProfile = mergeVehiclePriceProfile(
+    vehicles.find((vehicle) => vehiclePlate(vehicle) === form.vehicle.trim().toUpperCase()),
+    { make: form.vehicle_make, model: form.vehicle_model, year: form.vehicle_year },
+  );
+
+  function saleVehiclePatch(previous: SaleForm, plate: string, picked?: PanelRecord | null, overrides?: { make?: unknown; model?: unknown; year?: unknown }) {
+    const normalizedPlate = plate.trim().toUpperCase();
+    const savedVehicle = picked ?? vehicles.find((vehicle) => vehiclePlate(vehicle) === normalizedPlate) ?? null;
+    const profile = mergeVehiclePriceProfile(savedVehicle, overrides);
+    const service = services.find((item) => item.id === previous.service_id)
+      ?? services.find((item) => item.title.trim().toLowerCase() === previous.title.trim().toLowerCase())
+      ?? null;
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    const variable = resolution.mode === "vehicle";
+    return {
+      vehicle: normalizedPlate,
+      vehicle_make: String(profile?.make ?? ""),
+      vehicle_model: String(profile?.model ?? ""),
+      vehicle_year: String(profile?.year ?? ""),
+      amount: variable ? (resolution.amount === null ? "" : String(resolution.amount)) : previous.amount,
+      pricing_rule_id: variable ? resolution.rule?.id ?? "" : previous.pricing_rule_id,
+    };
+  }
+
+  function saleServicePatch(previous: SaleForm, title: string) {
+    const service = services.find((item) => item.title.trim().toLowerCase() === title.trim().toLowerCase()) ?? null;
+    if (!service) {
+      return { ...previous, title, service_id: "", pricing_mode: "", pricing_rule_id: "", amount: previous.pricing_mode === "vehicle" ? "" : previous.amount };
+    }
+    const profile = mergeVehiclePriceProfile(
+      vehicles.find((vehicle) => vehiclePlate(vehicle) === previous.vehicle.trim().toUpperCase()),
+      { make: previous.vehicle_make, model: previous.vehicle_model, year: previous.vehicle_year },
+    );
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    return { ...previous, title, service_id: service.id, pricing_mode: resolution.mode, pricing_rule_id: resolution.rule?.id ?? "", amount: resolution.amount === null ? "" : String(resolution.amount) };
+  }
 
   const today = todayIso();
 
@@ -243,6 +294,12 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
       itens: String(detail(row, "itens") ?? ""),
       status: row.status,
       description: row.description ?? "",
+      service_id: String(detail(row, "service_id") ?? services.find((service) => service.title.trim().toLowerCase() === row.title.trim().toLowerCase())?.id ?? ""),
+      pricing_mode: String(detail(row, "pricing_mode") ?? ""),
+      pricing_rule_id: String(detail(row, "pricing_rule_id") ?? ""),
+      vehicle_make: String(detail(row, "marca") ?? ""),
+      vehicle_model: String(detail(row, "modelo") ?? ""),
+      vehicle_year: String(detail(row, "ano") ?? ""),
     });
     setModalOpen(true);
   }
@@ -250,21 +307,32 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!form.title.trim()) return;
+    const finalAmount = Number(form.amount.replace(",", "."));
+    if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+      setError("Defina um valor final maior que zero para registrar a venda.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const parsedAmount = form.amount.trim() === "" ? 0 : Number(form.amount);
       await saveRecord(editing, {
         title: form.title.trim(),
         customer_name: form.customer_name.trim() || null,
         vehicle: form.vehicle.trim() || null,
-        amount: Number.isNaN(parsedAmount) ? 0 : parsedAmount,
+        amount: finalAmount,
         status: form.status,
         description: form.description.trim() || null,
         details: {
           ...(editing?.details ?? {}),
           forma_pagamento: form.forma_pagamento,
           itens: form.itens.trim(),
+          service_id: form.service_id || null,
+          pricing_mode: form.pricing_mode || null,
+          pricing_rule_id: form.pricing_rule_id || null,
+          marca: form.vehicle_make || null,
+          modelo: form.vehicle_model || null,
+          ano: form.vehicle_year || null,
+          price_pending: !(finalAmount > 0),
         },
       });
       await ensureClientAndVehicle({
@@ -273,6 +341,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
         vehicles,
         customerName: form.customer_name,
         vehicle: form.vehicle,
+        vehicleDetails: { marca: form.vehicle_make, modelo: form.vehicle_model, ano: form.vehicle_year },
         reload: reloadCatalog,
       });
       setModalOpen(false);
@@ -485,23 +554,21 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                   <label>Descrição / Comanda</label>
                   <ServicePicker
                     services={services}
+                    priceRules={priceRules}
                     value={form.title}
-                    onSelectService={(picked) => {
+                    vehicleProfile={serviceVehicleProfile}
+                    onSelectService={(picked, resolution) => {
                       if (!picked) {
-                        setForm((f) => ({ ...f, title: "" }));
+                        setForm((f) => saleServicePatch(f, ""));
                         return;
                       }
-                      const promo = detail(picked, "preco_promo");
-                      const price =
-                        promo !== undefined && promo !== null && promo !== ""
-                          ? String(promo)
-                          : picked.amount !== null && picked.amount !== undefined
-                            ? String(picked.amount)
-                            : form.amount;
                       setForm((f) => ({
                         ...f,
+                        service_id: picked.id,
+                        pricing_mode: resolution?.mode ?? "",
+                        pricing_rule_id: resolution?.rule?.id ?? "",
                         title: picked.title,
-                        amount: price,
+                        amount: resolution?.amount === null || !resolution ? "" : String(resolution.amount),
                         itens: f.itens || picked.title,
                         description: f.description || picked.description || "",
                       }));
@@ -511,7 +578,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-input"
                     required
                     value={form.title}
-                    onChange={(event) => setForm((f) => ({ ...f, title: event.target.value }))}
+                    onChange={(event) => setForm((f) => saleServicePatch(f, event.target.value))}
                     placeholder="Ex: Comanda #42 - Troca de óleo e filtros"
                   />
                 </div>
@@ -533,7 +600,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                       setForm((f) => ({
                         ...f,
                         customer_name: name,
-                        vehicle: matchVeh && !f.vehicle ? vehiclePlate(matchVeh) : f.vehicle,
+                        ...(matchVeh && !f.vehicle ? saleVehiclePatch(f, vehiclePlate(matchVeh), matchVeh) : {}),
                       }));
                     }}
                   />
@@ -553,34 +620,43 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     clientName={form.customer_name}
                     onSelectVehicle={(picked) => {
                       if (!picked) {
-                        setForm((f) => ({ ...f, vehicle: "" }));
+                        setForm((f) => ({ ...f, ...saleVehiclePatch(f, "") }));
                         return;
                       }
                       setForm((f) => ({
                         ...f,
-                        vehicle: vehiclePlate(picked),
+                        ...saleVehiclePatch(f, vehiclePlate(picked), picked),
                         customer_name: f.customer_name || (picked.customer_name ?? "").trim(),
                       }));
                     }}
                   />
-                  <input
-                    className="admin-input"
-                    value={form.vehicle}
-                    onChange={(event) => setForm((f) => ({ ...f, vehicle: event.target.value }))}
-                    placeholder="Modelo / Placa"
-                  />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      className="admin-input"
+                      value={form.vehicle}
+                      onChange={(event) => setForm((f) => ({ ...f, ...saleVehiclePatch(f, event.target.value) }))}
+                      placeholder="Modelo / Placa"
+                    />
+                    <PlateLookupButton
+                      plate={form.vehicle}
+                      onFound={(result) => setForm((prev) => ({
+                        ...prev,
+                        ...saleVehiclePatch(prev, result.plate, null, { make: result.marca, model: result.modelo, year: result.ano }),
+                      }))}
+                    />
+                  </div>
                 </div>
 
                 <label className="admin-field">
-                  Valor (R$)
+                  Valor final (R$)
                   <input
                     className="admin-input"
                     type="number"
                     step="0.01"
-                    min="0"
+                    min="0.01"
                     required
                     value={form.amount}
-                    onChange={(event) => setForm((f) => ({ ...f, amount: event.target.value }))}
+                    onChange={(event) => setForm((f) => ({ ...f, amount: event.target.value, pricing_rule_id: "" }))}
                     placeholder="0,00"
                   />
                 </label>

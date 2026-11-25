@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { insertRow, type PanelRecord } from "../../../lib/supabase";
+import { mergeVehiclePriceProfile, resolveServicePrice, type PricingMode } from "../../../lib/servicePricing";
 import { AdminStatusBadge } from "../StatusBadge";
 import {
   asText,
@@ -57,6 +58,9 @@ type QuoteLineItem = {
   type: "servico" | "peca";
   qty: number;
   unit_price: number;
+  service_id?: string;
+  pricing_mode?: PricingMode;
+  price_pending?: boolean;
   approved?: boolean;
 };
 
@@ -70,6 +74,12 @@ type FormState = {
   status: string;
   description: string;
   items: QuoteLineItem[];
+  service_id: string;
+  pricing_mode: string;
+  pricing_rule_id: string;
+  vehicle_make: string;
+  vehicle_model: string;
+  vehicle_year: string;
 };
 
 const emptyForm = (): FormState => ({
@@ -82,6 +92,12 @@ const emptyForm = (): FormState => ({
   status: "novo",
   description: "",
   items: [],
+  service_id: "",
+  pricing_mode: "",
+  pricing_rule_id: "",
+  vehicle_make: "",
+  vehicle_model: "",
+  vehicle_year: "",
 });
 
 export function QuotesView({ session }: { session: { user: { id: string } } }) {
@@ -89,7 +105,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
     "quotes",
     session.user.id,
   );
-  const { clients, vehicles, services, reload: reloadCatalog } = useClientVehicleCatalog();
+  const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PanelRecord | null>(null);
@@ -97,6 +113,90 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [waMode, setWaMode] = useState<"confirm" | "link">("confirm");
+
+  const serviceVehicleProfile = mergeVehiclePriceProfile(
+    vehicles.find((vehicle) => vehiclePlate(vehicle) === form.vehicle.trim().toUpperCase()),
+    { make: form.vehicle_make, model: form.vehicle_model, year: form.vehicle_year },
+  );
+  const currentService = services.find((service) => service.id === form.service_id)
+    ?? services.find((service) => service.title.trim().toLowerCase() === form.title.trim().toLowerCase())
+    ?? null;
+
+  function quoteRowHasFinalPrice(row: PanelRecord): boolean {
+    if (!(Number(row.amount) > 0)) return false;
+    const items = detail(row, "items");
+    if (!Array.isArray(items)) return true;
+    return items
+      .filter((item) => item && typeof item === "object" && (item as Record<string, unknown>).approved !== false)
+      .every((item) => {
+        const price = Number((item as Record<string, unknown>).unit_price);
+        return Number.isFinite(price) && price > 0;
+      });
+  }
+
+  function applySelectedVehicle(picked: PanelRecord | null) {
+    const plate = picked ? vehiclePlate(picked) : "";
+    setForm((previous) => ({ ...previous, ...vehicleFormPatch(previous, plate, picked) }));
+  }
+
+  function vehicleFormPatch(previous: FormState, plate: string, picked?: PanelRecord | null, overrides?: { make?: unknown; model?: unknown; year?: unknown }) {
+    const normalizedPlate = plate.trim().toUpperCase();
+    const savedVehicle = picked ?? vehicles.find((vehicle) => vehiclePlate(vehicle) === normalizedPlate) ?? null;
+    const profile = mergeVehiclePriceProfile(savedVehicle, overrides);
+    const service = services.find((item) => item.id === previous.service_id)
+      ?? services.find((item) => item.title.trim().toLowerCase() === previous.title.trim().toLowerCase())
+      ?? null;
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    const variable = resolution.mode === "vehicle";
+    return {
+      vehicle: normalizedPlate,
+      vehicle_make: String(profile?.make ?? ""),
+      vehicle_model: String(profile?.model ?? ""),
+      vehicle_year: String(profile?.year ?? ""),
+      amount: variable ? (resolution.amount === null ? "" : String(resolution.amount)) : previous.amount,
+      pricing_rule_id: variable ? resolution.rule?.id ?? "" : previous.pricing_rule_id,
+      items: previous.items.map((line) => {
+        if (line.type !== "servico" || !line.service_id) return line;
+        const lineService = services.find((item) => item.id === line.service_id);
+        if (!lineService) return line;
+        const linePrice = resolveServicePrice(lineService, priceRules, profile);
+        if (linePrice.mode !== "vehicle") return line;
+        return {
+          ...line,
+          unit_price: linePrice.amount ?? 0,
+          pricing_mode: linePrice.mode,
+          price_pending: linePrice.amount === null,
+        };
+      }),
+    };
+  }
+
+  function serviceTitlePatch(previous: FormState, title: string) {
+    const service = services.find((item) => item.title.trim().toLowerCase() === title.trim().toLowerCase()) ?? null;
+    if (!service) {
+      return {
+        ...previous,
+        title,
+        service_id: "",
+        pricing_mode: "",
+        pricing_rule_id: "",
+        amount: previous.pricing_mode === "vehicle" ? "" : previous.amount,
+      };
+    }
+    const profile = mergeVehiclePriceProfile(
+      vehicles.find((vehicle) => vehiclePlate(vehicle) === previous.vehicle.trim().toUpperCase()),
+      { make: previous.vehicle_make, model: previous.vehicle_model, year: previous.vehicle_year },
+    );
+    const resolution = resolveServicePrice(service, priceRules, profile);
+    return {
+      ...previous,
+      title,
+      service_id: service.id,
+      pricing_mode: resolution.mode,
+      pricing_rule_id: resolution.rule?.id ?? "",
+      amount: resolution.amount === null ? "" : String(resolution.amount),
+    };
+  }
 
   const { draggingId, dragOverLane, touchGhost, cardDragProps, handleTouchProps, laneDropProps } =
     useKanbanDrag((rowId, laneKey) => {
@@ -119,6 +219,10 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
     });
 
   async function approveQuote(row: PanelRecord) {
+    if (!quoteRowHasFinalPrice(row)) {
+      setNotice("Defina um valor final para todos os itens aprovados antes de confirmar este orçamento.");
+      return;
+    }
     const existingDetails =
       row.details && typeof row.details === "object" ? row.details : {};
 
@@ -215,6 +319,10 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
   }
 
   async function sendQuoteWhatsApp(row: PanelRecord) {
+    if (!quoteRowHasFinalPrice(row)) {
+      setNotice("Este orçamento ainda tem valores em definição. Complete os preços antes de pedir aprovação pelo WhatsApp.");
+      return;
+    }
     const baseUrl = whatsappApprovalUrl(row, "orcamento");
     if (waMode === "link") {
       const token = await ensurePublicToken(row);
@@ -267,6 +375,9 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
           type: it.type === "peca" ? "peca" : "servico",
           qty: Math.max(1, Number(it.qty ?? 1)),
           unit_price: Math.max(0, Number(it.unit_price ?? 0)),
+          service_id: String(it.service_id ?? ""),
+          pricing_mode: it.pricing_mode === "fixed" || it.pricing_mode === "vehicle" || it.pricing_mode === "assessment" ? it.pricing_mode : undefined,
+          price_pending: Boolean(it.price_pending) || Number(it.unit_price ?? 0) <= 0,
           approved: typeof it.approved === "boolean" ? it.approved : true,
         }))
       : [];
@@ -280,6 +391,12 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
       status: row.status ?? "novo",
       description: row.description ?? "",
       items: parsedItems,
+      service_id: String(detail(row, "service_id") ?? services.find((service) => service.title.trim().toLowerCase() === (row.title ?? "").trim().toLowerCase())?.id ?? ""),
+      pricing_mode: String(detail(row, "pricing_mode") ?? ""),
+      pricing_rule_id: String(detail(row, "pricing_rule_id") ?? ""),
+      vehicle_make: String(detail(row, "marca") ?? ""),
+      vehicle_model: String(detail(row, "modelo") ?? ""),
+      vehicle_year: String(detail(row, "ano") ?? ""),
     });
     setModalOpen(true);
   }
@@ -295,6 +412,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
           type,
           qty: 1,
           unit_price: 0,
+          price_pending: true,
           approved: true,
         },
       ],
@@ -303,7 +421,13 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
 
   function updateLineItem(id: string, patch: Partial<QuoteLineItem>) {
     setForm((prev) => {
-      const nextItems = prev.items.map((it) => (it.id === id ? { ...it, ...patch } : it));
+      const nextItems = prev.items.map((it) => {
+        if (it.id !== id) return it;
+        const updated = { ...it, ...patch };
+        return Object.hasOwn(patch, "unit_price")
+          ? { ...updated, price_pending: !(Number(updated.unit_price) > 0) }
+          : updated;
+      });
       const sum = nextItems.reduce((acc, it) => acc + it.qty * it.unit_price, 0);
       return {
         ...prev,
@@ -346,6 +470,13 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
           validade: form.validade || null,
           items: form.items.filter((it) => it.name.trim() !== ""),
           public_token: String(existingDetails.public_token || generatePublicToken()),
+          service_id: form.service_id || null,
+          pricing_mode: form.pricing_mode || null,
+          pricing_rule_id: form.pricing_rule_id || null,
+          marca: form.vehicle_make || null,
+          modelo: form.vehicle_model || null,
+          ano: form.vehicle_year || null,
+          price_pending: !(Number(form.amount) > 0),
         },
       });
       await ensureClientAndVehicle({
@@ -355,6 +486,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
         customerName: form.customer_name,
         phone: form.phone,
         vehicle: form.vehicle,
+        vehicleDetails: { marca: form.vehicle_make, modelo: form.vehicle_model, ano: form.vehicle_year },
         reload: reloadCatalog,
       });
       setModalOpen(false);
@@ -560,7 +692,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                           gap: 8,
                         }}
                       >
-                        <strong style={{ fontSize: 13.5 }}>{money(row.amount)}</strong>
+                        <strong style={{ fontSize: 13.5 }}>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong>
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <button
                             type="button"
@@ -620,25 +752,23 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                   <label>Título do orçamento *</label>
                   <ServicePicker
                     services={services}
+                    priceRules={priceRules}
                     value={form.title}
-                    onSelectService={(picked) => {
+                    vehicleProfile={serviceVehicleProfile}
+                    onSelectService={(picked, resolution) => {
                       if (!picked) {
-                        setForm({ ...form, title: "" });
+                        setForm((prev) => serviceTitlePatch(prev, ""));
                         return;
                       }
-                      const promo = detail(picked, "preco_promo");
-                      const price =
-                        promo !== undefined && promo !== null && promo !== ""
-                          ? String(promo)
-                          : picked.amount !== null && picked.amount !== undefined
-                            ? String(picked.amount)
-                            : form.amount;
-                      setForm({
-                        ...form,
+                      setForm((prev) => ({
+                        ...prev,
+                        service_id: picked.id,
+                        pricing_mode: resolution?.mode ?? "",
+                        pricing_rule_id: resolution?.rule?.id ?? "",
                         title: picked.title,
-                        amount: price,
-                        description: form.description || picked.description || "",
-                      });
+                        amount: resolution?.amount === null || !resolution ? "" : String(resolution.amount),
+                        description: prev.description || picked.description || "",
+                      }));
                     }}
                   />
                   <input
@@ -646,7 +776,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     required
                     placeholder="Ex: Troca de embreagem + retífica do volante"
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    onChange={(e) => setForm((prev) => serviceTitlePatch(prev, e.target.value))}
                   />
                 </div>
 
@@ -664,12 +794,12 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                       const matchVeh = vehicles.find(
                         (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
                       );
-                      setForm({
-                        ...form,
+                      setForm((prev) => ({
+                        ...prev,
                         customer_name: name,
-                        phone: picked.phone ?? form.phone,
-                        vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
-                      });
+                        phone: picked.phone ?? prev.phone,
+                        ...(matchVeh && !prev.vehicle ? vehicleFormPatch(prev, vehiclePlate(matchVeh), matchVeh) : {}),
+                      }));
                     }}
                   />
                   <input
@@ -687,22 +817,19 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     value={form.vehicle}
                     clientName={form.customer_name}
                     onSelectVehicle={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, vehicle: "" });
-                        return;
-                      }
+                      if (!picked) { applySelectedVehicle(null); return; }
                       const ownerName = (picked.customer_name ?? "").trim();
                       const ownerClient = ownerName
                         ? clients.find(
                             (c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase(),
                           )
                         : undefined;
-                      setForm({
-                        ...form,
-                        vehicle: vehiclePlate(picked),
+                      setForm((prev) => ({
+                        ...prev,
+                        ...vehicleFormPatch(prev, vehiclePlate(picked), picked),
                         customer_name: form.customer_name || ownerName,
                         phone: form.phone || ownerClient?.phone || "",
-                      });
+                      }));
                     }}
                   />
                   <div style={{ display: "flex", gap: 6 }}>
@@ -710,7 +837,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                       className="admin-input"
                       placeholder="ABC1D23"
                       value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+                      onChange={(e) => setForm((prev) => ({ ...prev, ...vehicleFormPatch(prev, e.target.value) }))}
                     />
                     <PlateLookupButton
                       plate={form.vehicle}
@@ -718,7 +845,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                         const info = [res.marca, res.modelo, res.ano, res.cor].filter(Boolean).join(" · ");
                         setForm((prev) => ({
                           ...prev,
-                          vehicle: res.plate,
+                          ...vehicleFormPatch(prev, res.plate, null, { make: res.marca, model: res.modelo, year: res.ano }),
                           description:
                             info && !prev.description.includes(info)
                               ? prev.description
@@ -778,13 +905,32 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                             <option value="servico">Serviço</option>
                             <option value="peca">Peça</option>
                           </select>
-                          <input
-                            className="admin-input"
-                            style={{ minHeight: 36, padding: "6px 10px", fontSize: 12.5 }}
-                            placeholder="Descrição do item"
-                            value={item.name}
-                            onChange={(e) => updateLineItem(item.id, { name: e.target.value })}
-                          />
+                          <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                            {item.type === "servico" && (
+                              <ServicePicker
+                                services={services}
+                                priceRules={priceRules}
+                                value={item.name}
+                                vehicleProfile={serviceVehicleProfile}
+                                onSelectService={(picked, resolution) => updateLineItem(item.id, picked
+                                  ? {
+                                      service_id: picked.id,
+                                      pricing_mode: resolution?.mode,
+                                      price_pending: resolution?.amount === null || !resolution,
+                                      name: picked.title,
+                                      unit_price: resolution?.amount ?? 0,
+                                    }
+                                  : { service_id: "", pricing_mode: undefined, price_pending: false })}
+                              />
+                            )}
+                            <input
+                              className="admin-input"
+                              style={{ minHeight: 36, padding: "6px 10px", fontSize: 12.5 }}
+                              placeholder="Descrição do item"
+                              value={item.name}
+                              onChange={(e) => updateLineItem(item.id, { name: e.target.value, service_id: "", pricing_mode: undefined })}
+                            />
+                          </div>
                           <input
                             type="number"
                             min={1}

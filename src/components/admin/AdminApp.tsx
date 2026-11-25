@@ -27,6 +27,7 @@ import { FinanceView } from "./views/FinanceView";
 import { InspectionsView } from "./views/InspectionsView";
 import { InventoryView } from "./views/InventoryView";
 import { QuotesView } from "./views/QuotesView";
+import { PricesView } from "./views/PricesView";
 import { ReportsView } from "./views/ReportsView";
 import { SalesView } from "./views/SalesView";
 import { ServicesView } from "./views/ServicesView";
@@ -107,6 +108,8 @@ function renderPageView(
       return <VehiclesView session={session} />;
     case "services":
       return <ServicesView session={session} />;
+    case "prices":
+      return <PricesView session={session} />;
     case "inventory":
       return <InventoryView session={session} />;
     case "finance":
