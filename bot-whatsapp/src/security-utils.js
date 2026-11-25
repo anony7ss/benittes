@@ -114,6 +114,25 @@ export function getSupportedImageMime(buffer) {
   return null;
 }
 
+export function getPhoneMatchKeys(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return [];
+  const keys = new Set([digits]);
+  const national = digits.startsWith('55') ? digits.slice(2) : digits;
+  if (national.length !== 10 && national.length !== 11) return [...keys];
+  const withCountry = (phone) => {
+    keys.add(phone);
+    keys.add(`55${phone}`);
+  };
+  withCountry(national);
+  if (national.length === 11 && national[2] === '9') {
+    withCountry(national.slice(0, 2) + national.slice(3));
+  } else if (national.length === 10) {
+    withCountry(national.slice(0, 2) + '9' + national.slice(2));
+  }
+  return [...keys];
+}
+
 /** Confere assinaturas comuns antes de entregar bytes ao Baileys. */
 export function isSupportedMediaBuffer(buffer, mediaType) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 4) return false;
@@ -145,5 +164,6 @@ export default {
   readResponseBodyWithLimit,
   readAsyncIterableWithLimit,
   getSupportedImageMime,
+  getPhoneMatchKeys,
   isSupportedMediaBuffer,
 };

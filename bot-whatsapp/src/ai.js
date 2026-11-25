@@ -19,7 +19,7 @@ import { downloadMediaMessage, normalizeMessageContent } from '@whiskeysockets/b
 import { transcreverAudio } from './transcribe.js';
 import { clientePediuAudio, gerarAudioVoz } from './tts.js';
 import { sanitizarMensagemWhatsApp } from './format-cleaner.js';
-import { getSupportedImageMime, isSafeWhatsAppJid, readAsyncIterableWithLimit, sanitizeUntrustedText } from './security-utils.js';
+import { getPhoneMatchKeys, getSupportedImageMime, isSafeWhatsAppJid, readAsyncIterableWithLimit, sanitizeUntrustedText } from './security-utils.js';
 import { setAiStatus } from './ai-status.js';
 import { createCircuitBreaker } from './circuit-breaker.js';
 import { supabase } from './supabase.js';
@@ -318,13 +318,27 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
   if (!isSafeWhatsAppJid(jid)) return;
 
   return serializarMensagemPorChat(telefone || jid, async () => {
-    const { text, isAudio, imageDataUrl, mediaError } = await extrairConteudoMensagem(message, socket);
-    if (!text && !imageDataUrl) return;
-
-    if (isChatAiPaused(telefone || jid)) {
-      logInfo('IA', `Mensagem ignorada durante pausa do atendente para ${telefone || jid}.`);
+    const phoneKeys = new Set(getPhoneMatchKeys(telefone || jid));
+    const { data: botCfg, error: configError } = await supabase
+      .from('whatsapp_bot_session')
+      .select('ai_enabled, ai_paused_phones')
+      .eq('id', 'default')
+      .maybeSingle();
+    if (configError || !botCfg) {
+      logWarn('IA', 'Configuração de pausa indisponível; mensagem ignorada por segurança.');
       return;
     }
+    const pausedPhones = Array.isArray(botCfg?.ai_paused_phones) ? botCfg.ai_paused_phones : [];
+    const isPausedByNumber = pausedPhones.some((phone) =>
+      getPhoneMatchKeys(phone).some((key) => phoneKeys.has(key)),
+    );
+    if (botCfg?.ai_enabled === false || isPausedByNumber || isChatAiPaused(telefone || jid)) {
+      logInfo('IA', `Mensagem ignorada durante pausa automática para ${telefone || jid}.`);
+      return;
+    }
+
+    const { text, isAudio, imageDataUrl, mediaError } = await extrairConteudoMensagem(message, socket);
+    if (!text && !imageDataUrl) return;
 
     const cleanText = sanitizeUntrustedText(text, 6000);
     logIncoming(nomeCliente || telefone || jid, isAudio ? `[Áudio] ${cleanText}` : cleanText);
@@ -376,24 +390,15 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
     try {
       const chatKey = telefone || jid;
       const history = getHistory(chatKey);
-      const { data: botCfg } = await supabase
+      const { data: audioConfig } = await supabase
         .from('whatsapp_bot_session')
-        .select('ai_model, audio_mode, audio_voice, ai_enabled, ai_paused_phones')
+        .select('ai_model, audio_mode, audio_voice')
         .eq('id', 'default')
         .maybeSingle();
 
-      const phoneDigits = String(telefone || jid).replace(/\D/g, '');
-      const pausedPhones = Array.isArray(botCfg?.ai_paused_phones)
-        ? botCfg.ai_paused_phones.map((phone) => String(phone).replace(/\D/g, ''))
-        : [];
-      if (botCfg?.ai_enabled === false || pausedPhones.includes(phoneDigits)) {
-        logInfo('IA', `Resposta automática pausada para ${phoneDigits || 'contato'}.`);
-        return;
-      }
-
       const modelToUse = imageDataUrl
         ? config.opencodeVisionModel
-        : (botCfg?.ai_model || config.opencodeModel);
+        : (audioConfig?.ai_model || config.opencodeModel);
 
       const userContent = imageDataUrl
         ? [
@@ -475,7 +480,7 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
       addMessage(chatKey, 'user', cleanText);
       addMessage(chatKey, 'assistant', safeReply);
 
-      const audioMode = botCfg?.audio_mode || 'direct_request';
+      const audioMode = audioConfig?.audio_mode || 'direct_request';
       const wantsVoice =
         audioMode === 'always' ||
         (audioMode === 'mirror' && isAudio) ||
@@ -483,7 +488,7 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
 
       let sentAsAudio = false;
       if (wantsVoice) {
-        const audioResult = await gerarAudioVoz(safeReply, botCfg?.audio_voice || 'pt-BR-FranciscaNeural');
+        const audioResult = await gerarAudioVoz(safeReply, audioConfig?.audio_voice || 'pt-BR-FranciscaNeural');
         if (audioResult?.sucesso && Buffer.isBuffer(audioResult.buffer) && audioResult.buffer.length > 0) {
           await sendHumanizedVoice(socket, jid, audioResult.buffer, {
             mimetype: audioResult.mimetype,

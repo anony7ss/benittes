@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
           ai_model: data.ai_model,
           audio_mode: data.audio_mode,
           audio_voice: data.audio_voice,
+          ai_paused_phones: data.ai_paused_phones ?? [],
+          human_reply_pause_minutes: data.human_reply_pause_minutes ?? 30,
         }
       : null,
   }, { headers: { "Cache-Control": "no-store" } });
