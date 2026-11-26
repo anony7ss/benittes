@@ -258,12 +258,6 @@ export function AdminShell({
       }
     };
 
-    if (mobileOpen && window.matchMedia("(max-width: 768px)").matches) {
-      setDarkMode(next);
-      applyDomTheme();
-      return;
-    }
-
     const rect = event?.currentTarget?.getBoundingClientRect();
     const x = rect ? rect.left + rect.width / 2 : 36;
     const y = rect ? rect.top + rect.height / 2 : window.innerHeight - 40;
@@ -276,66 +270,82 @@ export function AdminShell({
       startViewTransition?: (cb: () => void) => { ready: Promise<void> };
     };
 
-    if (typeof docWithVT.startViewTransition === "function") {
-      try {
-        const transition = docWithVT.startViewTransition(() => {
-          flushSync(() => {
-            setDarkMode(next);
+    const startThemeAnimation = () => {
+      if (typeof docWithVT.startViewTransition === "function") {
+        try {
+          const transition = docWithVT.startViewTransition(() => {
+            flushSync(() => {
+              setDarkMode(next);
+            });
+            applyDomTheme();
           });
-          applyDomTheme();
+          void transition.ready
+            .then(() => {
+              document.documentElement.animate(
+                {
+                  clipPath: [
+                    `circle(0px at ${x}px ${y}px)`,
+                    `circle(${maxRadius}px at ${x}px ${y}px)`,
+                  ],
+                },
+                {
+                  duration: 620,
+                  easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+                  pseudoElement: "::view-transition-new(root)",
+                },
+              );
+            })
+            .catch(() => {});
+          return;
+        } catch {
+          // fallback below
+        }
+      }
+
+      // Fallback circular wave overlay for browsers without View Transitions
+      const wave = document.createElement("div");
+      wave.style.position = "fixed";
+      wave.style.left = `${x}px`;
+      wave.style.top = `${y}px`;
+      wave.style.width = `${maxRadius * 2}px`;
+      wave.style.height = `${maxRadius * 2}px`;
+      wave.style.marginLeft = `${-maxRadius}px`;
+      wave.style.marginTop = `${-maxRadius}px`;
+      wave.style.borderRadius = "50%";
+      wave.style.pointerEvents = "none";
+      wave.style.zIndex = "9999";
+      wave.style.background = next ? "#11110f" : "#efefeb";
+      wave.style.transform = "scale(0)";
+      document.body.appendChild(wave);
+
+      const expand = wave.animate(
+        [{ transform: "scale(0)" }, { transform: "scale(1)" }],
+        { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
+      );
+      expand.onfinish = () => {
+        setDarkMode(next);
+        applyDomTheme();
+        const fade = wave.animate(
+          [{ opacity: 1 }, { opacity: 0 }],
+          { duration: 240, easing: "ease-out", fill: "forwards" },
+        );
+        fade.onfinish = () => wave.remove();
+      };
+    };
+
+    if (mobileOpen && window.matchMedia("(max-width: 768px)").matches) {
+      const scrim = document.querySelector<HTMLElement>(".admin-mobile-scrim.visible");
+      if (scrim) {
+        void scrim.getBoundingClientRect();
+        void window.getComputedStyle(scrim).backdropFilter;
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(startThemeAnimation);
         });
-        void transition.ready
-          .then(() => {
-            document.documentElement.animate(
-              {
-                clipPath: [
-                  `circle(0px at ${x}px ${y}px)`,
-                  `circle(${maxRadius}px at ${x}px ${y}px)`,
-                ],
-              },
-              {
-                duration: 620,
-                easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-                pseudoElement: "::view-transition-new(root)",
-              },
-            );
-          })
-          .catch(() => {});
         return;
-      } catch {
-        // fallback below
       }
     }
 
-    // Fallback circular wave overlay for browsers without View Transitions
-    const wave = document.createElement("div");
-    wave.style.position = "fixed";
-    wave.style.left = `${x}px`;
-    wave.style.top = `${y}px`;
-    wave.style.width = `${maxRadius * 2}px`;
-    wave.style.height = `${maxRadius * 2}px`;
-    wave.style.marginLeft = `${-maxRadius}px`;
-    wave.style.marginTop = `${-maxRadius}px`;
-    wave.style.borderRadius = "50%";
-    wave.style.pointerEvents = "none";
-    wave.style.zIndex = "9999";
-    wave.style.background = next ? "#11110f" : "#efefeb";
-    wave.style.transform = "scale(0)";
-    document.body.appendChild(wave);
-
-    const expand = wave.animate(
-      [{ transform: "scale(0)" }, { transform: "scale(1)" }],
-      { duration: 480, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "forwards" },
-    );
-    expand.onfinish = () => {
-      setDarkMode(next);
-      applyDomTheme();
-      const fade = wave.animate(
-        [{ opacity: 1 }, { opacity: 0 }],
-        { duration: 240, easing: "ease-out", fill: "forwards" },
-      );
-      fade.onfinish = () => wave.remove();
-    };
+    startThemeAnimation();
   }
 
   function togglePin() {
