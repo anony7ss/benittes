@@ -2,12 +2,6 @@
   "framework": "nextjs",
   "regions": ["gru1"],
   "buildCommand": "npm run build",
-  "crons": [
-    {
-      "path": "/api/cron/agent-routines",
-      "schedule": "0 12 * * *"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",

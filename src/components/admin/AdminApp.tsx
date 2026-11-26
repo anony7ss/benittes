@@ -25,7 +25,6 @@ const ContactsView = dynamic(() => import("./views/ContactsView").then((module) 
 const DashboardView = dynamic(() => import("./views/DashboardView").then((module) => module.DashboardView));
 const FinanceView = dynamic(() => import("./views/FinanceView").then((module) => module.FinanceView));
 const GalleryView = dynamic(() => import("./views/GalleryView").then((module) => module.GalleryView));
-const AgentsView = dynamic(() => import("./views/AgentsView").then((module) => module.AgentsView));
 const InspectionsView = dynamic(() => import("./views/InspectionsView").then((module) => module.InspectionsView));
 const InventoryView = dynamic(() => import("./views/InventoryView").then((module) => module.InventoryView));
 const QuotesView = dynamic(() => import("./views/QuotesView").then((module) => module.QuotesView));
@@ -105,8 +104,6 @@ function renderPageView(
       return <ReportsView />;
     case "gallery":
       return <GalleryView />;
-    case "agents":
-      return <AgentsView session={session} member={member} />;
     default:
       return (
         <div className="admin-panel">

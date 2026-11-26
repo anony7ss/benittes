@@ -6,7 +6,6 @@ import { motion } from "framer-motion";
 import {
   BarChart3,
   Bell,
-  BrainCircuit,
   Bot,
   CalendarDays,
   Car,
@@ -53,7 +52,6 @@ const iconMap: Record<string, typeof LayoutDashboard> = {
   sales: ShoppingBag,
   reports: BarChart3,
   gallery: Images,
-  agents: BrainCircuit,
   bot: Bot,
   settings: Settings,
   account: UserCog,
@@ -509,7 +507,7 @@ export function AdminShell({
           </button>
         </header>
 
-        <main key={page.path} className={`admin-page${page.path === "agents" ? " admin-page-agents" : ""}`}>
+        <main key={page.path} className="admin-page">
           {children}
         </main>
 
