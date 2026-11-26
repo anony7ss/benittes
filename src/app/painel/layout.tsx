@@ -12,7 +12,7 @@ import "@fontsource/poppins/latin-ext-600.css";
 import "@fontsource/poppins/latin-700.css";
 import "@fontsource/poppins/latin-ext-700.css";
 
-const themeInitScript = `try{var d=localStorage.getItem('admin-theme')!=='light';document.documentElement.classList.toggle('dark',d);document.documentElement.style.backgroundColor=d?'#11110f':'#efefeb';}catch(e){document.documentElement.classList.add('dark');}`;
+const themeInitScript = `try{var d=localStorage.getItem('admin-theme')==='dark';document.documentElement.classList.toggle('dark',d);document.documentElement.style.backgroundColor=d?'#11110f':'#efefeb';}catch(e){document.documentElement.classList.remove('dark');document.documentElement.style.backgroundColor='#efefeb';}`;
 
 export default async function PainelLayout({ children }: { children: ReactNode }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;

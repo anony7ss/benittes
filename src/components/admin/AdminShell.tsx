@@ -80,7 +80,7 @@ export function AdminShell({
   onSignOut: () => void;
   children: ReactNode;
 }) {
-  const [darkMode, setDarkMode] = useState<boolean>(true);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
   const [pinned, setPinned] = useState<boolean>(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -89,7 +89,7 @@ export function AdminShell({
 
   useLayoutEffect(() => {
     try {
-      const isDark = localStorage.getItem("admin-theme") !== "light";
+      const isDark = localStorage.getItem("admin-theme") === "dark";
       setDarkMode(isDark);
       setPinned(localStorage.getItem("admin-sidebar-pinned") === "1");
       document.documentElement.classList.toggle("dark", isDark);
