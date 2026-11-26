@@ -1,9 +1,7 @@
 -- Remove the internal Agents module and its persisted data.
 begin;
 
--- The bucket was checked before removal and contains no objects or uploads.
-delete from storage.buckets
-where id = 'agent-chat-private';
+-- The empty agent-chat-private bucket was removed with the Supabase Storage API.
 
 -- Remove module-only role flags and audit events while preserving shared tables.
 update public.panel_roles
