@@ -1117,10 +1117,15 @@ body:has(.admin-shell) {
   gap: 10px;
   padding: 6px;
   border-radius: 6px;
-  background: rgba(128, 128, 128, 0.03);
+  background: #ffffff;
   border: 1px solid var(--admin-sidebar-line);
   overflow: hidden;
   transition: border-color 0.15s ease;
+}
+
+html.dark .admin-user-pill,
+.admin-root.dark .admin-user-pill {
+  background: var(--admin-card);
 }
 
 .admin-user-pill:hover {
