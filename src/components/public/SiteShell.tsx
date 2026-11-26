@@ -312,7 +312,7 @@ export function SiteShell({
       <a href="#conteudo" className="skip">
         Pular para o conteúdo
       </a>
-      <header className={menuOpen ? "opened" : undefined}>
+      <header className={`site-header${menuOpen ? " opened" : ""}`}>
         <div className="wrap header">
           {mark}
           <nav id="menu" aria-label="Principal" ref={navRef}>

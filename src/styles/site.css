@@ -158,9 +158,11 @@ h2 > span,
 }
 header {
   position: relative;
-  z-index: 4;
   background: white;
   border-bottom: 1px solid var(--line);
+}
+.site-header {
+  z-index: 20;
 }
 .header,
 .foot-top,
@@ -741,7 +743,7 @@ dialog p {
     background: white;
     border-bottom: 1px solid var(--line);
   }
-  header.opened nav {
+  .site-header.opened nav {
     display: grid;
     gap: 0;
   }

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Icon } from "./Icon";
 import { whatsappUrl } from "@/config/oficina";
 
 export function ContactMethods() {
@@ -11,7 +10,7 @@ export function ContactMethods() {
         target="_blank"
         rel="noopener noreferrer"
       >
-        <Icon name="whatsapp-logo" size={20} /> WhatsApp
+        WhatsApp
       </a>
 
       <a data-site-channel="email" hidden>
