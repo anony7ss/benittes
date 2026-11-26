@@ -12,6 +12,7 @@ export type AdminPage = {
 
 export const adminPages: AdminPage[] = [
   { path: "", label: "Visão geral", group: "Operação", icon: "dashboard", special: "dashboard", description: "Indicadores, agenda e movimentação da oficina." },
+  { path: "agents", label: "Agents", group: "Operação", icon: "agents", module: "agents", description: "Converse com agentes de operação, serviços e finanças." },
   { path: "agenda", label: "Agenda", group: "Operação", icon: "agenda", module: "appointments", description: "Entradas previstas, retornos e horários do box." },
   { path: "ordens-de-servico", label: "Ordens de serviço", group: "Operação", icon: "orders", module: "work-orders", description: "Execução no box, diagnóstico técnico e entregas." },
   { path: "orcamentos", label: "Orçamentos", group: "Operação", icon: "quotes", module: "quotes", description: "Propostas, aprovação do cliente e validade." },
@@ -30,10 +31,9 @@ export const adminPages: AdminPage[] = [
   { path: "relatorios", label: "Relatórios", group: "Sistema", icon: "reports", module: "reports", description: "Extração por período e exportação CSV." },
   { path: "ponto", label: "Ponto Eletrônico", group: "Sistema", icon: "agenda", special: "ponto", description: "Registro de entrada, intervalo, saída e horas." },
   { path: "bot", label: "Bot WhatsApp", group: "Sistema", icon: "bot", special: "bot", description: "Conexão QR Code, terminal ao vivo e automações." },
-  { path: "configuracoes", label: "Configurações", group: "Sistema", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
   { path: "conta", label: "Conta & Equipe", group: "Sistema", icon: "account", special: "account", description: "Seu perfil, equipe, permissões e auditoria." },
   { path: "galeria", label: "Galeria do site", group: "Sistema", icon: "gallery", module: "gallery", description: "Fotos, vídeos, destaques e ordem de exibição no site." },
-  { path: "agents", label: "Agents", group: "Sistema", icon: "agents", module: "agents", description: "Converse com agentes de operação, serviços e finanças." },
+  { path: "configuracoes", label: "Configurações", group: "Sistema", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
 
   { path: "login", label: "Entrar", group: "Acesso", icon: "account", special: "login" },
   { path: "recuperar-senha", label: "Recuperar senha", group: "Acesso", icon: "account", special: "recovery" },

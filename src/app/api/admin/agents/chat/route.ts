@@ -89,15 +89,19 @@ export async function POST(request: NextRequest) {
       };
       const service = getServiceSupabase();
       let assistantSaved = false;
+      let taskStarted = false;
+      const startTask = (phase: "media" | "operations") => {
+        if (taskStarted) return;
+        taskStarted = true;
+        send("task_started", { steps: [
+          { id: "context", title: "Preparando contexto", status: "complete" },
+          { id: "media", title: "Analisando anexos", status: attachments.length ? phase === "media" ? "active" : "pending" : "skipped" },
+          { id: "operations", title: "Consultando dados autorizados", status: phase === "operations" ? "active" : "pending" },
+          { id: "response", title: "Preparando resposta", status: "pending" },
+        ] });
+      };
       try {
-        send("run_started", {
-          steps: [
-            { id: "context", title: "Preparando contexto", status: "active" },
-            { id: "media", title: attachments.length ? "Analisando anexos" : "Sem anexos nesta mensagem", status: attachments.length ? "pending" : "skipped" },
-            { id: "operations", title: "Consultando dados autorizados", status: "pending" },
-            { id: "response", title: "Preparando resposta", status: "pending" },
-          ],
-        });
+        send("run_started", { steps: [] });
 
         const { data: conversation, error: conversationError } = await service.from("panel_agent_conversations")
           .select("id,agent_key,title").eq("id", conversationId).eq("user_id", staff.user.id).maybeSingle();
@@ -116,6 +120,7 @@ export async function POST(request: NextRequest) {
 
         let media = { processed: [] as Array<RequestedAttachment & { analyzed: boolean; note?: string }>, multimodal: [] as Array<{ type: string; text?: string; image_url?: { url: string } }>, transcripts: [] as string[], analyzedImages: 0 };
         if (attachments.length) {
+          startTask("media");
           send("step", { id: "media", status: "active" });
           media = await processAgentAttachments({
             attachments,
@@ -147,7 +152,6 @@ export async function POST(request: NextRequest) {
         }
         send("user_saved", { id: insertedUser.id, created_at: insertedUser.created_at, content: storedContent });
         send("step", { id: "media", status: attachments.length ? "complete" : "skipped" });
-        send("step", { id: "operations", status: "active" });
 
         const history = (previousRows ?? []).reverse().flatMap((row) => {
           if ((row.role !== "user" && row.role !== "assistant") || typeof row.content !== "string") return [];
@@ -177,6 +181,8 @@ export async function POST(request: NextRequest) {
             finalText = completion.content;
             break;
           }
+          if (!taskStarted) startTask("operations");
+          else send("step", { id: "operations", status: "active" });
           operationUsed = true;
           messages.push({ role: "assistant", content: completion.content, tool_calls: calls });
           for (const [index, call] of calls.entries()) {
@@ -219,8 +225,10 @@ export async function POST(request: NextRequest) {
             toolCallCount += 1;
           }
         }
-        send("step", { id: "operations", status: operationUsed ? "complete" : "skipped" });
-        send("step", { id: "response", status: "active" });
+        if (taskStarted) {
+          send("step", { id: "operations", status: operationUsed ? "complete" : "skipped" });
+          send("step", { id: "response", status: "active" });
+        }
 
         if (!finalText.trim() && proposalIds.length) finalText = "Preparei a alteração como uma proposta. Confira o cartão e confirme para aplicá-la.";
         if (!finalText.trim()) finalText = "Não consegui concluir uma resposta agora. Tente reformular o pedido.";
@@ -237,7 +245,7 @@ export async function POST(request: NextRequest) {
         assistantSaved = true;
         await service.from("panel_agent_conversations").update({ updated_at: new Date().toISOString(), last_message_at: new Date().toISOString() })
           .eq("id", conversationId).eq("user_id", staff.user.id);
-        send("step", { id: "response", status: "complete" });
+        if (taskStarted) send("step", { id: "response", status: "complete" });
         send("done", { message: { id: assistantMessage.id, role: "assistant", content: finalText, attachments: [], metadata: { proposal_ids: proposalIds }, created_at: assistantMessage.created_at } });
       } catch (error) {
         const code = error instanceof Error ? error.message : "";

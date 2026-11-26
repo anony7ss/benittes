@@ -5,7 +5,7 @@ import Image from "next/image";
 import {
   Activity, AlertCircle, AudioLines, BadgeCheck, BrainCircuit, CalendarDays, Check, CheckCheck,
   ChevronDown, CircleDashed, Clock3, FileText, ImagePlus, LoaderCircle, MessageSquarePlus,
-  Mic, Paperclip, Send, ShieldCheck, Square, X,
+  Mic, Paperclip, Send, ShieldCheck, Square, UserRound, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { AgentAttachment, AgentCatalogItem, AgentConversation, AgentKey, AgentMessage, AgentProfile, AgentProposal, AgentRoutineRun } from "../../../admin/agents";
@@ -262,6 +262,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
   const reducedMotion = useReducedMotion();
   const [data, setData] = useState<LoadPayload | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AgentKey | null>(null);
   const [conversation, setConversation] = useState<AgentConversation | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -283,6 +284,8 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
   const inputFileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messageLoadRef = useRef(0);
+  const shouldFollowMessagesRef = useRef(true);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -296,13 +299,21 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
   const agentConversations = useMemo(() => data?.conversations.filter((item) => item.agent_key === selectedAgent) ?? [], [data, selectedAgent]);
   const displayName = member.full_name?.trim() || member.email;
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    const response = await fetch(`/api/admin/agents/conversations/${conversationId}`, { credentials: "same-origin", cache: "no-store" });
-    const payload = await jsonResponse<{ conversation: AgentConversation; messages: AgentMessage[]; proposals: AgentProposal[] }>(response);
-    setConversation(payload.conversation);
-    setMessages(payload.messages as DisplayMessage[]);
-    setProposals(payload.proposals ?? []);
-    setError("");
+  const loadMessages = useCallback(async (conversationId: string, showLoading = true) => {
+    const requestId = ++messageLoadRef.current;
+    if (showLoading) setMessagesLoading(true);
+    try {
+      const response = await fetch(`/api/admin/agents/conversations/${conversationId}`, { credentials: "same-origin", cache: "no-store" });
+      const payload = await jsonResponse<{ conversation: AgentConversation; messages: AgentMessage[]; proposals: AgentProposal[] }>(response);
+      if (requestId !== messageLoadRef.current) return;
+      shouldFollowMessagesRef.current = true;
+      setConversation(payload.conversation);
+      setMessages(payload.messages as DisplayMessage[]);
+      setProposals(payload.proposals ?? []);
+      setError("");
+    } finally {
+      if (showLoading && requestId === messageLoadRef.current) setMessagesLoading(false);
+    }
   }, []);
 
   const loadAgents = useCallback(async () => {
@@ -314,7 +325,12 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
       if (first) {
         setSelectedAgent(first.key);
         const last = payload.conversations.find((item) => item.agent_key === first.key);
-        if (last) await loadMessages(last.id);
+        if (last) {
+          setConversation(last);
+          setMessages([]);
+          setProposals([]);
+          void loadMessages(last.id).catch((reason) => setError(reason instanceof Error ? reason.message : "Não foi possível abrir a conversa."));
+        }
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível carregar os agentes.");
@@ -327,9 +343,9 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (!container) return;
-    container.scrollTo({ top: container.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
-  }, [messages, busy, steps, reducedMotion]);
+    if (!container || !shouldFollowMessagesRef.current) return;
+    container.scrollTop = container.scrollHeight;
+  }, [messages, busy, steps, tools]);
 
   useEffect(() => {
     draftsRef.current = draftFiles;
@@ -362,6 +378,8 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
       try { await loadMessages(latest.id); }
       catch (reason) { setConversation(latest); setMessages([]); setError(reason instanceof Error ? reason.message : "Não foi possível abrir a conversa."); }
     } else {
+      messageLoadRef.current += 1;
+      setMessagesLoading(false);
       setConversation(null);
       setMessages([]);
       setProposals([]);
@@ -385,6 +403,8 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ agent_key: agentKey }),
     }));
+    messageLoadRef.current += 1;
+    setMessagesLoading(false);
     setConversation(payload.conversation);
     setHistoryOpen(false);
     if (!preserveMessages) {
@@ -455,6 +475,9 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
       if (event === "run_started") {
         setSteps(Array.isArray(value.steps) ? value.steps as StepState[] : []);
         setTools([]);
+      } else if (event === "task_started") {
+        setSteps(Array.isArray(value.steps) ? value.steps as StepState[] : []);
+        setTools([]);
       } else if (event === "step") {
         const id = String(value.id || "");
         setSteps((current) => current.map((step) => step.id === id ? { ...step, status: value.status as StepState["status"], title: typeof value.title === "string" ? value.title : step.title } : step));
@@ -502,6 +525,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
     setBusy(true);
     setError("");
     setToast("");
+    shouldFollowMessagesRef.current = true;
     const optimisticId = `local-${crypto.randomUUID()}`;
     const localFiles: DisplayAttachment[] = files.map((item) => ({
       path: "", name: item.name, mime_type: item.mime, size: item.file.size, kind: item.kind,
@@ -558,7 +582,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
         ...current,
         conversations: current.conversations.map((item) => item.id === currentConversation.id ? { ...item, last_message_at: new Date().toISOString(), updated_at: new Date().toISOString() } : item),
       } : current);
-      await loadMessages(currentConversation.id).catch(() => {});
+      await loadMessages(currentConversation.id, false).catch(() => {});
     } catch (reason) {
       if ((reason as Error)?.name !== "AbortError") setError(reason instanceof Error ? reason.message : "Não foi possível enviar a mensagem.");
     } finally {
@@ -663,7 +687,17 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
     return (
       <div className={styles.root}>
         <div className={styles.pageHeading}><h1>Agents</h1></div>
-        <div className={styles.loading}><div /><div /><div /><div /></div>
+        <section className={`${styles.workspace} ${styles.loadingWorkspace}`} aria-label="Carregando Agents" aria-busy="true">
+          <aside className={styles.loadingRail} aria-hidden="true">
+            <div className={styles.railHeader}><span className={styles.loadingLabel} /></div>
+            <div className={styles.loadingAgentList}>{[0, 1, 2, 3].map((item) => <div className={styles.loadingAgent} key={item}><i /><span><b /><small /></span></div>)}</div>
+          </aside>
+          <div className={styles.loadingChat} aria-hidden="true">
+            <div className={styles.loadingChatHeader}><i /><span><b /><small /></span><em /></div>
+            <div className={styles.loadingMessages}><div className={styles.loadingAgentBubble} /><div className={styles.loadingUserBubble} /><div className={styles.loadingAgentBubbleShort} /></div>
+            <div className={styles.loadingComposer}><i /><span /></div>
+          </div>
+        </section>
       </div>
     );
   }
@@ -687,17 +721,16 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
 
       <section className={styles.workspace} aria-label="Área de conversa com agentes">
         <aside className={`${styles.agentRail} ${narrowAgentListOpen ? styles.agentRailOpen : ""}`}>
-          <div className={styles.railHeader}><span>SEUS AGENTES</span><button type="button" onClick={() => void loadAgents()} title="Atualizar agentes" aria-label="Atualizar agentes"><Activity size={15} /></button></div>
+          <div className={styles.railHeader}><span>SEUS AGENTES</span></div>
           <div className={styles.agentList}>
             {data.agents.map((agent) => {
               const itemProfile = data.profiles.find((item) => item.agent_key === agent.key);
               const selected = selectedAgent === agent.key;
               const latest = data.conversations.find((item) => item.agent_key === agent.key);
               return (
-                <button key={agent.key} type="button" className={`${styles.agentItem} ${selected ? styles.agentSelected : ""}`} onClick={() => void selectAgent(agent)} aria-current={selected ? "true" : undefined}>
+                <button key={agent.key} type="button" className={`${styles.agentItem} ${selected ? styles.agentSelected : ""}`} onClick={() => void selectAgent(agent)} aria-current={selected ? "true" : undefined} aria-label={`${agent.name}, ${agent.role}, ${itemProfile?.enabled ? "ativo" : "desativado"}`}>
                   <AgentAvatar agent={agent} className={styles.agentAvatar} />
                   <span className={styles.agentText}><strong>{agent.name}</strong><small>{agent.role}</small><em>{latest?.title || agent.summary}</em></span>
-                  <span className={`${styles.agentStatus} ${itemProfile?.enabled ? styles.online : styles.offline}`} title={itemProfile?.enabled ? "Ativo" : "Desativado"} />
                 </button>
               );
             })}
@@ -717,35 +750,39 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
                   <div><strong>{activeAgent.name}</strong><span>{activeAgent.role} · atendimento interno para {displayName}</span></div>
                 </div>
                 <div className={styles.headerActions}>
+                  <button type="button" className={styles.iconButton} onClick={() => setHistoryOpen((value) => !value)} disabled={busy || agentConversations.length === 0} aria-label="Abrir histórico de conversas" title="Histórico" aria-expanded={historyOpen}><Clock3 size={16} /></button>
                   <button type="button" className={styles.secondaryButton} onClick={() => void createConversation()} disabled={!enabled || busy}><MessageSquarePlus size={16} /><span>Nova conversa</span></button>
-                  <button type="button" className={`${styles.iconButton} ${profileOpen ? styles.iconButtonActive : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Abrir perfil de ${activeAgent.name}`} title="Perfil do agente"><BrainCircuit size={17} /></button>
+                  <button type="button" className={`${styles.iconButton} ${profileOpen ? styles.iconButtonActive : ""}`} onClick={() => setProfileOpen(true)} aria-label={`Abrir perfil de ${activeAgent.name}`} title="Perfil do agente"><UserRound size={17} /></button>
                 </div>
               </header>
 
-              {conversation && <div className={styles.conversationBar}><span>{conversation.title}</span><span>{agentConversations.length} {agentConversations.length === 1 ? "conversa" : "conversas"}</span><button type="button" disabled={busy} onClick={() => setHistoryOpen((value) => !value)} aria-expanded={historyOpen}><Clock3 size={14} /> Histórico <ChevronDown size={13} /></button></div>}
-
-              {(historyOpen || (!conversation && agentConversations.length > 0)) && agentConversations.length > 0 && (
+              {historyOpen && agentConversations.length > 0 && (
                 <div className={styles.historyStrip}>
                   <span>HISTÓRICO</span>
                   {agentConversations.slice(0, 10).map((item) => <button type="button" key={item.id} aria-current={conversation?.id === item.id ? "true" : undefined} disabled={busy} onClick={() => void openConversation(item)}>{item.title}<small>{formatDate(item.last_message_at)}</small></button>)}
                 </div>
               )}
 
-              <div className={styles.messageScroll} ref={scrollRef} aria-live="polite">
-                {messages.length === 0 && (
-                  <motion.div className={styles.welcome} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-                    <AgentAvatar agent={activeAgent} className={styles.welcomeAvatar} />
-                    <span className={styles.kicker}>{activeAgent.role.toUpperCase()}</span>
-                    <h2>Como posso ajudar?</h2>
-                    <p>{activeAgent.summary} O agente só consulta dados permitidos para sua função.</p>
-                    <div className={styles.suggestions}>{activeAgent.suggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => showSuggestion(suggestion)}>{suggestion}</button>)}</div>
-                  </motion.div>
-                )}
+              <div className={styles.messageScroll} ref={scrollRef} onScroll={(event) => {
+                const element = event.currentTarget;
+                shouldFollowMessagesRef.current = element.scrollHeight - element.clientHeight - element.scrollTop < 96;
+              }} aria-live="polite" aria-busy={messagesLoading}>
+                {messagesLoading ? (
+                  <div className={`${styles.loadingMessages} ${styles.inlineLoadingMessages}`} aria-label="Carregando mensagens" aria-busy="true"><div className={styles.loadingAgentBubble} /><div className={styles.loadingUserBubble} /><div className={styles.loadingAgentBubbleShort} /></div>
+                ) : (
+                  <>
+                    {messages.length === 0 && (
+                      <motion.div className={styles.welcome} initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
+                        <AgentAvatar agent={activeAgent} className={styles.welcomeAvatar} />
+                        <span className={styles.kicker}>{activeAgent.role.toUpperCase()}</span>
+                        <h2>Como posso ajudar?</h2>
+                        <p>{activeAgent.summary} O agente só consulta dados permitidos para sua função.</p>
+                      </motion.div>
+                    )}
 
-                <div className={styles.messages}>
-                  <AnimatePresence initial={false}>
-                    {messages.map((message) => (
-                      <motion.article key={message.id} layout initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={`${styles.messageRow} ${message.role === "user" ? styles.userRow : styles.agentRow}`}>
+                    <motion.div key={conversation?.id ?? `${selectedAgent ?? ""}-nova`} className={styles.messages} initial={reducedMotion ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.24, ease: "easeOut" }}>
+                    {messages.map((message, index) => (
+                      <motion.article key={message.id} initial={reducedMotion ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, delay: reducedMotion ? 0 : Math.min(index * 0.055, 0.33), ease: "easeOut" }} className={`${styles.messageRow} ${message.role === "user" ? styles.userRow : styles.agentRow}`}>
                         {message.role === "assistant" && <AgentAvatar agent={activeAgent} className={styles.messageAvatar} />}
                         <div className={`${styles.bubble} ${message.role === "user" ? styles.userBubble : styles.agentBubble}`}>
                           {message.content && <p>{message.content}</p>}
@@ -757,11 +794,12 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
                           })}
                         </div>
                       </motion.article>
-                    ))}
-                  </AnimatePresence>
-                </div>
+                  ))}
+                    </motion.div>
+                  </>
+                )}
 
-                {busy && <WorkingPanel reducedMotion={Boolean(reducedMotion)} steps={steps} tools={tools} />}
+                {busy && (steps.length > 0 || tools.length > 0) && <WorkingPanel reducedMotion={Boolean(reducedMotion)} steps={steps} tools={tools} />}
                 <div className={styles.scrollTail} />
               </div>
 
@@ -770,6 +808,9 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
                 {draftFiles.length > 0 && <div className={styles.draftTray}>{draftFiles.map((item) => <div className={styles.draftItem} key={item.key}><span className={styles.draftIcon}>{item.kind === "audio" ? <AudioLines size={15} /> : item.kind === "video" ? <FileText size={15} /> : <ImagePlus size={15} />}</span><span><strong title={item.name}>{item.name}</strong><small>{formatBytes(item.file.size)} · {item.kind === "image" ? "Foto" : item.kind === "video" ? "Vídeo" : "Áudio"}</small></span><button type="button" aria-label={`Remover ${item.name}`} onClick={() => removeDraft(item.key)}><X size={14} /></button></div>)}</div>}
                 {recording && <div className={styles.recordingBar}><span className={styles.recordingDot} /><AudioLines size={18} /><span>Gravando áudio</span><time>{String(Math.floor(recordingTime / 60)).padStart(2, "0")}:{String(recordingTime % 60).padStart(2, "0")}</time><button type="button" onClick={() => void toggleRecording()} aria-label="Parar gravação"><Square size={14} fill="currentColor" /></button></div>}
                 {busy && <div className={styles.busyLine}><TypingIndicator reducedMotion={Boolean(reducedMotion)} /><span>{steps.find((step) => step.status === "active")?.title || "O agente está preparando a resposta"}</span><button type="button" onClick={() => void cancelResponse()}>Interromper</button></div>}
+                <div className={styles.suggestions} aria-label={`Sugestões para ${activeAgent.name}`}>
+                  {activeAgent.suggestions.slice(0, 4).map((suggestion) => <button type="button" key={suggestion} title={suggestion} disabled={busy || !enabled} onClick={() => showSuggestion(suggestion)}>{suggestion}</button>)}
+                </div>
                 <div className={styles.composerRow}>
                   <input ref={inputFileRef} className={styles.hiddenInput} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,audio/*" multiple onChange={(event) => { if (event.currentTarget.files) addFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
                   <button type="button" className={styles.composerIcon} onClick={() => inputFileRef.current?.click()} disabled={busy || !enabled} aria-label="Anexar foto, vídeo ou áudio" title="Anexar foto, vídeo ou áudio"><Paperclip size={18} /></button>
@@ -789,10 +830,11 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
               <motion.button type="button" className={styles.profileScrim} aria-label="Fechar perfil" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setProfileOpen(false)} />
               <motion.aside className={styles.profilePanel} initial={reducedMotion ? false : { x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={reducedMotion ? { opacity: 0 } : { x: 24, opacity: 0 }} transition={{ duration: 0.22, ease: "easeOut" }} aria-label={`Perfil de ${activeAgent.name}`}>
                 <div className={styles.profileHeader}>
-                  <div><AgentAvatar agent={activeAgent} className={styles.agentAvatar} /><div><span className={styles.kicker}>PERFIL DO AGENTE</span><h2>{activeAgent.name}</h2><small>{activeAgent.role}</small></div></div>
+                  <div><span className={styles.kicker}>PERFIL DO AGENTE</span><h2>{activeAgent.name}</h2><small>{activeAgent.role}</small></div>
                   <button type="button" className={styles.iconButton} onClick={() => setProfileOpen(false)} aria-label="Fechar perfil"><X size={17} /></button>
                 </div>
                 <div className={styles.profileScroll}>
+                  <div className={styles.profileIntro}><AgentAvatar agent={activeAgent} className={styles.agentAvatar} /><p>{activeAgent.summary}</p></div>
                   <section className={styles.profileStateRow}><div><strong>Agente ativo</strong><span>{activeProfile.enabled ? "Disponível no painel" : "Desativado para novas conversas"}</span></div><RoutineToggle enabled={activeProfile.enabled} disabled={!data.canConfigure || Boolean(savingProfile)} label={`Ativar ou desativar ${activeAgent.name}`} onClick={() => void updateProfile("agent_enabled", !activeProfile.enabled)} /></section>
                   {!data.canConfigure && <p className={styles.permissionHint}>Apenas quem tem permissão de escrita em Agents pode alterar configurações.</p>}
                   {renderList("Objetivos", activeProfile.objectives, "Ainda não há objetivos definidos. Peça um ajuste pelo chat.", <BadgeCheck size={15} />)}

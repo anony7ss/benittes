@@ -509,7 +509,7 @@ export function AdminShell({
           </button>
         </header>
 
-        <main key={page.path} className="admin-page">
+        <main key={page.path} className={`admin-page${page.path === "agents" ? " admin-page-agents" : ""}`}>
           {children}
         </main>
 
