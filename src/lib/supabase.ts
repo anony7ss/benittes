@@ -1,8 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
-import type { Session, SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PanelPermissions } from "../admin/permissions";
 
-export type { Session } from "@supabase/supabase-js";
+export type Session = { user: { id: string; email?: string | null } };
 
 export type PanelStatus = "novo" | "em_andamento" | "aguardando" | "concluido" | "cancelado";
 
@@ -62,80 +62,176 @@ export type AuditEntry = {
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabaseConfigured = Boolean(url && publishableKey);
-let client: SupabaseClient | null = null;
-let legacySessionMigration: Promise<void> | null = null;
+const RECOVERY_COOKIE_NAME = "benittes-recovery";
+let legacyClient: SupabaseClient | null = null;
+let recoveryClient: SupabaseClient | null = null;
+let currentSession: Session | null = null;
+let sessionLoadedAt = 0;
+let sessionRequest: Promise<Session | null> | null = null;
+const sessionListeners = new Set<(session: Session | null) => void>();
 
-function getClient() {
+function toSession(value: unknown): Session | null {
+  if (!value || typeof value !== "object") return null;
+  const payload = value as { session?: { user?: { id?: unknown; email?: unknown } | null } | null };
+  const user = payload.session?.user;
+  if (!user || typeof user.id !== "string") return null;
+  return {
+    user: {
+      id: user.id,
+      email: typeof user.email === "string" ? user.email : null,
+    },
+  };
+}
+
+function publishSession(session: Session | null) {
+  currentSession = session;
+  sessionLoadedAt = Date.now();
+  for (const listener of sessionListeners) listener(session);
+}
+
+function browserCookieOptions(name: string) {
+  return {
+    name,
+    path: "/",
+    sameSite: "lax" as const,
+    secure: window.location.protocol === "https:",
+  };
+}
+
+function getLegacyClient() {
   if (!url || !publishableKey) throw new Error("O acesso ao painel ainda não foi configurado.");
-  if (!client) {
-    client = createBrowserClient(url, publishableKey, {
-      auth: {
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: "pkce",
-        persistSession: true,
-      },
+  if (!legacyClient) {
+    const projectId = new URL(url).hostname.split(".")[0];
+    legacyClient = createBrowserClient(url, publishableKey, {
+      isSingleton: false,
+      cookieOptions: browserCookieOptions(`sb-${projectId}-auth-token`),
+      auth: { autoRefreshToken: false, detectSessionInUrl: false, flowType: "pkce", persistSession: true },
     });
   }
-  return client;
+  return legacyClient;
 }
 
-async function migrateLegacyLocalStorageSession() {
-  if (typeof window === "undefined" || !url) return;
-  if (legacySessionMigration) return legacySessionMigration;
+function getRecoveryClient() {
+  if (!url || !publishableKey) throw new Error("O acesso ao painel ainda não foi configurado.");
+  if (!recoveryClient) {
+    recoveryClient = createBrowserClient(url, publishableKey, {
+      isSingleton: false,
+      cookieOptions: browserCookieOptions(RECOVERY_COOKIE_NAME),
+      auth: { autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce", persistSession: true },
+    });
+  }
+  return recoveryClient;
+}
 
-  try {
-    const projectId = new URL(url).hostname.split(".")[0];
-    const storageKey = `sb-${projectId}-auth-token`;
-    const stored = window.localStorage.getItem(storageKey);
-    if (!stored) return;
-
-    legacySessionMigration = (async () => {
-      try {
-        const legacy = JSON.parse(stored) as Partial<Session>;
-        if (typeof legacy.access_token !== "string" || typeof legacy.refresh_token !== "string") {
-          window.localStorage.removeItem(storageKey);
-          return;
-        }
-
-        const supabase = getClient();
-        const { data: current, error: readError } = await supabase.auth.getSession();
-        if (readError) throw readError;
-
-        if (!current.session) {
-          const { error } = await supabase.auth.setSession({
-            access_token: legacy.access_token,
-            refresh_token: legacy.refresh_token,
-          });
-          if (error) throw error;
-        }
-
-        window.localStorage.removeItem(storageKey);
-      } catch {
-        // Keep the legacy value if migration fails temporarily; retry next load.
-        legacySessionMigration = null;
-      }
-    })();
-
-    return legacySessionMigration;
-  } catch {
-    return;
+function expireBrowserCookieFamily(prefix: string) {
+  if (typeof document === "undefined") return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const names = document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim().split("=")[0])
+    .filter((name) => name === prefix || name.startsWith(`${prefix}.`) || name.startsWith(`${prefix}-`));
+  for (const name of names) {
+    document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
   }
 }
 
-export async function getSession() {
-  const supabase = getClient();
-  await migrateLegacyLocalStorageSession();
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  return data.session;
+function clearLegacySessionRemnants() {
+  if (typeof window === "undefined" || !url) return;
+  try {
+    const projectId = new URL(url).hostname.split(".")[0];
+    window.localStorage.removeItem(`sb-${projectId}-auth-token`);
+    expireBrowserCookieFamily(`sb-${projectId}-auth-token`);
+  } catch {
+    // The HttpOnly cookie remains the only active session even if cleanup is blocked.
+  }
+}
+
+async function migrateLegacySession(): Promise<Session | null> {
+  if (typeof window === "undefined" || !url || !publishableKey) return null;
+
+  let projectId = "";
+  let refreshToken = "";
+  let storageKey = "";
+  try {
+    projectId = new URL(url).hostname.split(".")[0];
+    storageKey = `sb-${projectId}-auth-token`;
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw) {
+      const stored = JSON.parse(raw) as { refresh_token?: unknown; currentSession?: { refresh_token?: unknown } };
+      const storedToken = stored.refresh_token ?? stored.currentSession?.refresh_token;
+      if (typeof storedToken === "string") refreshToken = storedToken;
+    }
+  } catch {
+    // A malformed legacy value is ignored; the cookie migration can still run.
+  }
+
+  if (!refreshToken) {
+    try {
+      const { data, error } = await getLegacyClient().auth.getSession();
+      if (!error && data.session?.refresh_token) refreshToken = data.session.refresh_token;
+    } catch {
+      // There may be no legacy cookie on this browser.
+    }
+  }
+  if (!refreshToken) return null;
+
+  const response = await fetch("/api/admin/session", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  const body = (await response.json().catch(() => ({}))) as { session?: unknown; error?: string };
+  if (response.status === 401) {
+    clearLegacySessionRemnants();
+    return null;
+  }
+  if (!response.ok) return null;
+  const session = toSession(body);
+  if (!session) return null;
+
+  try {
+    if (storageKey) window.localStorage.removeItem(storageKey);
+  } catch {
+    // The new HttpOnly session is already active; inaccessible storage is harmless.
+  }
+  if (projectId) expireBrowserCookieFamily(`sb-${projectId}-auth-token`);
+  return session;
+}
+
+async function loadServerSession(): Promise<Session | null> {
+  const response = await fetch("/api/admin/session", {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (response.status === 401) return migrateLegacySession();
+  const body = (await response.json().catch(() => ({}))) as { session?: unknown; error?: string };
+  if (!response.ok) throw new Error(body.error || "Não foi possível verificar sua sessão.");
+  const session = toSession(body);
+  if (session) clearLegacySessionRemnants();
+  return session;
+}
+
+export async function getSession(force = false) {
+  if (!supabaseConfigured || typeof window === "undefined") return null;
+  if (!force && Date.now() - sessionLoadedAt < 10_000) return currentSession;
+  if (sessionRequest) return sessionRequest;
+
+  sessionRequest = loadServerSession()
+    .then((session) => {
+      publishSession(session);
+      return session;
+    })
+    .finally(() => {
+      sessionRequest = null;
+    });
+  return sessionRequest;
 }
 
 export function subscribeSession(callback: (session: Session | null) => void) {
-  const {
-    data: { subscription },
-  } = getClient().auth.onAuthStateChange((_event, session) => callback(session));
-  return () => subscription.unsubscribe();
+  sessionListeners.add(callback);
+  return () => sessionListeners.delete(callback);
 }
 
 export async function signIn(email: string, password: string): Promise<{
@@ -146,36 +242,25 @@ export async function signIn(email: string, password: string): Promise<{
 }> {
   const res = await fetch("/api/admin/login", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   const json = (await res.json()) as {
-    session?: Session | null;
+    session?: unknown;
     requires2FA?: boolean;
     tempToken?: string;
     maskedPhone?: string;
     error?: string;
   };
-  if (!res.ok) {
-    throw new Error(json.error || "Não foi possível entrar.");
-  }
+  if (!res.ok) throw new Error(json.error || "Não foi possível entrar.");
   if (json.requires2FA && json.tempToken) {
-    return {
-      session: null,
-      requires2FA: true,
-      tempToken: json.tempToken,
-      maskedPhone: json.maskedPhone || "****",
-    };
+    return { session: null, requires2FA: true, tempToken: json.tempToken, maskedPhone: json.maskedPhone || "****" };
   }
-  if (!json.session) {
-    throw new Error(json.error || "Não foi possível entrar.");
-  }
-  const { data, error } = await getClient().auth.setSession({
-    access_token: json.session.access_token,
-    refresh_token: json.session.refresh_token,
-  });
-  if (error) throw error;
-  return { session: data.session };
+  const session = toSession(json);
+  if (!session) throw new Error(json.error || "Não foi possível entrar.");
+  publishSession(session);
+  return { session };
 }
 
 export async function verifyLogin2FA(payload: {
@@ -186,66 +271,84 @@ export async function verifyLogin2FA(payload: {
 }) {
   const res = await fetch("/api/admin/login/verify-2fa", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const json = (await res.json()) as { session?: Session | null; error?: string };
-  if (!res.ok || !json.session) {
-    throw new Error(json.error || "Código inválido.");
-  }
-  const { data, error } = await getClient().auth.setSession({
-    access_token: json.session.access_token,
-    refresh_token: json.session.refresh_token,
-  });
-  if (error) throw error;
-  return data.session;
+  const json = (await res.json()) as { session?: unknown; error?: string };
+  const session = toSession(json);
+  if (!res.ok || !session) throw new Error(json.error || "Código inválido.");
+  publishSession(session);
+  return session;
 }
 
 export async function resendLogin2FA(email: string, tempToken: string) {
   const res = await fetch("/api/admin/login/resend-2fa", {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, tempToken }),
   });
   const json = (await res.json()) as { ok?: boolean; error?: string };
-  if (!res.ok) {
-    throw new Error(json.error || "Não foi possível reenviar o código.");
-  }
+  if (!res.ok) throw new Error(json.error || "Não foi possível reenviar o código.");
 }
 
 export async function signOut() {
-  const { error } = await getClient().auth.signOut();
-  if (error) throw error;
+  const response = await fetch("/api/admin/session", {
+    method: "DELETE",
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  const body = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(body.error || "Não foi possível encerrar a sessão.");
+  publishSession(null);
 }
 
 export async function requestPasswordReset(email: string) {
   const redirectTo = `${window.location.origin}/painel/recuperar-senha/`;
-  const { error } = await getClient().auth.resetPasswordForEmail(email, { redirectTo });
+  const { error } = await getRecoveryClient().auth.resetPasswordForEmail(email, { redirectTo });
   if (error) throw error;
 }
 
 export async function exchangeRecoveryCode() {
-  const { data, error } = await getClient().auth.getSession();
+  const { data, error } = await getRecoveryClient().auth.getSession();
   if (error) throw error;
-  return data.session;
+  if (!data.session?.refresh_token) return null;
+
+  const response = await fetch("/api/admin/session", {
+    method: "POST",
+    credentials: "same-origin",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: data.session.refresh_token }),
+  });
+  const body = (await response.json().catch(() => ({}))) as { session?: unknown; error?: string };
+  if (!response.ok) throw new Error(body.error || "Não foi possível validar o link de recuperação.");
+  const session = toSession(body);
+  if (!session) throw new Error("Não foi possível validar o link de recuperação.");
+
+  expireBrowserCookieFamily(RECOVERY_COOKIE_NAME);
+  publishSession(session);
+  return session;
 }
 
 export async function updatePassword(password: string) {
-  const { error } = await getClient().auth.updateUser({ password });
-  if (error) throw error;
+  const response = await fetch("/api/admin/account/password", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  const body = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(body.error || "Não foi possível atualizar a senha.");
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const session = await getSession().catch(() => null);
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (session?.access_token) {
-    headers.Authorization = `Bearer ${session.access_token}`;
-  }
-  return headers;
+  return { "Content-Type": "application/json" };
 }
 
 async function apiRequest<T>(input: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(input, { cache: "no-store", ...init });
+  const res = await fetch(input, { cache: "no-store", credentials: "same-origin", ...init });
   const body = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (!res.ok) {
     throw new Error(body.error || `Erro na requisição (${res.status}).`);

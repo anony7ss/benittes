@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Clock, Moon, RefreshCw, Sun, Tv, Wrench } from "lucide-react";
-import "@/components/admin/admin.css";
+import "@/components/public/workshop-tv.css";
 
 type TvOrder = {
   id: string;

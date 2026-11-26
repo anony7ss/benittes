@@ -1,0 +1,74 @@
+.global-not-found {
+  min-height: 100svh;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  color: #111;
+  background: #fff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.global-not-found__content {
+  width: min(100%, 660px);
+}
+
+.global-not-found__brand {
+  display: inline-flex;
+  width: 112px;
+  margin-bottom: 52px;
+}
+
+.global-not-found__brand img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.global-not-found__eyebrow {
+  margin: 0 0 12px;
+  color: #1f4e8c;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.global-not-found h1 {
+  margin: 0;
+  font-size: clamp(36px, 7vw, 62px);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 1.06;
+}
+
+.global-not-found__content > p:not(.global-not-found__eyebrow) {
+  max-width: 470px;
+  margin: 18px 0 28px;
+  color: #555;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.global-not-found__link {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  padding: 0 22px;
+  border-radius: 3px;
+  background: #1f4e8c;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.global-not-found__link:hover {
+  background: #173c6d;
+}
+
+.global-not-found__link:focus-visible,
+.global-not-found__brand:focus-visible {
+  outline: 3px solid #1f4e8c;
+  outline-offset: 4px;
+}

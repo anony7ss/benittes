@@ -1,6 +1,16 @@
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import "@fontsource/poppins/latin-400.css";
+import "@fontsource/poppins/latin-ext-400.css";
+import "@fontsource/poppins/latin-400-italic.css";
+import "@fontsource/poppins/latin-ext-400-italic.css";
+import "@fontsource/poppins/latin-500.css";
+import "@fontsource/poppins/latin-ext-500.css";
+import "@fontsource/poppins/latin-600.css";
+import "@fontsource/poppins/latin-ext-600.css";
+import "@fontsource/poppins/latin-700.css";
+import "@fontsource/poppins/latin-ext-700.css";
 
 const themeInitScript = `try{var d=localStorage.getItem('admin-theme')!=='light';document.documentElement.classList.toggle('dark',d);document.documentElement.style.backgroundColor=d?'#11110f':'#efefeb';}catch(e){document.documentElement.classList.add('dark');}`;
 

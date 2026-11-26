@@ -1,10 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import "@/styles/site.css";
-import { Icon } from "@/components/public/Icon";
-import { Mark } from "@/components/public/Mark";
-import { SiteShell } from "@/components/public/SiteShell";
-import { Intro } from "@/components/public/Intro";
 
 export const metadata: Metadata = {
   title: "Página não encontrada",
@@ -14,21 +9,18 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <SiteShell
-      mark={<Mark />}
-      menuIcon={<Icon name="list" />}
-      whatsappIcon={<Icon name="whatsapp-logo" size={23} />}
-    >
-      <section className="wrap page">
-        <Intro
-          label="Erro 404"
-          title="Página não encontrada"
-          desc="O endereço pode ter mudado. Você pode continuar pela página inicial."
-        />
-        <Link className="btn blue" href="/">
+    <main className="global-not-found">
+      <div className="global-not-found__content">
+        <Link className="global-not-found__brand" href="/" aria-label="Benittes — início">
+          <img src="/benittes-logo.png" alt="Benittes Oficina Mecânica" width={1000} height={798} />
+        </Link>
+        <p className="global-not-found__eyebrow">Erro 404</p>
+        <h1>Página não encontrada</h1>
+        <p>O endereço pode ter mudado. Você pode continuar pela página inicial.</p>
+        <Link className="global-not-found__link" href="/">
           Voltar ao início
         </Link>
-      </section>
-    </SiteShell>
+      </div>
+    </main>
   );
 }

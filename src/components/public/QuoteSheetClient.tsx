@@ -15,6 +15,16 @@ import {
   Wrench,
   XCircle,
 } from "lucide-react";
+import "@fontsource/poppins/latin-400.css";
+import "@fontsource/poppins/latin-ext-400.css";
+import "@fontsource/poppins/latin-400-italic.css";
+import "@fontsource/poppins/latin-ext-400-italic.css";
+import "@fontsource/poppins/latin-500.css";
+import "@fontsource/poppins/latin-ext-500.css";
+import "@fontsource/poppins/latin-600.css";
+import "@fontsource/poppins/latin-ext-600.css";
+import "@fontsource/poppins/latin-700.css";
+import "@fontsource/poppins/latin-ext-700.css";
 import "@/components/admin/admin.css";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AdminStatusBadge } from "@/components/admin/StatusBadge";

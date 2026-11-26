@@ -1,15 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "@fontsource/poppins/latin-400.css";
-import "@fontsource/poppins/latin-ext-400.css";
-import "@fontsource/poppins/latin-400-italic.css";
-import "@fontsource/poppins/latin-ext-400-italic.css";
-import "@fontsource/poppins/latin-500.css";
-import "@fontsource/poppins/latin-ext-500.css";
-import "@fontsource/poppins/latin-600.css";
-import "@fontsource/poppins/latin-ext-600.css";
-import "@fontsource/poppins/latin-700.css";
-import "@fontsource/poppins/latin-ext-700.css";
+import "@/styles/global.css";
 import { oficina } from "@/config/oficina";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL;

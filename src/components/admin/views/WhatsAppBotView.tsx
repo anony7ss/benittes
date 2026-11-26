@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import QRCode from "qrcode";
 import {
@@ -18,7 +18,6 @@ import {
   Terminal as TerminalIcon,
   Trash2,
 } from "lucide-react";
-import type { Session } from "../../../lib/supabase";
 import { AdminStatusBadge } from "../StatusBadge";
 import { dateText } from "../utils";
 
@@ -91,7 +90,7 @@ const LOG_COLORS: Record<string, string> = {
   info: "#94a3b8",
 };
 
-export function WhatsAppBotView({ session }: { session: Session }) {
+export function WhatsAppBotView() {
   const [tab, setTab] = useState<BotTab>("conexao");
   const [bot, setBot] = useState<BotSession | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -139,15 +138,10 @@ export function WhatsAppBotView({ session }: { session: Session }) {
   const [testMessage, setTestMessage] = useState("");
   const [sendingTest, setSendingTest] = useState(false);
 
-  const authHeader = useMemo(
-    () => ({ Authorization: `Bearer ${session.access_token}` }),
-    [session.access_token],
-  );
-
   const loadStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/whatsapp/action", {
-        headers: authHeader,
+        credentials: "same-origin",
         cache: "no-store",
       });
       if (!res.ok) return;
@@ -189,21 +183,21 @@ export function WhatsAppBotView({ session }: { session: Session }) {
     } finally {
       setLoading(false);
     }
-  }, [authHeader, settingsHydrated]);
+  }, [settingsHydrated]);
 
   const loadLogs = useCallback(async () => {
     const res = await fetch("/api/admin/whatsapp/logs", {
-      headers: authHeader,
+      credentials: "same-origin",
       cache: "no-store",
     });
     if (!res.ok) return;
     const json = (await res.json()) as { logs?: BotLog[] };
     setLogs(json.logs ?? []);
-  }, [authHeader]);
+  }, []);
 
   const loadOutbox = useCallback(async () => {
     const res = await fetch("/api/admin/whatsapp/outbox", {
-      headers: authHeader,
+      credentials: "same-origin",
       cache: "no-store",
     });
     if (!res.ok) return;
@@ -213,7 +207,7 @@ export function WhatsAppBotView({ session }: { session: Session }) {
     };
     setOutbox(json.items ?? []);
     if (json.stats) setOutboxStats(json.stats);
-  }, [authHeader]);
+  }, []);
 
   useEffect(() => {
     void loadStatus();
@@ -244,7 +238,8 @@ export function WhatsAppBotView({ session }: { session: Session }) {
     try {
       const res = await fetch("/api/admin/whatsapp/action", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ action, ...extra }),
       });
       const json = (await res.json()) as { ok?: boolean; error?: string; session?: BotSession };
@@ -295,7 +290,7 @@ export function WhatsAppBotView({ session }: { session: Session }) {
   }
 
   async function handleClearLogs() {
-    await fetch("/api/admin/whatsapp/logs", { method: "DELETE", headers: authHeader });
+    await fetch("/api/admin/whatsapp/logs", { method: "DELETE", credentials: "same-origin" });
     setLogs([]);
   }
 
@@ -307,7 +302,8 @@ export function WhatsAppBotView({ session }: { session: Session }) {
     try {
       const res = await fetch("/api/admin/whatsapp/outbox", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ phone: testPhone, message: testMessage }),
       });
       const json = (await res.json()) as { error?: string };

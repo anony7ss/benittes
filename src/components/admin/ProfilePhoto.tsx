@@ -17,7 +17,6 @@ export function useProfilePhoto() {
 export function ProfilePhotoProvider({ session, children }: { session: Session; children: ReactNode }) {
   const [avatarUrl, setAvatarUrl] = useState("");
   const revision = useRef(0);
-  const token = session.access_token;
   const legacyKey = "admin-avatar:" + (session.user.email ?? "").trim().toLowerCase();
 
   useEffect(() => {
@@ -25,7 +24,7 @@ export function ProfilePhotoProvider({ session, children }: { session: Session; 
     const initialRevision = revision.current;
     async function load() {
       const response = await fetch("/api/admin/account/avatar", {
-        headers: { Authorization: "Bearer " + token }, cache: "no-store", signal: controller.signal,
+        credentials: "same-origin", cache: "no-store", signal: controller.signal,
       });
       if (!response.ok) return;
       const { avatar } = await response.json();
@@ -35,12 +34,13 @@ export function ProfilePhotoProvider({ session, children }: { session: Session; 
     }
     void load().catch(() => {});
     return () => controller.abort();
-  }, [token, legacyKey]);
+  }, [legacyKey]);
 
   async function savePhoto(photo: string | null) {
     const response = await fetch("/api/admin/account/avatar", {
       method: "PUT",
-      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ photo }),
     });
     if (!response.ok) throw new Error("Não foi possível salvar a foto. Tente novamente.");

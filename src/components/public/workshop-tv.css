@@ -1,0 +1,46 @@
+.tv-panel-root .admin-workspace-logo {
+  min-width: 30px;
+  border-radius: 7px;
+  background: #fff;
+  border: 1px solid #d8d8d5;
+  padding: 3px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.tv-panel-root .admin-workspace-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tv-panel-root .mercosul-plate {
+  display: inline-flex;
+  flex-direction: column;
+  border: 2px solid #1e3a8a;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  color: #11110f;
+  min-width: 148px;
+}
+
+.tv-panel-root .mercosul-plate-top {
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  padding: 2px 8px;
+}
+
+.tv-panel-root .mercosul-plate-code {
+  padding: 6px 12px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-align: center;
+  font-family: monospace;
+}

@@ -85,7 +85,7 @@ function renderPageView(
     case "settings":
       return <SettingsView session={session} />;
     case "bot":
-      return <WhatsAppBotView session={session} />;
+      return <WhatsAppBotView />;
     case "account":
       return <AccountView session={session} member={member} onMemberUpdate={onMemberUpdate} />;
     case "ponto":
@@ -137,6 +137,7 @@ export function AdminApp({ section }: { section?: string }) {
   const cleanSection = currentSection.replace(/^\/+|\/+$/g, "");
   const page = findAdminPage(cleanSection);
   const isAuthPage = page?.special === "login" || page?.special === "recovery";
+  const isRecoveryPage = page?.special === "recovery";
 
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
@@ -248,10 +249,10 @@ export function AdminApp({ section }: { section?: string }) {
 
   useEffect(() => {
     if (!authReady || !isAuthPage) return;
-    if (session && member?.active) {
+    if (session && member?.active && !isRecoveryPage) {
       window.location.replace(routeFor(""));
     }
-  }, [authReady, isAuthPage, session, member]);
+  }, [authReady, isAuthPage, isRecoveryPage, session, member]);
 
   function handleNavigationClick(event: MouseEvent<HTMLDivElement>) {
     if (

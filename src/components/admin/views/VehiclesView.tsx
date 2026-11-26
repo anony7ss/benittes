@@ -4,7 +4,7 @@ import { SkeletonCards, SkeletonTable } from "../Skeletons";
 import { useMemo, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
 import { Car, History, LayoutGrid, List, Pencil, Plus, Printer, QrCode, Search, Tag, Trash2, X } from "lucide-react";
-import { getSession, selectRows, type PanelRecord } from "../../../lib/supabase";
+import { selectRows, type PanelRecord } from "../../../lib/supabase";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, detail, money, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 import { ClientPicker, clientDisplayName, ensureClientAndVehicle, useClientVehicleCatalog } from "../QuickPickers";
@@ -80,13 +80,10 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
     setLookingUpPlate(true);
     setPlateNotice("");
     try {
-      const sess = await getSession();
       const res = await fetch("/api/admin/vehicles/plate-ocr", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(sess?.access_token ? { Authorization: `Bearer ${sess.access_token}` } : {}),
-        },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ plate: clean }),
       });
       const json = (await res.json().catch(() => ({}))) as {

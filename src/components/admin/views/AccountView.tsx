@@ -167,7 +167,7 @@ export function AccountView({
 
   useEffect(() => {
     void fetch("/api/admin/account/2fa", {
-      headers: { Authorization: `Bearer ${session.access_token}` },
+      credentials: "same-origin",
       cache: "no-store",
     })
       .then((r) => (r.ok ? r.json() : null))
@@ -178,7 +178,7 @@ export function AccountView({
         setTwoFactorEnabled(Boolean(d.two_factor_enabled));
       })
       .catch(() => {});
-  }, [session.access_token]);
+  }, []);
 
   async function handleSend2FACode() {
     setTwoFactorSaving(true);
@@ -188,8 +188,8 @@ export function AccountView({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
         },
+        credentials: "same-origin",
         body: JSON.stringify({
           action: twoFactorStep === "awaiting_disable_code" ? "send_disable_code" : "send_code",
           phone: twoFactorPhone,
@@ -224,8 +224,8 @@ export function AccountView({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
         },
+        credentials: "same-origin",
         body: JSON.stringify({
           action: twoFactorStep === "awaiting_disable_code" ? "disable" : "verify_enable",
           phone: twoFactorPhone,
@@ -267,8 +267,8 @@ export function AccountView({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
         },
+        credentials: "same-origin",
         body: JSON.stringify({
           action: "send_disable_code",
           phone: twoFactorPhone,
@@ -299,7 +299,7 @@ export function AccountView({
       canManageTeam ? selectRows<PanelMember>("panel_members", { order: "created_at.asc", limit: "100" }) : Promise.resolve([] as PanelMember[]),
       canAccessAudit ? selectRows<AuditEntry>("audit_logs", { order: "created_at.desc", limit: "50" }).catch(() => []) : Promise.resolve([] as AuditEntry[]),
       isOwner
-        ? fetch("/api/admin/roles", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" })
+        ? fetch("/api/admin/roles", { credentials: "same-origin", cache: "no-store" })
             .then(async (response) => {
               const result = await response.json() as { roles?: PanelRole[]; error?: string };
               if (!response.ok) throw new Error(result.error || "Não foi possível carregar os cargos.");
@@ -318,7 +318,7 @@ export function AccountView({
       })
       .catch((reason: Error) => setTeamError(reason.message))
       .finally(() => setTeamLoading(false));
-  }, [canManageTeam, canAccessAudit, isOwner, session.access_token]);
+  }, [canManageTeam, canAccessAudit, isOwner]);
 
   const filteredAudit = useMemo(() => {
     const q = auditSearch.trim().toLowerCase();
@@ -477,7 +477,8 @@ export function AccountView({
     try {
       const response = await fetch("/api/admin/team", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({
           full_name: newMemberName,
           email: newMemberEmail,
@@ -527,7 +528,8 @@ export function AccountView({
     try {
       const response = await fetch("/api/admin/roles", {
         method: editingRole ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ role_key: editingRole?.role_key, name: roleName, permissions: rolePermissions }),
       });
       const result = await response.json() as { role?: PanelRole; error?: string };
@@ -550,7 +552,7 @@ export function AccountView({
     try {
       const response = await fetch(`/api/admin/roles?role_key=${encodeURIComponent(role.role_key)}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        credentials: "same-origin",
       });
       const result = await response.json() as { error?: string };
       if (!response.ok) throw new Error(result.error || "Não foi possível excluir o cargo.");

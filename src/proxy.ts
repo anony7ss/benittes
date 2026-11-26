@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthCookieOptions, hasAuthCookie } from "./lib/supabaseAuthCookie";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
   const policy = [
@@ -22,7 +24,38 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", policy);
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
+
+  const supabaseUrl = (
+    process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL || ""
+  ).replace(/\/$/, "");
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    "";
+
+  if (supabaseUrl && publishableKey && hasAuthCookie(request)) {
+    const supabase = createServerClient(supabaseUrl, publishableKey, {
+      cookieOptions: getAuthCookieOptions(),
+      auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll(cookiesToSet, headers) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          requestHeaders.set("cookie", request.cookies.toString());
+          response = NextResponse.next({ request: { headers: requestHeaders } });
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value));
+        },
+      },
+    });
+
+    // Refreshing is best-effort here. Each protected API route still validates
+    // the user with Supabase before reading or changing any panel data.
+    await supabase.auth.getClaims().catch(() => undefined);
+  }
+
   response.headers.set("Content-Security-Policy", policy);
   if (request.nextUrl.pathname.startsWith("/api/admin/")) {
     response.headers.set("Cache-Control", "no-store, max-age=0");

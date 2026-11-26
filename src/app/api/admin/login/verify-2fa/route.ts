@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 import { AUTH_ERROR, hashTwoFactorCode, safeHashEquals } from "../../../../../lib/security/twoFactor";
 import { getServiceSupabase, getSupabaseEnv } from "../../../../../lib/supabaseAdmin";
+import { writeSupabaseAuthCookie } from "../../../../../lib/supabaseAuthCookie";
 
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
@@ -72,7 +73,12 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (consumeError || !consumed) return NextResponse.json({ error: AUTH_ERROR }, { status: 401 });
 
-    return NextResponse.json({ session: data.session }, { headers: { "Cache-Control": "no-store" } });
+    const response = NextResponse.json(
+      { session: { user: { id: data.session.user.id, email: data.session.user.email ?? null } } },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+    await writeSupabaseAuthCookie(request, response, data.session, url, anonKey);
+    return response;
   } catch {
     return NextResponse.json({ error: "Login temporariamente indisponível." }, { status: 503 });
   }
