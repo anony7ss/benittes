@@ -305,7 +305,16 @@ export function AdminApp({ section }: { section?: string }) {
     };
 
   if (!authReady || (session && !member && !memberChecked)) {
-    return <div className="admin-root" />;
+    return (
+      <div
+        className="admin-root admin-entry-loading"
+        role="status"
+        aria-label="Carregando painel"
+        aria-busy="true"
+      >
+        <span className="admin-entry-spinner" aria-hidden="true" />
+      </div>
+    );
   }
 
   if (!session) {

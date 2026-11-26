@@ -93,13 +93,8 @@ export function LoginForm({ recovery = false }: { recovery?: boolean }) {
   return (
     <main className={`admin-login-page${entering ? " is-entering" : ""}`}>
       {entering && (
-        <div className="admin-login-transition" aria-live="polite">
-          <div className="admin-login-transition-card">
-            <div className="admin-login-icon admin-login-transition-logo">
-              <img src="/benittes-logo.png" alt="Benittes Oficina Mecânica" />
-            </div>
-            <span>Entrando no painel…</span>
-          </div>
+        <div className="admin-login-transition" role="status" aria-label="Entrando no painel">
+          <span className="admin-entry-spinner" aria-hidden="true" />
         </div>
       )}
       <a href="/" className="admin-back">
