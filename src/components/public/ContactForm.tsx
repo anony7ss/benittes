@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 const NAME_MAX = 100;
 const EMAIL_MAX = 254;
@@ -13,6 +13,34 @@ export function ContactForm() {
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [sending, setSending] = useState(false);
+  const feedbackRef = useRef<HTMLParagraphElement | null>(null);
+  let feedbackTone = "";
+  if (status) {
+    if (sending) feedbackTone = "pending";
+    else if (status.startsWith("Mensagem enviada")) feedbackTone = "success";
+    else feedbackTone = "error";
+  }
+
+  useEffect(() => {
+    const feedback = feedbackRef.current;
+    if (
+      !feedback ||
+      !status ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
+    const animation = feedback.animate(
+      [
+        { opacity: 0, transform: "translateY(7px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      { duration: 280, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+
+    return () => animation.cancel();
+  }, [status]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,7 +107,11 @@ export function ContactForm() {
   }
 
   return (
-    <form className="contact-form" onSubmit={(e) => void handleSubmit(e)}>
+    <form
+      className="contact-form"
+      onSubmit={(e) => void handleSubmit(e)}
+      aria-busy={sending}
+    >
       <div className="form-grid">
         <label>
           <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -135,10 +167,20 @@ export function ContactForm() {
         <input name="website" autoComplete="off" tabIndex={-1} />
       </label>
       <div className="form-actions">
-        <button className="btn blue" type="submit" disabled={sending}>
-          Enviar mensagem
+        <button
+          className={`btn blue contact-submit${sending ? " is-sending" : ""}`}
+          type="submit"
+          disabled={sending}
+        >
+          {sending ? "Enviando…" : "Enviar mensagem"}
         </button>
-        <p aria-live="polite">{status}</p>
+        <p
+          ref={feedbackRef}
+          className={`contact-feedback${feedbackTone ? ` is-${feedbackTone}` : ""}`}
+          aria-live="polite"
+        >
+          {status}
+        </p>
       </div>
     </form>
   );

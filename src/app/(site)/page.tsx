@@ -19,9 +19,16 @@ export default function HomePage() {
     <>
       <section className="hero">
         <div className="hero-photo">
-          <Photo id="bancada" priority />
+          <Photo
+            id="fachada"
+            alt="Fachada da Benittes Oficina Mecânica com o letreiro Benittes visível"
+            width={1272}
+            height={1237}
+            srcWidths={[640, 1120, 1272]}
+            priority
+          />
         </div>
-        <div className="hero-shade" />
+        <div className="hero-shade hero-shade-facade" />
         <div className="wrap hero-in">
           <div className="hero-copy">
             <h1>

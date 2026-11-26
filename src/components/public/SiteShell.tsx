@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { oficina, whatsappUrl } from "@/config/oficina";
 import { OPEN_CONSENT_EVENT, getCookieConsent } from "@/lib/cookies";
 import { CookieBanner } from "./CookieBanner";
@@ -31,7 +31,149 @@ export function SiteShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const [wpOpen, setWpOpen] = useState(false);
   const [cookieOpen, setCookieOpen] = useState(false);
+  const navRef = useRef<HTMLElement | null>(null);
+  const navIndicatorRef = useRef<HTMLSpanElement | null>(null);
+  const navIndicatorPathRef = useRef(pathname);
+  const pendingNavClickPathRef = useRef<string | null>(null);
+  const navIndicatorAnimationRef = useRef<Animation | null>(null);
   const wpHref = whatsappUrl ?? oficina.googleMapsUrl ?? "/contato/";
+
+  const animateIndicatorToLink = (link: HTMLAnchorElement) => {
+    const nav = navRef.current;
+    const indicator = navIndicatorRef.current;
+    if (!nav || !indicator || window.getComputedStyle(nav).display === "none") return;
+
+    const navRect = nav.getBoundingClientRect();
+    const linkRect = link.getBoundingClientRect();
+    const currentRect = indicator.getBoundingClientRect();
+    const fromX = currentRect.left - navRect.left;
+    const fromY = currentRect.top - navRect.top;
+    const toX = linkRect.left - navRect.left;
+    const toY = linkRect.bottom - navRect.top - 5;
+    const targetTransform = `translate(${toX}px, ${toY}px)`;
+    const wasVisible = indicator.style.opacity === "1";
+
+    indicator.style.width = "17px";
+    indicator.style.opacity = "1";
+    navIndicatorAnimationRef.current?.cancel();
+
+    if (
+      !wasVisible ||
+      Math.hypot(toX - fromX, toY - fromY) <= 1 ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      indicator.style.transform = targetTransform;
+      navIndicatorAnimationRef.current = null;
+      return;
+    }
+
+    const animation = indicator.animate(
+      [
+        { transform: `translate(${fromX}px, ${fromY}px)` },
+        { transform: targetTransform },
+      ],
+      {
+        duration: 620,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "both",
+      },
+    );
+    navIndicatorAnimationRef.current = animation;
+    animation.onfinish = () => {
+      indicator.style.transform = targetTransform;
+      animation.cancel();
+      if (navIndicatorAnimationRef.current === animation) {
+        navIndicatorAnimationRef.current = null;
+      }
+    };
+  };
+
+  const handleNavigationClick = (event: ReactMouseEvent<HTMLAnchorElement>, href: string) => {
+    setMenuOpen(false);
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    pendingNavClickPathRef.current = new URL(href, window.location.origin).pathname;
+    animateIndicatorToLink(event.currentTarget);
+  };
+
+  useLayoutEffect(() => {
+    const clickedTarget = pendingNavClickPathRef.current === pathname;
+    if (clickedTarget) pendingNavClickPathRef.current = null;
+    const animateOnNavigation = navIndicatorPathRef.current !== pathname && !clickedTarget;
+    navIndicatorPathRef.current = pathname;
+
+    const updateIndicator = (shouldAnimate = false) => {
+      const nav = navRef.current;
+      const indicator = navIndicatorRef.current;
+      const activeLink = nav?.querySelector<HTMLAnchorElement>('a[aria-current="page"]');
+      if (!nav || !indicator || !activeLink) {
+        if (indicator) indicator.style.opacity = "0";
+        return;
+      }
+
+      if (window.getComputedStyle(nav).display === "none") {
+        indicator.style.opacity = "0";
+        return;
+      }
+
+      const navRect = nav.getBoundingClientRect();
+      const linkRect = activeLink.getBoundingClientRect();
+      if (!navRect.width || !linkRect.width) {
+        indicator.style.opacity = "0";
+        return;
+      }
+
+      const currentRect = indicator.getBoundingClientRect();
+      const fromX = currentRect.left - navRect.left;
+      const fromY = currentRect.top - navRect.top;
+      const toX = linkRect.left - navRect.left;
+      const toY = linkRect.bottom - navRect.top - 5;
+      const wasVisible = indicator.style.opacity === "1";
+      indicator.style.width = "17px";
+      indicator.style.opacity = "1";
+
+      if (!shouldAnimate && navIndicatorAnimationRef.current?.playState === "running") return;
+
+      if (
+        shouldAnimate &&
+        wasVisible &&
+        Math.hypot(toX - fromX, toY - fromY) > 1 &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        navIndicatorAnimationRef.current?.cancel();
+        const animation = indicator.animate(
+          [
+            { transform: `translate(${fromX}px, ${fromY}px)` },
+            { transform: `translate(${toX}px, ${toY}px)` },
+          ],
+          {
+            duration: 520,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            fill: "both",
+          },
+        );
+        navIndicatorAnimationRef.current = animation;
+        animation.onfinish = () => {
+          indicator.style.transform = `translate(${toX}px, ${toY}px)`;
+          animation.cancel();
+          if (navIndicatorAnimationRef.current === animation) {
+            navIndicatorAnimationRef.current = null;
+          }
+        };
+      } else {
+        navIndicatorAnimationRef.current?.cancel();
+        indicator.style.transform = `translate(${toX}px, ${toY}px)`;
+        navIndicatorAnimationRef.current = null;
+      }
+    };
+
+    updateIndicator(animateOnNavigation);
+    void document.fonts?.ready.then(() => updateIndicator());
+    const onResize = () => updateIndicator();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [pathname, menuOpen]);
 
   useEffect(() => {
     if (!getCookieConsent()) {
@@ -173,13 +315,13 @@ export function SiteShell({
       <header className={menuOpen ? "opened" : undefined}>
         <div className="wrap header">
           {mark}
-          <nav id="menu" aria-label="Principal">
+          <nav id="menu" aria-label="Principal" ref={navRef}>
             {links.map(([url, label]) => (
               <Link
                 key={url}
                 href={url}
                 aria-current={isActive(url) ? "page" : undefined}
-                onClick={() => setMenuOpen(false)}
+                onClick={(event) => handleNavigationClick(event, url)}
               >
                 {label}
               </Link>
@@ -187,10 +329,12 @@ export function SiteShell({
             <Link
               className="mobile-contact"
               href="/contato/"
-              onClick={() => setMenuOpen(false)}
+              aria-current={isActive("/contato/") ? "page" : undefined}
+              onClick={(event) => handleNavigationClick(event, "/contato/")}
             >
               Contato
             </Link>
+            <span className="public-nav-indicator" ref={navIndicatorRef} aria-hidden="true" />
           </nav>
           <a className="btn primary head-cta" data-site-quote href={whatsappUrl ?? "/contato/"}>
             Solicitar orçamento
@@ -208,7 +352,7 @@ export function SiteShell({
         </div>
       </header>
 
-      <main id="conteudo" tabIndex={-1}>
+      <main id="conteudo" tabIndex={-1} key={pathname} className="public-page-transition">
         {children}
       </main>
 

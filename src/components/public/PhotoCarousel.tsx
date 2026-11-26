@@ -15,9 +15,26 @@ export function PhotoCarousel({
   rightIcon: ReactNode;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [hasChangedPhoto, setHasChangedPhoto] = useState(false);
 
   const step = (delta: number) => {
+    setDirection(delta > 0 ? 1 : -1);
+    setHasChangedPhoto(true);
     setActiveIndex((prev) => (prev + delta + carouselFotos.length) % carouselFotos.length);
+  };
+
+  const selectPhoto = (index: number) => {
+    if (index === activeIndex) return;
+    const nextDistance = (index - activeIndex + carouselFotos.length) % carouselFotos.length;
+    const previousDistance = (activeIndex - index + carouselFotos.length) % carouselFotos.length;
+    setDirection(nextDistance <= previousDistance ? 1 : -1);
+    setHasChangedPhoto(true);
+    setActiveIndex(index);
+  };
+  const activeSlideClass = (index: number) => {
+    if (index !== activeIndex || !hasChangedPhoto) return "carousel-slide";
+    return direction > 0 ? "carousel-slide entering-next" : "carousel-slide entering-previous";
   };
 
   return (
@@ -30,7 +47,7 @@ export function PhotoCarousel({
         {carouselFotos.map((foto, index) => (
           <figure
             key={foto.id}
-            className="carousel-slide"
+            className={activeSlideClass(index)}
             role="group"
             aria-roledescription="slide"
             aria-label={`Foto ${index + 1} de ${carouselFotos.length}`}
@@ -55,7 +72,7 @@ export function PhotoCarousel({
               type="button"
               aria-label={`Mostrar foto: ${foto.nome}`}
               aria-current={index === activeIndex ? "true" : "false"}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => selectPhoto(index)}
             />
           ))}
         </div>

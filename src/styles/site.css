@@ -194,6 +194,7 @@ header {
   gap: clamp(20px, 2.4vw, 42px);
   margin-left: auto;
   margin-right: 2vw;
+  position: relative;
 }
 .header nav a {
   position: relative;
@@ -201,7 +202,7 @@ header {
   font-size: 0.91rem;
   font-weight: 600;
 }
-.header nav a[aria-current]:after {
+.header nav a::after {
   content: "";
   position: absolute;
   bottom: 3px;
@@ -209,6 +210,25 @@ header {
   width: 17px;
   height: 2px;
   background: var(--blue);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.header nav a[aria-current="page"]::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+.public-nav-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 17px;
+  height: 2px;
+  background: var(--blue);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
 }
 .header nav a:hover {
   color: var(--blue);
@@ -216,6 +236,19 @@ header {
 .menu-toggle,
 .mobile-contact {
   display: none;
+}
+@keyframes publicPageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.public-page-transition {
+  animation: publicPageEnter 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .hero {
   color: var(--ink);
@@ -240,6 +273,9 @@ header {
   object-position: 50% 50%;
   filter: contrast(1.04) brightness(0.98);
 }
+.hero-photo img[src^="/media/fachada-"] {
+  object-position: 50% 26%;
+}
 .hero-shade {
   background: linear-gradient(
     90deg,
@@ -247,6 +283,17 @@ header {
     #fff 38%,
     rgba(255, 255, 255, 0.92) 52%,
     rgba(255, 255, 255, 0.12) 88%
+  );
+}
+.hero-shade-facade {
+  background: linear-gradient(
+    90deg,
+    #fff 0%,
+    #fff 34%,
+    rgba(255, 255, 255, 0.88) 42%,
+    rgba(255, 255, 255, 0.62) 49%,
+    rgba(255, 255, 255, 0.35) 57%,
+    rgba(255, 255, 255, 0.12) 78%
   );
 }
 .hero-in {
@@ -365,6 +412,20 @@ footer {
 .carousel-slide[hidden] {
   display: none;
 }
+.carousel-slide.entering-next {
+  animation: carouselSlideFromRight 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.carousel-slide.entering-previous {
+  animation: carouselSlideFromLeft 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes carouselSlideFromRight {
+  from { opacity: 0; transform: translateX(18px) scale(0.995); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes carouselSlideFromLeft {
+  from { opacity: 0; transform: translateX(-18px) scale(0.995); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
 .carousel-slide a,
 .carousel-slide picture {
   display: block;
@@ -453,6 +514,13 @@ summary::-webkit-details-marker {
 }
 details[open] summary .icon {
   transform: rotate(45deg);
+}
+.faqs details[open] > p {
+  animation: faqAnswerIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes faqAnswerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .faqs details p {
   padding: 0 32px 22px 0;
@@ -688,6 +756,9 @@ dialog p {
     flex-wrap: wrap;
     justify-content: flex-end;
   }
+  .header nav a::after {
+    display: none;
+  }
 }
 @media (max-width: 650px) {
   .header {
@@ -716,6 +787,9 @@ dialog p {
     bottom: 42%;
   }
   .hero-photo img {
+    object-position: 50% 35%;
+  }
+  .hero-photo img[src^="/media/fachada-"] {
     object-position: 50% 35%;
   }
   .hero-shade {
@@ -813,6 +887,74 @@ dialog p {
   .foot-links {
     justify-content: flex-start;
   }
+  footer .wrap {
+    padding-bottom: max(92px, calc(64px + env(safe-area-inset-bottom)));
+  }
+  footer .foot-top {
+    width: 100%;
+    gap: 16px;
+    padding: 32px 0 22px;
+  }
+  footer .foot-top > .brand {
+    width: auto;
+  }
+  footer .foot-top .brand-logo {
+    width: 96px;
+    height: 74px;
+  }
+  footer .foot-links {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    justify-content: initial;
+    gap: 12px 18px;
+    font-size: 0.9rem;
+  }
+  footer .foot-links a {
+    min-width: 0;
+    line-height: 1.4;
+  }
+  footer .foot-info {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 16px 0;
+    border-top: 0;
+  }
+  footer .foot-info a {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  footer .foot-end {
+    width: 100%;
+    gap: 16px;
+    padding: 16px 0 0;
+    font-size: 0.86rem;
+  }
+  footer .foot-end > div {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 12px 18px;
+    font-size: inherit;
+  }
+  footer .foot-end > div > * {
+    min-width: 0;
+    line-height: 1.4;
+  }
+  footer .foot-cookie-btn {
+    text-align: left;
+  }
+  footer .foot-end > a {
+    width: 100%;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    color: var(--blue);
+    overflow-wrap: anywhere;
+  }
   .about {
     gap: 25px;
   }
@@ -853,9 +995,15 @@ dialog p {
   line-height: 1;
   font-size: 24px;
   font-weight: 400;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 details[open] .expand-symbol {
   transform: rotate(45deg);
+}
+@media (min-width: 821px) {
+  .header nav a::after {
+    display: none;
+  }
 }
 .intro {
   border-bottom: 1px solid var(--line);
@@ -1010,6 +1158,33 @@ details[open] .expand-symbol {
 }
 .form-actions p {
   font-size: 0.88rem;
+}
+.contact-feedback:empty {
+  display: none;
+}
+.contact-feedback.is-pending {
+  color: var(--muted);
+}
+.contact-feedback.is-success {
+  color: #15803d;
+}
+.contact-feedback.is-error {
+  color: #b42318;
+}
+.contact-submit.is-sending {
+  cursor: progress;
+}
+.contact-submit.is-sending::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-left-color: transparent;
+  border-radius: 50%;
+  animation: contactSpinner 0.72s linear infinite;
+}
+@keyframes contactSpinner {
+  to { transform: rotate(360deg); }
 }
 .contact-form button:disabled {
   cursor: not-allowed;
