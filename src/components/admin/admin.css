@@ -413,10 +413,10 @@ html.dark .admin-root,
   height: 52px;
   display: grid;
   place-items: center;
-  border-radius: 16px;
-  background: #ffffff;
-  border: 1px solid var(--admin-line);
-  padding: 6px;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
 }
 
 .admin-login-icon img {
@@ -6271,7 +6271,7 @@ html.dark .admin-stat-card:hover {
 .admin-quote-item-header {
   min-height: 26px;
   padding: 0 8px;
-  background: #fff;
+  background: var(--admin-card);
   color: var(--admin-muted);
   font-size: 8.5px;
   font-weight: 600;
@@ -6370,6 +6370,11 @@ html.dark .admin-stat-card:hover {
   accent-color: var(--admin-blue, #1d4e89);
 }
 
+html.dark .admin-quote-partial-option input,
+.admin-root.dark .admin-quote-partial-option input {
+  color-scheme: dark;
+}
+
 .admin-quote-commercial {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6393,7 +6398,7 @@ html.dark .admin-stat-card:hover {
   gap: 7px;
   padding: 10px;
   border-radius: 6px;
-  background: #fff;
+  background: var(--admin-card);
 }
 
 .admin-quote-summary > div {
