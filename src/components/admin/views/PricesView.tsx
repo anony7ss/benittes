@@ -170,7 +170,6 @@ export function PricesView({ session }: { session: { user: { id: string } } }) {
         <div>
           <p className="admin-kicker">TABELA DE APLICAÇÕES</p>
           <h1>Preços por veículo</h1>
-          <p className="admin-page-desc">Cadastre valores diferentes por marca, modelo e faixa de ano.</p>
         </div>
         <div className="admin-title-actions">
           <a href="/painel/servicos/" className="admin-secondary" style={{ textDecoration: "none" }}>

@@ -1142,7 +1142,6 @@ export function AccountView({
           <div className="admin-panel-head">
             <div>
               <h2>Cargos e permissões ({roles.length})</h2>
-              <p style={{ margin: "5px 0 0", color: "var(--admin-muted)", fontSize: 12 }}>Defina quais áreas cada cargo pode consultar e alterar. O proprietário mantém acesso total.</p>
             </div>
             <button type="button" className="admin-primary" onClick={() => openRoleEditor()}>
               <Plus size={15} /> Criar cargo
