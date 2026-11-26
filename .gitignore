@@ -5,7 +5,6 @@ bot-whatsapp/node_modules/
 # Production builds & caches
 .next/
 dist/
-.astro/
 .vercel/
 .npm-cache/
 *.tsbuildinfo

@@ -34,8 +34,14 @@ export async function proxy(request: NextRequest) {
     process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     "";
+  const pathname = request.nextUrl.pathname;
+  const isAdminRequest =
+    pathname === "/painel" ||
+    pathname.startsWith("/painel/") ||
+    pathname === "/api/admin" ||
+    pathname.startsWith("/api/admin/");
 
-  if (supabaseUrl && publishableKey && hasAuthCookie(request)) {
+  if (isAdminRequest && supabaseUrl && publishableKey && hasAuthCookie(request)) {
     const supabase = createServerClient(supabaseUrl, publishableKey, {
       cookieOptions: getAuthCookieOptions(),
       auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
@@ -51,13 +57,22 @@ export async function proxy(request: NextRequest) {
       },
     });
 
-    // Refreshing is best-effort here. Each protected API route still validates
-    // the user with Supabase before reading or changing any panel data.
-    await supabase.auth.getClaims().catch(() => undefined);
+    // Inspect expiry locally and refresh only near expiration. Protected API
+    // routes still validate the user with Supabase before accessing panel data.
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      const expiresAt = data.session?.expires_at;
+      const refreshWindow = Math.floor(Date.now() / 1000) + 120;
+      if (error || !Number.isFinite(expiresAt) || (expiresAt ?? 0) <= refreshWindow) {
+        await supabase.auth.getClaims().catch(() => undefined);
+      }
+    } catch {
+      // Session refresh is best-effort; the protected route performs its own check.
+    }
   }
 
   response.headers.set("Content-Security-Policy", policy);
-  if (request.nextUrl.pathname.startsWith("/api/admin/")) {
+  if (pathname.startsWith("/api/admin/")) {
     response.headers.set("Cache-Control", "no-store, max-age=0");
     response.headers.set("Pragma", "no-cache");
   }

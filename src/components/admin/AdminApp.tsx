@@ -1,12 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useState, type MouseEvent } from "react";
 import { LogOut, ShieldAlert } from "lucide-react";
 import "./admin.css";
 import { findAdminPage, routeFor, canSeePage, type AdminPage } from "../../admin/navigation";
 import {
   fetchMyMember,
-  getSession,
+  getAdminBootstrap,
   signOut,
   subscribeSession,
   supabaseConfigured,
@@ -17,53 +18,36 @@ import { ProfilePhotoProvider } from "./ProfilePhoto";
 import { AdminShell } from "./AdminShell";
 import { ConfirmDialogHost } from "./ConfirmDialog";
 import { LoginForm } from "./LoginForm";
-import { AccountView } from "./views/AccountView";
-import { AppointmentsView } from "./views/AppointmentsView";
-import { ClientsView } from "./views/ClientsView";
-import { ContactsView } from "./views/ContactsView";
-import { DashboardView } from "./views/DashboardView";
-import { FinanceView } from "./views/FinanceView";
-import { InspectionsView } from "./views/InspectionsView";
-import { InventoryView } from "./views/InventoryView";
-import { QuotesView } from "./views/QuotesView";
-import { PricesView } from "./views/PricesView";
-import { ReportsView } from "./views/ReportsView";
-import { SalesView } from "./views/SalesView";
-import { ServicesView } from "./views/ServicesView";
-import { SettingsView } from "./views/SettingsView";
-import { TimeClockView } from "./views/TimeClockView";
-import { VehiclesView } from "./views/VehiclesView";
-import { WhatsAppBotView } from "./views/WhatsAppBotView";
-import { WorkOrdersView } from "./views/WorkOrdersView";
+const AccountView = dynamic(() => import("./views/AccountView").then((module) => module.AccountView));
+const AppointmentsView = dynamic(() => import("./views/AppointmentsView").then((module) => module.AppointmentsView));
+const ClientsView = dynamic(() => import("./views/ClientsView").then((module) => module.ClientsView));
+const ContactsView = dynamic(() => import("./views/ContactsView").then((module) => module.ContactsView));
+const DashboardView = dynamic(() => import("./views/DashboardView").then((module) => module.DashboardView));
+const FinanceView = dynamic(() => import("./views/FinanceView").then((module) => module.FinanceView));
+const InspectionsView = dynamic(() => import("./views/InspectionsView").then((module) => module.InspectionsView));
+const InventoryView = dynamic(() => import("./views/InventoryView").then((module) => module.InventoryView));
+const QuotesView = dynamic(() => import("./views/QuotesView").then((module) => module.QuotesView));
+const PricesView = dynamic(() => import("./views/PricesView").then((module) => module.PricesView));
+const ReportsView = dynamic(() => import("./views/ReportsView").then((module) => module.ReportsView));
+const SalesView = dynamic(() => import("./views/SalesView").then((module) => module.SalesView));
+const ServicesView = dynamic(() => import("./views/ServicesView").then((module) => module.ServicesView));
+const SettingsView = dynamic(() => import("./views/SettingsView").then((module) => module.SettingsView));
+const TimeClockView = dynamic(() => import("./views/TimeClockView").then((module) => module.TimeClockView));
+const VehiclesView = dynamic(() => import("./views/VehiclesView").then((module) => module.VehiclesView));
+const WhatsAppBotView = dynamic(() => import("./views/WhatsAppBotView").then((module) => module.WhatsAppBotView));
+const WorkOrdersView = dynamic(() => import("./views/WorkOrdersView").then((module) => module.WorkOrdersView));
 
-const MEMBER_CACHE_PREFIX = "benittes_admin_member_";
-
-function readCachedMember(userId: string | undefined): PanelMember | null {
-  if (!userId || typeof window === "undefined") return null;
-  try {
-    const raw =
-      window.localStorage.getItem(`${MEMBER_CACHE_PREFIX}${userId}`) ??
-      window.sessionStorage.getItem(`${MEMBER_CACHE_PREFIX}${userId}`);
-    return raw ? (JSON.parse(raw) as PanelMember) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeCachedMember(userId: string, member: PanelMember | null) {
+function clearLegacyMemberCaches() {
   if (typeof window === "undefined") return;
   try {
-    const key = `${MEMBER_CACHE_PREFIX}${userId}`;
-    if (member) {
-      const json = JSON.stringify(member);
-      window.localStorage.setItem(key, json);
-      window.sessionStorage.setItem(key, json);
-    } else {
-      window.localStorage.removeItem(key);
-      window.sessionStorage.removeItem(key);
+    for (const storage of [window.localStorage, window.sessionStorage]) {
+      for (let index = storage.length - 1; index >= 0; index -= 1) {
+        const key = storage.key(index);
+        if (key?.startsWith("benittes_admin_member_")) storage.removeItem(key);
+      }
     }
   } catch {
-    // ignore storage errors
+    // Existing browser storage is optional and is no longer used by the panel.
   }
 }
 
@@ -176,23 +160,56 @@ export function AdminApp({ section }: { section?: string }) {
     if (!supabaseConfigured) return;
 
     let active = true;
-    void getSession()
-      .then((nextSession) => {
-        if (!active) return;
+    let authRevision = 0;
+    const loadMember = (revision: number) => {
+      void fetchMyMember()
+        .then((found) => {
+          if (!active || authRevision !== revision) return;
+          setMember(found);
+          setMemberError("");
+        })
+        .catch((reason: Error) => {
+          if (!active || authRevision !== revision) return;
+          setMember(null);
+          setMemberError(reason.message);
+        })
+        .finally(() => {
+          if (active && authRevision === revision) setMemberChecked(true);
+        });
+    };
+
+    clearLegacyMemberCaches();
+    const unsubscribe = subscribeSession((nextSession) => {
+      authRevision += 1;
+      const revision = authRevision;
+      setSession(nextSession);
+      setMember(null);
+      setMemberError("");
+      setMemberChecked(!nextSession);
+      setAuthReady(true);
+      if (nextSession) {
+        setMemberChecked(false);
+        loadMember(revision);
+      }
+    });
+
+    const bootstrapRevision = authRevision;
+    void getAdminBootstrap()
+      .then(({ session: nextSession, member: nextMember }) => {
+        if (!active || authRevision !== bootstrapRevision) return;
         setSession(nextSession);
+        setMember(nextMember);
+        setMemberError("");
+        setMemberChecked(true);
         setAuthReady(true);
       })
       .catch(() => {
-        if (!active) return;
+        if (!active || authRevision !== bootstrapRevision) return;
         setSession(null);
+        setMember(null);
+        setMemberChecked(true);
         setAuthReady(true);
       });
-
-    const unsubscribe = subscribeSession((nextSession) => {
-      if (!active) return;
-      setSession(nextSession);
-      setAuthReady(true);
-    });
 
     return () => {
       active = false;
@@ -201,56 +218,20 @@ export function AdminApp({ section }: { section?: string }) {
   }, []);
 
   useEffect(() => {
-    if (!session) {
-      setMember(null);
-      setMemberChecked(false);
-      setMemberError("");
-      return;
-    }
-
-    const cached = readCachedMember(session.user.id);
-    if (cached) {
-      setMember(cached);
-      setMemberChecked(true);
-    }
-
-    let active = true;
-    setMemberError("");
-
-    void fetchMyMember()
-      .then((found) => {
-        if (!active) return;
-        setMember(found);
-        writeCachedMember(session.user.id, found);
-      })
-      .catch((reason: Error) => {
-        if (!active) return;
-        if (!cached) {
-          setMember(null);
-          setMemberError(reason.message);
-        }
-      })
-      .finally(() => {
-        if (!active) return;
-        setMemberChecked(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [session?.user.id]);
-
-  useEffect(() => {
     if (!authReady) return;
     if (!isAuthPage && !session) {
-      window.location.replace(routeFor("login"));
+      const loginRoute = routeFor("login");
+      window.history.replaceState({}, "", loginRoute);
+      setCurrentSection("login");
     }
   }, [authReady, isAuthPage, session]);
 
   useEffect(() => {
     if (!authReady || !isAuthPage) return;
     if (session && member?.active && !isRecoveryPage) {
-      window.location.replace(routeFor(""));
+      const homeRoute = routeFor("");
+      window.history.replaceState({}, "", homeRoute);
+      setCurrentSection("");
     }
   }, [authReady, isAuthPage, isRecoveryPage, session, member]);
 
@@ -284,14 +265,15 @@ export function AdminApp({ section }: { section?: string }) {
   }
 
   async function handleSignOut() {
-    const userId = session?.user.id;
     try {
       await signOut();
     } finally {
-      if (userId) writeCachedMember(userId, null);
       setSession(null);
       setMember(null);
-      window.location.assign(routeFor("login"));
+      setMemberChecked(true);
+      const loginRoute = routeFor("login");
+      window.history.replaceState({}, "", loginRoute);
+      setCurrentSection("login");
     }
   }
 
@@ -379,7 +361,6 @@ export function AdminApp({ section }: { section?: string }) {
           ) : (
             renderPageView(page, session, member, (next) => {
               setMember(next);
-              writeCachedMember(session.user.id, next);
             })
           )}
         </AdminShell>

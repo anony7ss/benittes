@@ -67,21 +67,20 @@ export async function requirePanelStaff(request: NextRequest) {
 
   const { data: member } = await supabase
     .from("panel_members")
-    .select("user_id,email,full_name,role,active,created_at,updated_at,phone,two_factor_enabled")
+    .select(
+      "user_id,email,full_name,role,active,created_at,updated_at,phone,two_factor_enabled,role_config:panel_roles!panel_members_role_fkey(name,permissions)",
+    )
     .eq("user_id", userData.user.id)
     .eq("active", true)
     .maybeSingle();
 
   if (!member) return null;
-  const { data: roleConfig } = await supabase
-    .from("panel_roles")
-    .select("name,permissions")
-    .eq("role_key", member.role)
-    .maybeSingle();
+  const { role_config: roleConfigValue, ...memberData } = member;
+  const roleConfig = roleConfigValue as { name?: string | null; permissions?: unknown } | null;
   const permissions = normalizePanelPermissions(roleConfig?.permissions);
   return {
     user: userData.user,
-    member: { ...member, role_name: roleConfig?.name ?? member.role, permissions },
+    member: { ...memberData, role_name: roleConfig?.name ?? member.role, permissions },
     supabase,
   };
 }

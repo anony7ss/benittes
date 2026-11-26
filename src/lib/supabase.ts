@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PanelPermissions } from "../admin/permissions";
 
 export type Session = { user: { id: string; email?: string | null } };
+export type AdminBootstrap = { session: Session | null; member: PanelMember | null };
 
 export type PanelStatus = "novo" | "em_andamento" | "aguardando" | "concluido" | "cancelado";
 
@@ -65,9 +66,7 @@ export const supabaseConfigured = Boolean(url && publishableKey);
 const RECOVERY_COOKIE_NAME = "benittes-recovery";
 let legacyClient: SupabaseClient | null = null;
 let recoveryClient: SupabaseClient | null = null;
-let currentSession: Session | null = null;
-let sessionLoadedAt = 0;
-let sessionRequest: Promise<Session | null> | null = null;
+let bootstrapRequest: Promise<AdminBootstrap> | null = null;
 const sessionListeners = new Set<(session: Session | null) => void>();
 
 function toSession(value: unknown): Session | null {
@@ -83,9 +82,24 @@ function toSession(value: unknown): Session | null {
   };
 }
 
+function toPanelMember(value: unknown, userId: string): PanelMember | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Partial<PanelMember>;
+  if (row.user_id !== userId || typeof row.role !== "string" || typeof row.active !== "boolean") return null;
+
+  return {
+    user_id: userId,
+    email: typeof row.email === "string" ? row.email : "",
+    full_name: typeof row.full_name === "string" ? row.full_name : null,
+    role: row.role,
+    role_name: typeof row.role_name === "string" ? row.role_name : row.role,
+    permissions: row.permissions ?? null,
+    active: row.active,
+    created_at: typeof row.created_at === "string" ? row.created_at : "",
+  };
+}
+
 function publishSession(session: Session | null) {
-  currentSession = session;
-  sessionLoadedAt = Date.now();
   for (const listener of sessionListeners) listener(session);
 }
 
@@ -200,33 +214,46 @@ async function migrateLegacySession(): Promise<Session | null> {
   return session;
 }
 
-async function loadServerSession(): Promise<Session | null> {
-  const response = await fetch("/api/admin/session", {
+async function requestServerSession() {
+  return fetch("/api/admin/session", {
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (response.status === 401) return migrateLegacySession();
-  const body = (await response.json().catch(() => ({}))) as { session?: unknown; error?: string };
-  if (!response.ok) throw new Error(body.error || "Não foi possível verificar sua sessão.");
-  const session = toSession(body);
-  if (session) clearLegacySessionRemnants();
-  return session;
 }
 
-export async function getSession(force = false) {
-  if (!supabaseConfigured || typeof window === "undefined") return null;
-  if (!force && Date.now() - sessionLoadedAt < 10_000) return currentSession;
-  if (sessionRequest) return sessionRequest;
+async function loadServerBootstrap(): Promise<AdminBootstrap> {
+  let response = await requestServerSession();
+  if (response.status === 401) {
+    const migratedSession = await migrateLegacySession();
+    if (!migratedSession) return { session: null, member: null };
+    response = await requestServerSession();
+  }
 
-  sessionRequest = loadServerSession()
-    .then((session) => {
-      publishSession(session);
-      return session;
-    })
+  const body = (await response.json().catch(() => ({}))) as {
+    session?: unknown;
+    member?: unknown;
+    error?: string;
+  };
+  if (!response.ok) throw new Error(body.error || "Não foi possível verificar sua sessão.");
+  const session = toSession(body);
+  if (!session) {
+    clearLegacySessionRemnants();
+    return { session: null, member: null };
+  }
+
+  clearLegacySessionRemnants();
+  return { session, member: toPanelMember(body.member, session.user.id) };
+}
+
+export async function getAdminBootstrap(): Promise<AdminBootstrap> {
+  if (!supabaseConfigured || typeof window === "undefined") return { session: null, member: null };
+  if (bootstrapRequest) return bootstrapRequest;
+
+  bootstrapRequest = loadServerBootstrap()
     .finally(() => {
-      sessionRequest = null;
+      bootstrapRequest = null;
     });
-  return sessionRequest;
+  return bootstrapRequest;
 }
 
 export function subscribeSession(callback: (session: Session | null) => void) {
