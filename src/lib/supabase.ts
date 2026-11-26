@@ -1,4 +1,5 @@
-import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import type { PanelPermissions } from "../admin/permissions";
 
 export type { Session } from "@supabase/supabase-js";
@@ -62,11 +63,12 @@ const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export const supabaseConfigured = Boolean(url && publishableKey);
 let client: SupabaseClient | null = null;
+let legacySessionMigration: Promise<void> | null = null;
 
 function getClient() {
   if (!url || !publishableKey) throw new Error("O acesso ao painel ainda não foi configurado.");
   if (!client) {
-    client = createClient(url, publishableKey, {
+    client = createBrowserClient(url, publishableKey, {
       auth: {
         autoRefreshToken: true,
         detectSessionInUrl: true,
@@ -78,21 +80,53 @@ function getClient() {
   return client;
 }
 
-export function readStoredSession(): Session | null {
-  if (typeof window === "undefined" || !url) return null;
+async function migrateLegacyLocalStorageSession() {
+  if (typeof window === "undefined" || !url) return;
+  if (legacySessionMigration) return legacySessionMigration;
+
   try {
     const projectId = new URL(url).hostname.split(".")[0];
-    const stored = localStorage.getItem(`sb-${projectId}-auth-token`);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as Session;
-    return parsed.expires_at && parsed.expires_at > Date.now() / 1000 ? parsed : null;
+    const storageKey = `sb-${projectId}-auth-token`;
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return;
+
+    legacySessionMigration = (async () => {
+      try {
+        const legacy = JSON.parse(stored) as Partial<Session>;
+        if (typeof legacy.access_token !== "string" || typeof legacy.refresh_token !== "string") {
+          window.localStorage.removeItem(storageKey);
+          return;
+        }
+
+        const supabase = getClient();
+        const { data: current, error: readError } = await supabase.auth.getSession();
+        if (readError) throw readError;
+
+        if (!current.session) {
+          const { error } = await supabase.auth.setSession({
+            access_token: legacy.access_token,
+            refresh_token: legacy.refresh_token,
+          });
+          if (error) throw error;
+        }
+
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // Keep the legacy value if migration fails temporarily; retry next load.
+        legacySessionMigration = null;
+      }
+    })();
+
+    return legacySessionMigration;
   } catch {
-    return null;
+    return;
   }
 }
 
 export async function getSession() {
-  const { data, error } = await getClient().auth.getSession();
+  const supabase = getClient();
+  await migrateLegacyLocalStorageSession();
+  const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   return data.session;
 }
@@ -202,8 +236,7 @@ export async function updatePassword(password: string) {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const stored = readStoredSession();
-  const session = stored ?? (await getSession().catch(() => null));
+  const session = await getSession().catch(() => null);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (session?.access_token) {
     headers.Authorization = `Bearer ${session.access_token}`;

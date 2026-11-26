@@ -7,7 +7,6 @@ import { findAdminPage, routeFor, canSeePage, type AdminPage } from "../../admin
 import {
   fetchMyMember,
   getSession,
-  readStoredSession,
   signOut,
   subscribeSession,
   supabaseConfigured,
@@ -149,14 +148,7 @@ export function AdminApp({ section }: { section?: string }) {
     if (typeof window !== "undefined" && window.location.pathname.startsWith("/painel")) {
       setCurrentSection(sectionFromPathname(window.location.pathname));
     }
-    const stored = readStoredSession();
-    if (stored) {
-      const cached = readCachedMember(stored.user.id);
-      setSession(stored);
-      setMember(cached);
-      setMemberChecked(Boolean(cached));
-      setAuthReady(true);
-    } else if (!supabaseConfigured) {
+    if (!supabaseConfigured) {
       setAuthReady(true);
     }
   }, []);
