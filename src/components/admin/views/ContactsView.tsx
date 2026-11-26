@@ -248,7 +248,10 @@ export function ContactsView() {
                   {selected.message}
                 </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: "auto" }}>
+                <div
+                  className="admin-inbox-actions"
+                  style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: "auto" }}
+                >
                   <a
                     className="admin-primary"
                     href={`mailto:${selected.email}?subject=${encodeURIComponent(`Re: Contato pelo site - ${selected.name}`)}`}
