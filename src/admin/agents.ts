@@ -4,7 +4,7 @@ export const AGENT_CATALOG = [
     name: "Gabriel",
     role: "Consultor técnico",
     summary: "Serviços, aplicação por veículo e estimativas internas.",
-    color: "blue",
+    avatar: "/agents/avatars/gabriel.webp",
     suggestions: [
       "Quais serviços precisam de uma regra de preço por veículo?",
       "Confira as regras cadastradas para um veículo.",
@@ -18,7 +18,7 @@ export const AGENT_CATALOG = [
     name: "Nathalia",
     role: "Atendimento e agenda",
     summary: "Agenda, preparação de atendimento e próximos compromissos.",
-    color: "teal",
+    avatar: "/agents/avatars/nathalia.webp",
     suggestions: [
       "O que está marcado para hoje?",
       "Há horários sem dados do veículo?",
@@ -32,7 +32,7 @@ export const AGENT_CATALOG = [
     name: "Caio",
     role: "Operações da oficina",
     summary: "Ordens em andamento, pendências e fluxo do box.",
-    color: "slate",
+    avatar: "/agents/avatars/caio.webp",
     suggestions: [
       "Quais ordens estão em andamento?",
       "Existe alguma ordem sem atualização recente?",
@@ -46,7 +46,7 @@ export const AGENT_CATALOG = [
     name: "Marina",
     role: "Analista financeira",
     summary: "Indicadores agregados de entradas, saídas e vencimentos.",
-    color: "indigo",
+    avatar: "/agents/avatars/marina.webp",
     suggestions: [
       "Faça um resumo financeiro dos últimos sete dias.",
       "Compare entradas e saídas do mês atual.",

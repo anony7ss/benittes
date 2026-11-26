@@ -465,7 +465,6 @@ export function GalleryView() {
         <div>
           <p className="admin-kicker">CONTEÚDO DO SITE</p>
           <h1>Galeria</h1>
-          <p className="admin-page-desc">Organize fotos e vídeos que aparecem na galeria pública e na página inicial.</p>
         </div>
         <div className="admin-title-actions">
           <a className="admin-secondary" href="/galeria/" target="_blank" rel="noopener noreferrer">Ver galeria pública</a>

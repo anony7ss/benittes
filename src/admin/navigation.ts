@@ -33,7 +33,7 @@ export const adminPages: AdminPage[] = [
   { path: "configuracoes", label: "Configurações", group: "Sistema", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
   { path: "conta", label: "Conta & Equipe", group: "Sistema", icon: "account", special: "account", description: "Seu perfil, equipe, permissões e auditoria." },
   { path: "galeria", label: "Galeria do site", group: "Sistema", icon: "gallery", module: "gallery", description: "Fotos, vídeos, destaques e ordem de exibição no site." },
-  { path: "agents", label: "Assistentes", group: "Sistema", icon: "agents", module: "agents", description: "Converse com agentes de operação, serviços e finanças." },
+  { path: "agents", label: "Agents", group: "Sistema", icon: "agents", module: "agents", description: "Converse com agentes de operação, serviços e finanças." },
 
   { path: "login", label: "Entrar", group: "Acesso", icon: "account", special: "login" },
   { path: "recuperar-senha", label: "Recuperar senha", group: "Acesso", icon: "account", special: "recovery" },

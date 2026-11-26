@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import Image from "next/image";
 import {
   Activity, AlertCircle, AudioLines, BadgeCheck, BrainCircuit, CalendarDays, Check, CheckCheck,
   ChevronDown, CircleDashed, Clock3, FileText, ImagePlus, LoaderCircle, MessageSquarePlus,
@@ -61,6 +62,14 @@ function formatDate(value: string) {
 function formatBytes(size: number) {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
   return `${(size / 1024 / 1024).toFixed(size >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function AgentAvatar({ agent, className }: { agent: AgentCatalogItem; className: string }) {
+  return (
+    <span className={`${className} ${styles.avatarFrame}`} aria-hidden="true">
+      <Image src={agent.avatar} alt="" width={54} height={54} loading="lazy" decoding="async" />
+    </span>
+  );
 }
 
 function getFileKind(file: File): DraftFile["kind"] {
@@ -653,14 +662,14 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
   if (loading) {
     return (
       <div className={styles.root}>
-        <div className={styles.pageHeading}><span className={styles.kicker}>FERRAMENTAS INTERNAS</span><h1>Assistentes</h1><p>Agentes especializados para apoiar a rotina da oficina.</p></div>
+        <div className={styles.pageHeading}><h1>Agents</h1></div>
         <div className={styles.loading}><div /><div /><div /><div /></div>
       </div>
     );
   }
 
   if (!data || data.agents.length === 0) {
-    return <div className={styles.root}><div className={styles.pageHeading}><span className={styles.kicker}>FERRAMENTAS INTERNAS</span><h1>Assistentes</h1></div><div className={styles.emptyState}><BrainCircuit size={22} /><strong>{error || "Nenhum agente está configurado."}</strong><p>Peça ao proprietário para verificar a configuração do módulo.</p></div></div>;
+    return <div className={styles.root}><div className={styles.pageHeading}><h1>Agents</h1></div><div className={styles.emptyState}><BrainCircuit size={22} /><strong>{error || "Nenhum agente está configurado."}</strong><p>Peça ao proprietário para verificar a configuração do módulo.</p></div></div>;
   }
 
   const activeProfile = profile;
@@ -670,8 +679,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
   return (
     <div className={styles.root}>
       <div className={styles.pageHeading}>
-        <div><span className={styles.kicker}>FERRAMENTAS INTERNAS</span><h1>Assistentes</h1><p>Especialistas para ajudar no trabalho diário da oficina.</p></div>
-        <div className={styles.pageHeadingMeta}><ShieldCheck size={16} /><span>Acesso por função e ferramenta</span></div>
+        <div><h1>Agents</h1></div>
       </div>
 
       {error && <div className={styles.errorBanner} role="alert"><AlertCircle size={16} /><span>{error}</span><button type="button" onClick={() => setError("")} aria-label="Fechar aviso"><X size={15} /></button></div>}
@@ -687,14 +695,13 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
               const latest = data.conversations.find((item) => item.agent_key === agent.key);
               return (
                 <button key={agent.key} type="button" className={`${styles.agentItem} ${selected ? styles.agentSelected : ""}`} onClick={() => void selectAgent(agent)} aria-current={selected ? "true" : undefined}>
-                  <span className={`${styles.agentAvatar} ${styles[`avatar_${agent.color}`]}`} aria-hidden="true">{agent.name.slice(0, 1)}</span>
+                  <AgentAvatar agent={agent} className={styles.agentAvatar} />
                   <span className={styles.agentText}><strong>{agent.name}</strong><small>{agent.role}</small><em>{latest?.title || agent.summary}</em></span>
                   <span className={`${styles.agentStatus} ${itemProfile?.enabled ? styles.online : styles.offline}`} title={itemProfile?.enabled ? "Ativo" : "Desativado"} />
                 </button>
               );
             })}
           </div>
-          <div className={styles.railFooter}><ShieldCheck size={14} /><span>As conversas são privadas por usuário.</span></div>
         </aside>
 
         <div className={styles.chatColumn}>
@@ -702,11 +709,11 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
             <>
               <header className={styles.chatHeader}>
                 <button type="button" className={styles.mobileAgentButton} onClick={() => setNarrowAgentListOpen((value) => !value)} aria-expanded={narrowAgentListOpen}>
-                  <span className={`${styles.agentAvatar} ${styles[`avatar_${activeAgent.color}`]}`}>{activeAgent.name.slice(0, 1)}</span>
+                  <AgentAvatar agent={activeAgent} className={styles.agentAvatar} />
                   <span>{activeAgent.name}<small>{activeAgent.role}</small></span><ChevronDown size={15} />
                 </button>
                 <div className={styles.chatIdentity}>
-                  <span className={`${styles.agentAvatar} ${styles[`avatar_${activeAgent.color}`]}`}>{activeAgent.name.slice(0, 1)}</span>
+                  <AgentAvatar agent={activeAgent} className={styles.agentAvatar} />
                   <div><strong>{activeAgent.name}</strong><span>{activeAgent.role} · atendimento interno para {displayName}</span></div>
                 </div>
                 <div className={styles.headerActions}>
@@ -727,7 +734,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
               <div className={styles.messageScroll} ref={scrollRef} aria-live="polite">
                 {messages.length === 0 && (
                   <motion.div className={styles.welcome} initial={reducedMotion ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28 }}>
-                    <span className={`${styles.welcomeAvatar} ${styles[`avatar_${activeAgent.color}`]}`}>{activeAgent.name.slice(0, 1)}</span>
+                    <AgentAvatar agent={activeAgent} className={styles.welcomeAvatar} />
                     <span className={styles.kicker}>{activeAgent.role.toUpperCase()}</span>
                     <h2>Como posso ajudar?</h2>
                     <p>{activeAgent.summary} O agente só consulta dados permitidos para sua função.</p>
@@ -739,7 +746,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
                   <AnimatePresence initial={false}>
                     {messages.map((message) => (
                       <motion.article key={message.id} layout initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className={`${styles.messageRow} ${message.role === "user" ? styles.userRow : styles.agentRow}`}>
-                        {message.role === "assistant" && <span className={`${styles.messageAvatar} ${styles[`avatar_${activeAgent.color}`]}`}>{activeAgent.name.slice(0, 1)}</span>}
+                        {message.role === "assistant" && <AgentAvatar agent={activeAgent} className={styles.messageAvatar} />}
                         <div className={`${styles.bubble} ${message.role === "user" ? styles.userBubble : styles.agentBubble}`}>
                           {message.content && <p>{message.content}</p>}
                           {!!message.attachments.length && <div className={styles.messageFiles}>{message.attachments.map((attachment, index) => <FileCard key={`${message.id}-${index}`} attachment={attachment} />)}</div>}
@@ -770,7 +777,7 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
                   <textarea ref={textareaRef} value={draft} onChange={(event) => setDraft(event.target.value.slice(0, 4000))} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder={`Mensagem para ${activeAgent.name}...`} rows={1} maxLength={4000} disabled={busy || !enabled} aria-label="Mensagem para o agente" />
                   <button type="submit" className={styles.sendButton} disabled={busy || (!draft.trim() && !draftFiles.length) || !enabled} aria-label="Enviar mensagem" title="Enviar mensagem"><Send size={17} /></button>
                 </div>
-                <div className={styles.composerFooter}><span><ShieldCheck size={13} />As consultas respeitam suas permissões. A IA não recebe acesso geral ao banco.</span><small>{draft.length}/4000</small></div>
+                <div className={styles.composerFooter}><small>{draft.length}/4000</small></div>
               </form>
             </>
           ) : <div className={styles.emptyState}>Nenhum agente disponível.</div>}
@@ -782,12 +789,12 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
               <motion.button type="button" className={styles.profileScrim} aria-label="Fechar perfil" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setProfileOpen(false)} />
               <motion.aside className={styles.profilePanel} initial={reducedMotion ? false : { x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={reducedMotion ? { opacity: 0 } : { x: 24, opacity: 0 }} transition={{ duration: 0.22, ease: "easeOut" }} aria-label={`Perfil de ${activeAgent.name}`}>
                 <div className={styles.profileHeader}>
-                  <div><span className={`${styles.agentAvatar} ${styles[`avatar_${activeAgent.color}`]}`}>{activeAgent.name.slice(0, 1)}</span><div><span className={styles.kicker}>PERFIL DO AGENTE</span><h2>{activeAgent.name}</h2><small>{activeAgent.role}</small></div></div>
+                  <div><AgentAvatar agent={activeAgent} className={styles.agentAvatar} /><div><span className={styles.kicker}>PERFIL DO AGENTE</span><h2>{activeAgent.name}</h2><small>{activeAgent.role}</small></div></div>
                   <button type="button" className={styles.iconButton} onClick={() => setProfileOpen(false)} aria-label="Fechar perfil"><X size={17} /></button>
                 </div>
                 <div className={styles.profileScroll}>
                   <section className={styles.profileStateRow}><div><strong>Agente ativo</strong><span>{activeProfile.enabled ? "Disponível no painel" : "Desativado para novas conversas"}</span></div><RoutineToggle enabled={activeProfile.enabled} disabled={!data.canConfigure || Boolean(savingProfile)} label={`Ativar ou desativar ${activeAgent.name}`} onClick={() => void updateProfile("agent_enabled", !activeProfile.enabled)} /></section>
-                  {!data.canConfigure && <p className={styles.permissionHint}>Apenas quem tem permissão de escrita em Assistentes pode alterar configurações.</p>}
+                  {!data.canConfigure && <p className={styles.permissionHint}>Apenas quem tem permissão de escrita em Agents pode alterar configurações.</p>}
                   {renderList("Objetivos", activeProfile.objectives, "Ainda não há objetivos definidos. Peça um ajuste pelo chat.", <BadgeCheck size={15} />)}
                   {renderList("O que sabe", [...activeAgent.capabilities, ...activeProfile.knowledge], "Conhecimento cadastrado aparecerá aqui.", <BrainCircuit size={15} />)}
                   {renderList("Combinados", activeProfile.agreements, "Nenhum combinado salvo. Você pode propor um pelo chat.", <ShieldCheck size={15} />)}
@@ -817,7 +824,6 @@ export function AgentsView({ member }: { session: Session; member: PanelMember }
           )}
         </AnimatePresence>
       </section>
-      <p className={styles.privacyNote}>Fotos, quadros de vídeo e áudio anexados são enviados ao serviço de IA configurado pela oficina para análise. Envie apenas material necessário ao atendimento interno.</p>
     </div>
   );
 }
