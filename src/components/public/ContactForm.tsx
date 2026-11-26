@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { sendPublicAnalyticsAction } from "@/lib/publicAnalytics";
 
 const NAME_MAX = 100;
 const EMAIL_MAX = 254;
@@ -91,6 +92,7 @@ export function ContactForm() {
       if (!response.ok) {
         throw new Error(json.error || "Não foi possível enviar sua mensagem agora.");
       }
+      sendPublicAnalyticsAction("contact_form_sent");
       setName("");
       setEmail("");
       setMessage("");
@@ -108,7 +110,7 @@ export function ContactForm() {
 
   return (
     <form
-      className="contact-form"
+      className="contact-form ph-no-capture"
       onSubmit={(e) => void handleSubmit(e)}
       aria-busy={sending}
     >

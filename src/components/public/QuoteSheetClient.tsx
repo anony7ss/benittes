@@ -364,7 +364,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
 
   return (
     <div
-      className={`admin-root ${dark ? "dark" : "admin-login-light"}`}
+      className={`admin-root ph-no-capture ${dark ? "dark" : "admin-login-light"}`}
       style={{
         display: "block",
         minHeight: "100dvh",

@@ -74,7 +74,7 @@ export function CookieBanner({
       </div>
 
       <p className="cookie-banner-text">
-        Usamos cookies essenciais para o funcionamento do site. Cookies opcionais só são ativados após o seu consentimento.
+        Usamos recursos essenciais para o site funcionar. A medição de navegação e as gravações de sessão são opcionais e ficam desativadas até você escolher.
       </p>
 
       {customizing && (
@@ -100,14 +100,14 @@ export function CookieBanner({
           </label>
           <label className="cookie-option">
             <input
-              id="cookie-performance"
+              id="cookie-analytics"
               type="checkbox"
               checked={analytics}
               onChange={(e) => setAnalytics(e.target.checked)}
             />
             <span>
-              <strong>Desempenho</strong>
-              <small>Ajuda a medir estabilidade e melhorar o site.</small>
+              <strong>Análises e gravações</strong>
+              <small>PostHog mede páginas e ações principais; grava sessões apenas em páginas informativas, sem formulários ou orçamento.</small>
             </span>
           </label>
         </div>

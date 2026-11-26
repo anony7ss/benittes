@@ -1907,21 +1907,23 @@ details[open] .expand-symbol {
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
 }
 .cookie-btn-secondary {
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--blue);
+  color: var(--blue);
 }
 .cookie-btn-secondary:hover {
-  border-color: var(--ink);
+  background: #f3f6fa;
+  border-color: var(--blue);
 }
 .cookie-btn-primary {
-  background: var(--blue);
+  background: #ffffff;
   border: 1px solid var(--blue);
-  color: #ffffff;
+  color: var(--blue);
 }
 .cookie-btn-primary:hover {
-  background: #163d6b;
+  background: #f3f6fa;
   border-color: #163d6b;
+  color: #163d6b;
 }
 .foot-cookie-btn {
   background: transparent;

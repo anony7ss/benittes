@@ -2,17 +2,36 @@ import { randomUUID } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthCookieOptions, hasAuthCookie } from "./lib/supabaseAuthCookie";
+import { analyticsPathFor, isReplayEligiblePath } from "./lib/analyticsPaths";
+import { resolvePostHogEndpoints } from "./lib/posthogConfig";
 
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
+  const pathname = request.nextUrl.pathname;
+  const isAdminRequest =
+    pathname === "/painel" ||
+    pathname.startsWith("/painel/") ||
+    pathname === "/api/admin" ||
+    pathname.startsWith("/api/admin/");
+  const analyticsSurface = Boolean(
+    !isAdminRequest &&
+      process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN?.trim() &&
+      resolvePostHogEndpoints(process.env.NEXT_PUBLIC_POSTHOG_HOST) &&
+      analyticsPathFor(pathname),
+  );
+  const replaySurface = analyticsSurface && isReplayEligiblePath(pathname);
+  const posthogEndpoints = analyticsSurface
+    ? resolvePostHogEndpoints(process.env.NEXT_PUBLIC_POSTHOG_HOST)
+    : null;
   const policy = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${replaySurface && posthogEndpoints ? ` ${posthogEndpoints.assetsHost}` : ""}${isDev ? " 'unsafe-eval'" : ""}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: https:",
     "font-src 'self' data:",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${isDev ? " ws://localhost:* ws://127.0.0.1:* ws://192.168.0.103:*" : ""}`,
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co${posthogEndpoints ? ` ${posthogEndpoints.apiHost} ${posthogEndpoints.assetsHost}` : ""}${isDev ? " ws://localhost:* ws://127.0.0.1:* ws://192.168.0.103:*" : ""}`,
+    ...(replaySurface ? ["worker-src 'self' blob: data:"] : []),
     "frame-src 'self' https://maps.google.com https://www.google.com",
     "media-src 'self' data: blob: https:",
     "object-src 'none'",
@@ -34,13 +53,6 @@ export async function proxy(request: NextRequest) {
     process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     "";
-  const pathname = request.nextUrl.pathname;
-  const isAdminRequest =
-    pathname === "/painel" ||
-    pathname.startsWith("/painel/") ||
-    pathname === "/api/admin" ||
-    pathname.startsWith("/api/admin/");
-
   if (isAdminRequest && supabaseUrl && publishableKey && hasAuthCookie(request)) {
     const supabase = createServerClient(supabaseUrl, publishableKey, {
       cookieOptions: getAuthCookieOptions(),

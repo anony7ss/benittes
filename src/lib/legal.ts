@@ -132,8 +132,17 @@ export const LEGAL_DOCUMENTS: Record<LegalDocKey, LegalDocument> = {
         ],
       },
       {
+        id: "analise-de-navegacao",
+        title: "4. Análise de navegação e gravações de sessão",
+        paragraphs: [
+          "A análise de uso é opcional e só começa depois que você ativa a categoria “Análises e gravações” no banner de cookies. Usamos o PostHog Cloud para medir páginas visitadas, ações principais, sequência de navegação e, em uma amostra de páginas institucionais, gravações da interação com a interface.",
+          "Os registros usam um identificador pseudônimo do navegador/sessão e informações técnicas, como navegador e dispositivo. As gravações ficam limitadas a páginas públicas informativas. Não gravamos a página de contato nem o portal de orçamento; nesse portal, quando autorizado, registramos somente uma visualização com o caminho do token removido. Não enviamos ao PostHog o conteúdo de formulários, dados de contato, placa, diagnóstico, valores ou decisões do orçamento.",
+          "O PostHog Cloud recebe os eventos na região configurada para o projeto, que pode estar fora do Brasil. A retenção segue as configurações da conta e do serviço. Você pode revogar a autorização em “Gerenciar cookies” no rodapé; a revogação interrompe novas coletas. Para solicitar informações ou exclusão de registros anteriores, use os canais de privacidade desta política.",
+        ],
+      },
+      {
         id: "compartilhamento",
-        title: "4. Compartilhamento com terceiros e canais externos",
+        title: "5. Compartilhamento com terceiros e canais externos",
         paragraphs: [
           "Não vendemos nem cedemos dados pessoais para fins publicitários. O compartilhamento ocorre somente quando estritamente necessário para a operação:",
         ],
@@ -145,7 +154,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocKey, LegalDocument> = {
       },
       {
         id: "retencao-seguranca",
-        title: "5. Armazenamento, segurança e indisponibilidade",
+        title: "6. Armazenamento, segurança e indisponibilidade",
         paragraphs: [
           "Adotamos medidas técnicas e administrativas compatíveis com o porte da operação para proteger os dados contra acesso não autorizado, perda ou alteração indevida.",
           "Os dados são mantidos pelo tempo necessário ao cumprimento das finalidades de atendimento, garantia de serviços e obrigações legais. Eventual indisponibilidade temporária do site (inclusive por 48 horas ou mais) não compromete a integridade dos registros internos da oficina.",
@@ -153,7 +162,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocKey, LegalDocument> = {
       },
       {
         id: "direitos-titular",
-        title: "6. Direitos do titular e canal de atendimento",
+        title: "7. Direitos do titular e canal de atendimento",
         paragraphs: [
           "Nos termos da LGPD, o titular pode solicitar a qualquer momento a confirmação da existência de tratamento, acesso, correção de dados incompletos ou desatualizados, eliminação (quando aplicável) ou revogação de consentimento.",
           "Para exercer seus direitos ou tirar dúvidas sobre privacidade, entre em contato pelos canais oficiais disponíveis na página de Contato ou pelo WhatsApp da oficina.",
@@ -184,26 +193,34 @@ export const LEGAL_DOCUMENTS: Record<LegalDocKey, LegalDocument> = {
         id: "cookies-essenciais",
         title: "2. Cookies e dados estritamente necessários",
         paragraphs: [
-          "Este site prioriza a privacidade e evita rastreamento invasivo. Utilizamos apenas mecanismos técnicos essenciais para o funcionamento correto das páginas:",
+          "Esses mecanismos são usados para manter o site seguro e permitir o funcionamento solicitado. Preferências e análises são opcionais e têm escolhas próprias no banner:",
         ],
         bullets: [
-          "Preferências visuais: memorização de tema claro ou escuro na ficha de acompanhamento do cliente e no painel interno.",
           "Autenticação e segurança: cookies de sessão utilizados exclusivamente por colaboradores autorizados ao acessar o painel administrativo.",
           "Estabilidade de navegação: parâmetros técnicos temporários para proteção contra requisições abusivas.",
         ],
       },
       {
-        id: "cookies-terceiros",
-        title: "3. Publicidade e serviços de terceiros",
+        id: "analises-posthog",
+        title: "3. Análises e gravações opcionais (PostHog)",
         paragraphs: [
-          "Não utilizamos redes de anúncios comportamentais nem vendemos perfis de navegação. Ao acessar links externos (como WhatsApp, Instagram ou mapas), esses serviços podem aplicar suas próprias políticas de cookies fora do domínio da Benittes.",
+          "A categoria “Análises e gravações” começa desativada e só é ativada quando você a seleciona. Com a autorização, o PostHog Cloud mede páginas, ações principais e caminhos de navegação, além de gravar uma amostra de sessões em páginas públicas informativas para entendermos como a interface é usada.",
+          "Não gravamos o formulário de contato nem o portal de orçamento. A visita ao portal, se autorizada, é registrada com o token substituído por um caminho genérico; conteúdo de formulário, placa, diagnóstico, valores e ações de aprovação/recusa não são enviados como eventos. O PostHog pode usar cookies e armazenamento local para um identificador pseudônimo e uma sessão. A região de processamento é a selecionada no projeto PostHog e pode estar fora do Brasil.",
+          "Você pode desativar a categoria a qualquer momento em “Gerenciar cookies”, no rodapé. A revogação impede novas coletas; os registros anteriores seguem a retenção configurada no serviço e podem ser objeto de solicitação pelos canais da Política de Privacidade.",
+        ],
+      },
+      {
+        id: "cookies-terceiros",
+        title: "4. Publicidade e serviços de terceiros",
+        paragraphs: [
+          "Não utilizamos redes de anúncios comportamentais nem vendemos perfis de navegação. Além do PostHog, ao acessar links externos (como WhatsApp, Instagram ou mapas), esses serviços podem aplicar suas próprias políticas fora do domínio da Benittes.",
         ],
       },
       {
         id: "gerenciar-cookies",
-        title: "4. Como gerenciar ou bloquear cookies",
+        title: "5. Como gerenciar ou bloquear cookies",
         paragraphs: [
-          "Você pode visualizar, apagar ou bloquear cookies a qualquer momento nas configurações do seu navegador (Chrome, Edge, Firefox ou Safari). Observe que a desativação de cookies ou armazenamento estritamente necessários pode impedir o salvamento de preferências visuais ou o acesso à área restrita da equipe.",
+          "Você pode rever sua escolha gratuitamente pelo botão “Gerenciar cookies” no rodapé ou visualizar, apagar e bloquear cookies nas configurações do navegador (Chrome, Edge, Firefox ou Safari). Cookies e armazenamento necessários podem ser indispensáveis para segurança e acesso à área restrita da equipe.",
         ],
         callout:
           "Dica: na maioria dos navegadores, basta acessar Configurações > Privacidade e segurança > Cookies para limpar ou limitar o armazenamento por site.",

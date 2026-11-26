@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "@/styles/global.css";
 import { oficina } from "@/config/oficina";
+import { PostHogAnalytics } from "@/components/analytics/PostHogAnalytics";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL;
 
@@ -23,7 +24,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>
+        <PostHogAnalytics />
+        {children}
+      </body>
     </html>
   );
 }

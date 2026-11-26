@@ -5,7 +5,7 @@ export type CookieConsent = {
   decidedAt: string;
 };
 
-const STORAGE_KEY = "benittes-cookie-consent";
+export const COOKIE_CONSENT_STORAGE_KEY = "benittes-cookie-consent";
 const COOKIE_NAME = "benittes_consent";
 export const CONSENT_EVENT = "benittes:cookie-consent";
 export const OPEN_CONSENT_EVENT = "benittes:open-cookie-banner";
@@ -13,7 +13,7 @@ export const OPEN_CONSENT_EVENT = "benittes:open-cookie-banner";
 export function getCookieConsent(): CookieConsent | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(COOKIE_CONSENT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<CookieConsent>;
     if (typeof parsed.preferences !== "boolean" || typeof parsed.analytics !== "boolean") {
@@ -47,7 +47,7 @@ export function saveCookieConsent(choice: { preferences: boolean; analytics: boo
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      window.localStorage.setItem(COOKIE_CONSENT_STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore storage errors
     }
