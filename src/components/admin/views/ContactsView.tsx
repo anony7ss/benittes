@@ -150,7 +150,7 @@ export function ContactsView() {
         </p>
       )}
 
-      <div className="admin-toolbar">
+      <div className="admin-toolbar admin-contacts-toolbar">
         <div className="admin-filter-pills">
           {FILTERS.map((item) => (
             <button
@@ -283,7 +283,7 @@ export function ContactsView() {
 
                   <button
                     type="button"
-                    className="admin-ghost-danger"
+                    className="admin-secondary"
                     disabled={busyId === selected.id}
                     onClick={() => void handleDelete(selected)}
                   >

@@ -1508,6 +1508,10 @@ html.dark .admin-stat-card:hover {
   flex-wrap: wrap;
 }
 
+.admin-contacts-toolbar {
+  justify-content: flex-start;
+}
+
 .admin-toolbar-right {
   margin-left: auto;
 }
@@ -2814,8 +2818,7 @@ html.dark .admin-stat-card:hover {
     margin-top: 0 !important;
   }
   .admin-inbox-actions > .admin-primary,
-  .admin-inbox-actions > .admin-secondary,
-  .admin-inbox-actions > .admin-ghost-danger {
+  .admin-inbox-actions > .admin-secondary {
     width: 100%;
     min-width: 0;
     height: auto;
