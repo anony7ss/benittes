@@ -5,6 +5,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { FileText, Pencil, Plus, Receipt, RefreshCw, Search, ShoppingBag, Trash2, TrendingUp, X } from "lucide-react";
 import { type PanelRecord } from "../../../lib/supabase";
 import { mergeVehiclePriceProfile, resolveServicePrice } from "../../../lib/servicePricing";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
 import { AreaTrendChart, DonutBreakdownChart } from "../AdminCharts";
 import { asText, dateText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
@@ -356,7 +357,6 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">BALCÃO E COMANDAS</p>
           <h1>Vendas</h1>
         </div>
         <div className="admin-title-actions">
@@ -519,25 +519,14 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                           NF #{String((detail(row, "fiscal") as Record<string, unknown>).numero || "emitida")}
                         </span>
                       )}
-                      <button
-                        type="button"
-                        className="admin-icon-btn"
-                        title="Emitir Nota Fiscal (NF-e / NFS-e / NFC-e)"
-                        onClick={() => openFiscalModal(row)}
-                      >
-                        <FileText size={14} />
-                      </button>
-                      <button type="button" className="admin-icon-btn" title="Editar" onClick={() => openEdit(row)}>
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        className="admin-icon-btn danger"
-                        title="Excluir"
-                        onClick={() => void removeRecord(row)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <AdminActionMenu
+                        label={`Ações da venda ${row.title}`}
+                        actions={[
+                          { label: "Emitir nota fiscal", icon: <FileText size={14} />, onSelect: () => openFiscalModal(row) },
+                          { label: "Editar venda", icon: <Pencil size={14} />, onSelect: () => openEdit(row), separatorBefore: true },
+                          { label: "Excluir venda", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true },
+                        ]}
+                      />
                     </div>
                   </td>
                 </tr>

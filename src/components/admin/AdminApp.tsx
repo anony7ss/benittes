@@ -321,7 +321,6 @@ export function AdminApp({ section }: { section?: string }) {
       <div className="admin-root">
         <main className="admin-login-page">
           <div className="admin-login-form">
-            <p className="admin-kicker">BENITTES · ACESSO RESTRITO</p>
             <h1>Acesso pendente ou não autorizado</h1>
             <p className="admin-login-sub">
               {memberError ||

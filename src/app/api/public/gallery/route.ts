@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       .eq("is_published", true)
       .order("gallery_order", { ascending: true })
       .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw error;
 

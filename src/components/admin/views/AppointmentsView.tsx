@@ -1,24 +1,29 @@
 "use client";
 
 import { SkeletonList } from "../Skeletons";
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type DragEvent as ReactDragEvent, type FormEvent } from "react";
 import {
+  Check,
   CalendarDays,
+  Car,
   ChevronLeft,
   ChevronRight,
-  Clock,
   LayoutGrid,
   List,
+  MessageCircle,
+  MoreHorizontal,
   Pencil,
   Plus,
   Search,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
 import { mergeVehiclePriceProfile } from "../../../lib/servicePricing";
+import { confirmModal } from "../ConfirmDialog";
 import { AdminStatusBadge } from "../StatusBadge";
-import { asText, dateText, detail, todayIso, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
+import { asText, dateText, detail, todayIso, consumeVehicleActionPrefill, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
   ServicePicker,
@@ -62,12 +67,166 @@ const emptyForm = (defaultDate: string): FormState => ({
 type ViewMode = "calendar" | "week" | "list";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const FULL_WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
 function toIsoDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function formatWeekRange(startIso: string, endIso: string): string {
+  const start = new Date(`${startIso}T12:00:00`);
+  const end = new Date(`${endIso}T12:00:00`);
+  const startMonthYear = start.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const endMonthYear = end.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    return `${start.getDate()}–${end.getDate()} de ${endMonthYear}`;
+  }
+
+  return `${start.getDate()} de ${startMonthYear} – ${end.getDate()} de ${endMonthYear}`;
+}
+
+function appointmentState(status: string) {
+  const normalized = status.toLowerCase().replaceAll(" ", "_");
+  if (["cancelado", "cancelada"].includes(normalized)) return { label: "Cancelado", tone: "cancelled" };
+  if (["concluido", "concluida", "finalizado", "finalizada"].includes(normalized)) return { label: "Concluído", tone: "completed" };
+  if (["em_andamento"].includes(normalized)) return { label: "Em andamento", tone: "active" };
+  if (["confirmado", "confirmada", "aprovado", "aprovada", "confirmed"].includes(normalized)) return { label: "Confirmado", tone: "confirmed" };
+  return { label: "Pendente", tone: "pending" };
+}
+
+function appointmentWhatsAppUrl(row: PanelRecord): string | null {
+  const digits = (row.phone ?? "").replace(/\D/g, "");
+  if (digits.length < 10 || digits.length > 13) return null;
+
+  const phone = digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  const customer = row.customer_name?.trim() || "cliente";
+  const date = dateText(detail(row, "starts_at"));
+  const time = String(detail(row, "horario") ?? "").trim();
+  const text = `Olá, ${customer}! Aqui é da Benittes Oficina Mecânica. Estou entrando em contato sobre seu agendamento de ${row.title || "serviço"}${date !== "—" ? ` em ${date}` : ""}${time ? ` às ${time}` : ""}.`;
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+}
+
+function AppointmentCalendarCard({
+  row,
+  onClick,
+  onDragStart,
+}: {
+  row: PanelRecord;
+  onClick: () => void;
+  onDragStart: (event: ReactDragEvent<HTMLButtonElement>) => void;
+}) {
+  const time = asText(detail(row, "horario"));
+  const service = row.title?.trim() || "Serviço não informado";
+  const customer = row.customer_name?.trim() || "Cliente não informado";
+  const plate = row.vehicle?.trim().toUpperCase();
+  const state = appointmentState(row.status);
+  const label = `${time} · ${service} · Cliente: ${customer}${plate ? ` · Placa: ${plate}` : ""}`;
+
+  return (
+    <button
+      type="button"
+      className={`admin-calendar-event ${row.status} admin-data-enter`}
+      draggable={row.status !== "cancelado"}
+      onDragStart={onDragStart}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      title={label}
+      aria-label={label}
+    >
+      <span className="admin-calendar-event-time">{time}</span>
+      <strong className="admin-calendar-event-title">{service}</strong>
+      <span className="admin-calendar-event-context">
+        <span>{customer}</span>
+        {plate && <span>Placa {plate}</span>}
+        <span className={`admin-calendar-event-state ${state.tone}`}>{state.label}</span>
+      </span>
+    </button>
+  );
+}
+
+function AppointmentDayColumn({
+  day,
+  appointments,
+  today,
+  selected,
+  addActive,
+  dragOver,
+  onSelect,
+  onCreate,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onEdit,
+  onAppointmentDragStart,
+}: {
+  day: { iso: string; label: string; day: number };
+  appointments: PanelRecord[];
+  today: string;
+  selected: boolean;
+  addActive: boolean;
+  dragOver: boolean;
+  onSelect: (iso: string) => void;
+  onCreate: (iso: string) => void;
+  onDragOver: (iso: string) => void;
+  onDragLeave: (event: ReactDragEvent<HTMLDivElement>, iso: string) => void;
+  onDrop: (event: ReactDragEvent<HTMLDivElement>, iso: string) => void;
+  onEdit: (row: PanelRecord) => void;
+  onAppointmentDragStart: (event: ReactDragEvent<HTMLButtonElement>, row: PanelRecord) => void;
+}) {
+  return (
+    <div
+      className={`admin-week-col ${day.iso === today ? "today" : ""} ${selected ? "selected" : ""} ${addActive ? "add-active" : ""} ${dragOver ? "drag-over" : ""}`}
+      onClick={() => onSelect(day.iso)}
+      onDragOver={(event) => {
+        event.preventDefault();
+        onDragOver(day.iso);
+      }}
+      onDragLeave={(event) => onDragLeave(event, day.iso)}
+      onDrop={(event) => onDrop(event, day.iso)}
+    >
+      <div className="admin-week-day-header">
+        <div className="admin-week-day-top">
+          <div className="admin-week-day-label">
+            <span>{day.label}</span>
+            <strong className="admin-week-day-number">{day.day}</strong>
+          </div>
+          <button
+            type="button"
+            className="admin-icon-btn admin-calendar-add-button"
+            style={{ width: 24, height: 24 }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCreate(day.iso);
+            }}
+            title={`Agendar em ${dateText(day.iso)}`}
+            aria-label={`Agendar em ${dateText(day.iso)}`}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+      </div>
+      <span className="admin-week-day-count">
+        {appointments.length === 0
+          ? "Sem horários"
+          : `${appointments.length} ${appointments.length === 1 ? "agendamento" : "agendamentos"}`}
+      </span>
+      {appointments.map((appointment) => (
+        <AppointmentCalendarCard
+          key={appointment.id}
+          row={appointment}
+          onClick={() => onEdit(appointment)}
+          onDragStart={(event) => onAppointmentDragStart(event, appointment)}
+        />
+      ))}
+    </div>
+  );
 }
 
 export function AppointmentsView({ session }: { session: { user: { id: string } } }) {
@@ -90,8 +249,38 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
   const [query, setQuery] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PanelRecord | null>(null);
+  const [viewing, setViewing] = useState<PanelRecord | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [actionMenuPlacement, setActionMenuPlacement] = useState<"above" | "below">("below");
   const [form, setForm] = useState<FormState>(() => emptyForm(todayIso()));
+  const [customService, setCustomService] = useState(false);
+  const [customClient, setCustomClient] = useState(false);
+  const [customVehicle, setCustomVehicle] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  const [addButtonDate, setAddButtonDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!openActionMenuId) return;
+
+    function closeMenuOnOutsideClick(event: PointerEvent) {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-appointment-actions]")) {
+        setOpenActionMenuId(null);
+      }
+    }
+
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenActionMenuId(null);
+    }
+
+    document.addEventListener("pointerdown", closeMenuOnOutsideClick);
+    document.addEventListener("keydown", closeMenuOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenuOnOutsideClick);
+      document.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [openActionMenuId]);
 
   const today = todayIso();
   const serviceVehicleProfile = mergeVehiclePriceProfile(
@@ -159,19 +348,128 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
       const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
       return {
         iso: toIsoDate(d),
-        label: WEEKDAYS[d.getDay()],
+        label: FULL_WEEKDAYS[d.getDay()],
         day: d.getDate(),
       };
     });
   }, [selectedDate, today]);
 
+  async function moveAppointment(row: PanelRecord, targetDate: string) {
+    const currentDate = String(detail(row, "starts_at") ?? "").slice(0, 10);
+    if (!currentDate || currentDate === targetDate) return;
+
+    const time = String(detail(row, "horario") ?? "09:00").slice(0, 5);
+    const conflicts = rows.filter((candidate) => {
+      if (candidate.id === row.id || candidate.status === "cancelado") return false;
+      return (
+        String(detail(candidate, "starts_at") ?? "").slice(0, 10) === targetDate &&
+        String(detail(candidate, "horario") ?? "").slice(0, 5) === time
+      );
+    }).length;
+
+    if (conflicts > 0) {
+      const accepted = await confirmModal({
+        title: "Possível conflito de horário",
+        message: `Já existe${conflicts === 1 ? " um agendamento" : `m ${conflicts} agendamentos`} começando às ${time} nesse dia. Confira se há box e equipe disponíveis antes de mover.`,
+        confirmLabel: "Mover mesmo assim",
+        cancelLabel: "Cancelar",
+        danger: false,
+      });
+      if (!accepted) return;
+    }
+
+    const existingDetails =
+      row.details && typeof row.details === "object"
+        ? (row.details as Record<string, unknown>)
+        : {};
+
+    try {
+      const updated = await patchRecord(row.id, {
+        details: { ...existingDetails, starts_at: targetDate, horario: time },
+      });
+      if (!updated) {
+        setError("Não foi possível mover o agendamento. Tente novamente.");
+        return;
+      }
+      setSelectedDate(targetDate);
+      if (viewMode === "calendar") {
+        const movedDate = new Date(`${targetDate}T12:00:00`);
+        setMonthDate(new Date(movedDate.getFullYear(), movedDate.getMonth(), 1));
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível mover o agendamento.");
+    }
+  }
+
+  function appointmentDragStart(event: ReactDragEvent<HTMLButtonElement>, row: PanelRecord) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", row.id);
+  }
+
+  function handleAppointmentDrop(event: ReactDragEvent<HTMLDivElement>, targetDate: string) {
+    event.preventDefault();
+    setDragOverDate(null);
+    const rowId = event.dataTransfer.getData("text/plain");
+    const row = rows.find((appointment) => appointment.id === rowId);
+    if (row) void moveAppointment(row, targetDate);
+  }
+
+  function handleAppointmentDragLeave(event: ReactDragEvent<HTMLDivElement>, date: string) {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+      setDragOverDate((current) => current === date ? null : current);
+    }
+  }
+
+  function selectCalendarDay(date: string) {
+    setSelectedDate(date);
+    setAddButtonDate(date);
+  }
+
+  function createAppointmentForDate(date: string) {
+    selectCalendarDay(date);
+    openCreate(date);
+  }
+
+  function moveSelectedWeek(offsetDays: number) {
+    const nextDate = new Date(`${selectedDate || today}T12:00:00`);
+    nextDate.setDate(nextDate.getDate() + offsetDays);
+    const iso = toIsoDate(nextDate);
+    selectCalendarDay(iso);
+    setMonthDate(new Date(nextDate.getFullYear(), nextDate.getMonth(), 1));
+  }
+
   function openCreate(dateOverride?: string) {
+    setOpenActionMenuId(null);
+    setViewing(null);
+    setRescheduling(false);
     setEditing(null);
+    setCustomService(false);
+    setCustomClient(false);
+    setCustomVehicle(false);
     setForm(emptyForm(dateOverride || selectedDate || todayIso()));
     setModalOpen(true);
   }
 
+  useEffect(() => {
+    const prefill = consumeVehicleActionPrefill();
+    if (!prefill) return;
+    openCreate();
+    setForm((current) => ({
+      ...current,
+      vehicle: prefill.plate,
+      customer_name: prefill.customerName,
+      phone: prefill.phone,
+      marca: prefill.make,
+      modelo: prefill.model,
+      ano: prefill.year,
+    }));
+  }, []);
+
   function openEdit(row: PanelRecord) {
+    setOpenActionMenuId(null);
+    setViewing(null);
+    setRescheduling(false);
     setEditing(row);
     setForm({
       title: row.title ?? "",
@@ -190,9 +488,22 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
     setModalOpen(true);
   }
 
+  function openReschedule(row: PanelRecord) {
+    openEdit(row);
+    setRescheduling(true);
+  }
+
+  function openDetails(row: PanelRecord) {
+    setOpenActionMenuId(null);
+    setViewing(row);
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!form.title.trim()) return;
+    if (!form.title.trim()) {
+      setError("Informe o serviço para criar o agendamento.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -215,16 +526,18 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
           ano: form.ano || null,
         },
       });
-      await ensureClientAndVehicle({
-        userId: session.user.id,
-        clients,
-        vehicles,
-        customerName: form.customer_name,
-        phone: form.phone,
-        vehicle: form.vehicle,
-        vehicleDetails: { marca: form.marca, modelo: form.modelo, ano: form.ano },
-        reload: reloadCatalog,
-      });
+      if (!rescheduling) {
+        await ensureClientAndVehicle({
+          userId: session.user.id,
+          clients,
+          vehicles,
+          customerName: form.customer_name,
+          phone: form.phone,
+          vehicle: form.vehicle,
+          vehicleDetails: { marca: form.marca, modelo: form.modelo, ano: form.ano },
+          reload: reloadCatalog,
+        });
+      }
       setModalOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Erro ao salvar agendamento.");
@@ -233,11 +546,12 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
     }
   }
 
+  const creatingNew = !editing && !rescheduling;
+
   return (
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">AGENDA DA OFICINA</p>
           <h1>Agendamentos</h1>
         </div>
         <div className="admin-title-actions">
@@ -323,10 +637,10 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
           {viewMode === "calendar" && (
             <div style={{ marginBottom: 24 }}>
               <div className="admin-calendar-head">
-                <div className="admin-calendar-title">
+                <div className="admin-calendar-title admin-calendar-month-title">
                   {monthDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div className="admin-calendar-month-controls">
                   <button
                     type="button"
                     className="admin-secondary"
@@ -345,7 +659,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     onClick={() => {
                       const now = new Date();
                       setMonthDate(new Date(now.getFullYear(), now.getMonth(), 1));
-                      setSelectedDate(today);
+                      selectCalendarDay(today);
                     }}
                   >
                     Hoje
@@ -377,41 +691,46 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                       key={cell.iso}
                       className={`admin-calendar-cell ${cell.inMonth ? "" : "muted"} ${
                         cell.iso === today ? "today" : ""
-                      } ${cell.iso === selectedDate ? "selected" : ""}`}
-                      onClick={() => setSelectedDate(cell.iso)}
+                      } ${cell.iso === selectedDate ? "selected" : ""} ${addButtonDate === cell.iso ? "add-active" : ""} ${dragOverDate === cell.iso ? "drag-over" : ""}`}
+                      onClick={() => selectCalendarDay(cell.iso)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setDragOverDate(cell.iso);
+                      }}
+                      onDragLeave={(event) => handleAppointmentDragLeave(event, cell.iso)}
+                      onDrop={(event) => handleAppointmentDrop(event, cell.iso)}
                     >
                       <div className="admin-calendar-day-row">
                         <span className="admin-calendar-day">{cell.day}</span>
                         <button
                           type="button"
-                          className="admin-icon-btn"
+                          className="admin-icon-btn admin-calendar-add-button"
                           style={{ width: 22, height: 22 }}
                           title={`Agendar em ${dateText(cell.iso)}`}
+                          aria-label={`Agendar em ${dateText(cell.iso)}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedDate(cell.iso);
-                            openCreate(cell.iso);
+                            createAppointmentForDate(cell.iso);
                           }}
                         >
                           <Plus size={12} />
                         </button>
                       </div>
+                      {dayRows.length > 0 && (
+                        <span className="admin-calendar-day-count" aria-label={`${dayRows.length} agendamentos`}>
+                          {dayRows.length}
+                        </span>
+                      )}
                       {dayRows.slice(0, 3).map((ev) => (
-                        <button
+                        <AppointmentCalendarCard
                           key={ev.id}
-                          type="button"
-                          className={`admin-calendar-event ${ev.status} admin-data-enter`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openEdit(ev);
-                          }}
-                          title={`${asText(detail(ev, "horario"))} · ${ev.title}`}
-                        >
-                          <strong>{asText(detail(ev, "horario"))}</strong> {ev.title}
-                        </button>
+                          row={ev}
+                          onClick={() => openEdit(ev)}
+                          onDragStart={(event) => appointmentDragStart(event, ev)}
+                        />
                       ))}
                       {dayRows.length > 3 && (
-                        <span style={{ fontSize: 10.5, color: "var(--admin-muted)", paddingLeft: 4 }}>
+                        <span className="admin-calendar-more-count" style={{ fontSize: 10.5, color: "var(--admin-muted)", paddingLeft: 4 }}>
                           +{dayRows.length - 3} mais
                         </span>
                       )}
@@ -426,18 +745,16 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
             <div style={{ marginBottom: 24 }}>
               <div className="admin-calendar-head">
                 <div className="admin-calendar-title">
-                  Semana de {dateText(weekDays[0].iso)}
+                  <span className="admin-week-range-label">
+                    {formatWeekRange(weekDays[0].iso, weekDays[6].iso)}
+                  </span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button
                     type="button"
                     className="admin-secondary"
                     style={{ height: 34, minHeight: 34, padding: "0 10px" }}
-                    onClick={() => {
-                      const d = new Date(`${selectedDate || today}T12:00:00`);
-                      d.setDate(d.getDate() - 7);
-                      setSelectedDate(toIsoDate(d));
-                    }}
+                    onClick={() => moveSelectedWeek(-7)}
                     aria-label="Semana anterior"
                   >
                     <ChevronLeft size={15} />
@@ -446,7 +763,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     type="button"
                     className="admin-secondary"
                     style={{ height: 34, minHeight: 34, padding: "0 12px" }}
-                    onClick={() => setSelectedDate(today)}
+                    onClick={() => selectCalendarDay(today)}
                   >
                     Hoje
                   </button>
@@ -454,11 +771,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     type="button"
                     className="admin-secondary"
                     style={{ height: 34, minHeight: 34, padding: "0 10px" }}
-                    onClick={() => {
-                      const d = new Date(`${selectedDate || today}T12:00:00`);
-                      d.setDate(d.getDate() + 7);
-                      setSelectedDate(toIsoDate(d));
-                    }}
+                    onClick={() => moveSelectedWeek(7)}
                     aria-label="Próxima semana"
                   >
                     <ChevronRight size={15} />
@@ -470,55 +783,22 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                 {weekDays.map((wd) => {
                   const dayRows = byDate.get(wd.iso) ?? [];
                   return (
-                    <div
+                    <AppointmentDayColumn
                       key={wd.iso}
-                      className={`admin-week-col ${wd.iso === today ? "today" : ""}`}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          paddingBottom: 6,
-                          borderBottom: "1px solid var(--admin-line)",
-                        }}
-                      >
-                        <strong style={{ fontSize: 12.5 }}>
-                          {wd.label} {wd.day}
-                        </strong>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          style={{ width: 24, height: 24 }}
-                          onClick={() => openCreate(wd.iso)}
-                          title={`Agendar em ${dateText(wd.iso)}`}
-                        >
-                          <Plus size={12} />
-                        </button>
-                      </div>
-                      {dayRows.length === 0 ? (
-                        <span style={{ fontSize: 11.5, color: "var(--admin-muted)" }}>
-                          Sem horários
-                        </span>
-                      ) : (
-                        dayRows.map((ev) => (
-                          <button
-                            key={ev.id}
-                            type="button"
-                            className={`admin-calendar-event ${ev.status} admin-data-enter`}
-                            onClick={() => openEdit(ev)}
-                            style={{ whiteSpace: "normal", display: "grid", gap: 2, padding: 8 }}
-                          >
-                            <strong>
-                              {asText(detail(ev, "horario"))} · {ev.title}
-                            </strong>
-                            <span style={{ fontSize: 10.5, color: "var(--admin-muted)" }}>
-                              {ev.customer_name || ev.vehicle || "Cliente"}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
+                      day={wd}
+                      appointments={dayRows}
+                      today={today}
+                      selected={wd.iso === selectedDate}
+                      addActive={addButtonDate === wd.iso}
+                      dragOver={dragOverDate === wd.iso}
+                      onSelect={selectCalendarDay}
+                      onCreate={createAppointmentForDate}
+                      onDragOver={setDragOverDate}
+                      onDragLeave={handleAppointmentDragLeave}
+                      onDrop={handleAppointmentDrop}
+                      onEdit={openEdit}
+                      onAppointmentDragStart={appointmentDragStart}
+                    />
                   );
                 })}
               </div>
@@ -546,107 +826,82 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                 {viewMode === "list" && showAll ? "esta busca" : dateText(selectedDate)}.
               </div>
             ) : (
-        <div style={{ display: "grid", gap: 12 }}>
+        <div className="admin-panel admin-appointment-list">
           {filtered.map((row) => {
-            const startsAt = detail(row, "starts_at");
             const horario = detail(row, "horario");
+            const status = appointmentState(row.status);
+            const customerName = row.customer_name?.trim();
+            const whatsappUrl = appointmentWhatsAppUrl(row);
             return (
-              <div key={row.id} className="admin-panel admin-data-enter">
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                          fontWeight: 700,
-                          fontSize: 13.5,
-                        }}
-                      >
-                        <Clock size={14} /> {asText(horario)}
-                      </span>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 5,
-                          fontSize: 12.5,
-                          color: "var(--admin-muted)",
-                        }}
-                      >
-                        <CalendarDays size={13} /> {dateText(startsAt)}
-                      </span>
-                      <AdminStatusBadge status={row.status} />
-                    </div>
-
-                    <strong style={{ fontSize: 15 }}>{row.title}</strong>
-
-                    <div style={{ fontSize: 13, color: "var(--admin-muted)", display: "flex", gap: 14, flexWrap: "wrap" }}>
-                      <span>Cliente: {asText(row.customer_name)}</span>
-                      <span>Veículo: {asText(row.vehicle)}</span>
-                      {row.phone && <span>Tel: {row.phone}</span>}
-                    </div>
-
-                    {row.description && (
-                      <p style={{ fontSize: 12.5, color: "var(--admin-muted)", marginTop: 2 }}>
-                        {row.description}
-                      </p>
-                    )}
+              <div key={row.id} className="admin-appointment-row admin-data-enter">
+                <div className="admin-appointment-time">
+                  <strong>{asText(horario)}</strong>
+                  <span className={`admin-appointment-status ${status.tone}`}>{status.label}</span>
+                </div>
+                <div className="admin-appointment-main">
+                  <strong className="admin-appointment-title">{row.title || "Serviço não informado"}</strong>
+                  <div className="admin-appointment-meta">
+                    <span><User size={12} /> {customerName || "Cliente não informado"}</span>
+                    {row.vehicle && <span><Car size={13} /> {row.vehicle}</span>}
                   </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    {row.status !== "em_andamento" && row.status !== "concluido" && (
-                      <button
-                        type="button"
-                        className="admin-secondary"
-                        onClick={() => void patchRecord(row.id, { status: "em_andamento" })}
-                      >
-                        Iniciar
-                      </button>
-                    )}
-                    {row.status !== "concluido" && (
-                      <button
-                        type="button"
-                        className="admin-secondary"
-                        onClick={() => void patchRecord(row.id, { status: "concluido" })}
-                      >
-                        Concluir
-                      </button>
-                    )}
-                    {row.status !== "cancelado" && (
-                      <button
-                        type="button"
-                        className="admin-ghost-danger"
-                        onClick={() => void patchRecord(row.id, { status: "cancelado" })}
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="admin-icon-btn"
-                      title="Editar agendamento"
-                      onClick={() => openEdit(row)}
-                    >
-                      <Pencil size={14} />
+                  {row.description && <p className="admin-appointment-description">{row.description}</p>}
+                  <div className="admin-appointment-row-footer">
+                    <button type="button" className="admin-appointment-details-link" onClick={() => openDetails(row)}>
+                      Ver detalhes <ChevronRight size={12} />
                     </button>
-                    <button
-                      type="button"
-                      className="admin-ghost-danger"
-                      title="Remover agendamento"
-                      onClick={() => void removeRecord(row)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="admin-appointment-actions" data-appointment-actions>
+                      {whatsappUrl && (
+                        <a
+                          className="admin-icon-btn admin-appointment-whatsapp"
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Abrir WhatsApp para ${row.customer_name || "cliente"}`}
+                          title="Abrir conversa no WhatsApp"
+                        >
+                          <MessageCircle size={12} />
+                        </a>
+                      )}
+                      {status.tone !== "completed" && status.tone !== "cancelled" && (
+                        <button
+                          type="button"
+                          className="admin-primary admin-appointment-start"
+                          onClick={() => void patchRecord(row.id, { status: "em_andamento" })}
+                        >
+                          Iniciar atendimento
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="admin-icon-btn admin-appointment-more"
+                        aria-label="Ações do agendamento"
+                        aria-haspopup="menu"
+                        aria-expanded={openActionMenuId === row.id}
+                        onClick={(event) => {
+                          if (openActionMenuId === row.id) {
+                            setOpenActionMenuId(null);
+                            return;
+                          }
+                          const trigger = event.currentTarget.getBoundingClientRect();
+                          const spaceBelow = window.innerHeight - trigger.bottom;
+                          const spaceAbove = trigger.top;
+                          setActionMenuPlacement(spaceBelow >= 216 || spaceBelow >= spaceAbove ? "below" : "above");
+                          setOpenActionMenuId(row.id);
+                        }}
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
+                      {openActionMenuId === row.id && (
+                        <div className="admin-appointment-actions-menu" data-placement={actionMenuPlacement} role="menu" aria-label="Ações do agendamento">
+                          <button type="button" role="menuitem" onClick={() => openEdit(row)}><Pencil size={15} /> Editar agendamento</button>
+                          <button type="button" role="menuitem" onClick={() => openReschedule(row)}><CalendarDays size={15} /> Reagendar</button>
+                          <button type="button" role="menuitem" disabled={status.tone === "completed" || status.tone === "cancelled"} onClick={() => { setOpenActionMenuId(null); void patchRecord(row.id, { status: "concluido" }); }}><Check size={15} /> Marcar como concluído</button>
+                          <div className="admin-appointment-actions-divider" role="separator" />
+                          <button type="button" role="menuitem" className="is-danger" disabled={status.tone === "completed" || status.tone === "cancelled"} onClick={() => { setOpenActionMenuId(null); void patchRecord(row.id, { status: "cancelado" }); }}><X size={15} /> Cancelar agendamento</button>
+                          <button type="button" role="menuitem" className="is-danger" onClick={() => { setOpenActionMenuId(null); void removeRecord(row); }}><Trash2 size={15} /> Excluir</button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -657,13 +912,40 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
         </>
       )}
 
-      {modalOpen && (
-        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+      {viewing && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setViewing(null))}>
+          <div className="admin-modal admin-appointment-details-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-modal-head">
               <div>
-                <h2>{editing ? "Editar Agendamento" : "Novo Agendamento"}</h2>
-                <p>Defina data, horário, cliente e serviço agendado.</p>
+                <h2>{viewing.title || "Agendamento"}</h2>
+                <p>{dateText(detail(viewing, "starts_at"))} às {asText(detail(viewing, "horario"))}</p>
+              </div>
+              <button type="button" className="admin-icon-btn" onClick={() => setViewing(null)} aria-label="Fechar detalhes">
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="admin-appointment-detail-content">
+              <AdminStatusBadge status={viewing.status} />
+              <dl>
+                <div><dt>Cliente</dt><dd>{asText(viewing.customer_name)}</dd></div>
+                <div><dt>Telefone</dt><dd>{asText(viewing.phone)}</dd></div>
+                <div><dt>Veículo</dt><dd>{asText(viewing.vehicle)}</dd></div>
+              </dl>
+              {viewing.description && <p>{viewing.description}</p>}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
+          <div className={`admin-modal${creatingNew ? " admin-appointment-create-modal" : ""}`} onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div>
+                <h2>{rescheduling ? "Reagendar agendamento" : editing ? "Editar agendamento" : "Novo agendamento"}</h2>
+                <p>{creatingNew ? "Preencha as informações para agendar um atendimento." : rescheduling ? "Escolha uma nova data e horário para este atendimento." : "Defina data, horário, cliente e serviço agendado."}</p>
               </div>
               <button
                 type="button"
@@ -676,137 +958,185 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
             </div>
 
             <form onSubmit={(e) => void handleSubmit(e)}>
-              <div className="admin-form-grid">
+              <div className={`admin-form-grid${rescheduling ? " is-rescheduling" : ""}${creatingNew ? " admin-appointment-create-grid" : ""}`}>
+                {!rescheduling && <>
+                <div className="admin-appointment-section-heading is-first">Informações do serviço</div>
                 <div className="admin-field wide">
                   <label>Serviço *</label>
-                  <ServicePicker
-                    services={services}
-                    priceRules={priceRules}
-                    value={form.title}
-                    vehicleProfile={serviceVehicleProfile}
-                    onSelectService={(picked) => {
-                      if (!picked) {
-                        setForm((prev) => ({ ...prev, title: "", service_id: "" }));
-                        return;
-                      }
-                      setForm((prev) => ({
-                        ...prev,
-                        service_id: picked.id,
-                        title: picked.title,
-                        description: prev.description || picked.description || "",
-                      }));
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    required
-                    placeholder="Ex: Alinhamento e balanceamento"
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value, service_id: "" })} id="admin-views-appointmentsview-700"
-                  />
+                  {!customService && services.length > 0 ? (
+                    <ServicePicker
+                      services={services}
+                      priceRules={priceRules}
+                      value={form.title}
+                      vehicleProfile={serviceVehicleProfile}
+                      placeholder="Buscar ou selecionar serviço..."
+                      required
+                      onSelectService={(picked) => {
+                        if (!picked) {
+                          setForm((prev) => ({ ...prev, title: "", service_id: "" }));
+                          return;
+                        }
+                        setForm((prev) => ({
+                          ...prev,
+                          service_id: picked.id,
+                          title: picked.title,
+                          description: prev.description || picked.description || "",
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <input
+                      className="admin-input"
+                      required
+                      placeholder="Buscar ou inserir serviço..."
+                      value={form.title}
+                      onChange={(e) => setForm({ ...form, title: e.target.value, service_id: "" })}
+                      id="admin-views-appointmentsview-700"
+                    />
+                  )}
+                  {services.length > 0 && (
+                    <button
+                      type="button"
+                      className="admin-appointment-add-link"
+                      onClick={() => {
+                        setCustomService((current) => !current);
+                        setForm((current) => ({ ...current, service_id: "" }));
+                      }}
+                    >
+                      {customService ? "+ Selecionar serviço cadastrado" : "+ Inserir serviço personalizado"}
+                    </button>
+                  )}
                 </div>
 
+                <div className="admin-appointment-section-heading">Cliente e veículo</div>
                 <div className="admin-field">
                   <label>Cliente</label>
-                  <ClientPicker
-                    clients={clients}
-                    value={form.customer_name}
-                    onSelectClient={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, customer_name: "" });
-                        return;
-                      }
-                      const name = clientDisplayName(picked);
-                      const matchVeh = vehicles.find(
-                        (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
-                      );
-                      setForm({
-                        ...form,
-                        customer_name: name,
-                        phone: picked.phone ?? form.phone,
-                        vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
-                        marca: matchVeh ? String(detail(matchVeh, "marca") ?? "") : form.marca,
-                        modelo: matchVeh ? String(detail(matchVeh, "modelo") ?? "") : form.modelo,
-                        ano: matchVeh ? String(detail(matchVeh, "ano") ?? "") : form.ano,
-                      });
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="Nome do cliente"
-                    value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-appointmentsview-734"
-                  />
+                  {clients.length > 0 && !customClient ? (
+                    <ClientPicker
+                      clients={clients}
+                      value={form.customer_name}
+                      placeholder="Buscar cliente..."
+                      onSelectClient={(picked) => {
+                        if (!picked) {
+                          setForm({ ...form, customer_name: "" });
+                          return;
+                        }
+                        const name = clientDisplayName(picked);
+                        const matchVeh = vehicles.find(
+                          (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
+                        );
+                        setForm({
+                          ...form,
+                          customer_name: name,
+                          phone: picked.phone ?? form.phone,
+                          vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
+                          marca: matchVeh ? String(detail(matchVeh, "marca") ?? "") : form.marca,
+                          modelo: matchVeh ? String(detail(matchVeh, "modelo") ?? "") : form.modelo,
+                          ano: matchVeh ? String(detail(matchVeh, "ano") ?? "") : form.ano,
+                        });
+                      }}
+                    />
+                  ) : (
+                    <input
+                      className="admin-input"
+                      placeholder="Nome do cliente"
+                      value={form.customer_name}
+                      onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                      id="admin-views-appointmentsview-734"
+                    />
+                  )}
+                  {clients.length > 0 && (
+                    <button type="button" className="admin-appointment-add-link" onClick={() => setCustomClient((current) => !current)}>
+                      {customClient ? "+ Selecionar cliente cadastrado" : "+ Novo cliente"}
+                    </button>
+                  )}
                 </div>
 
                 <div className="admin-field">
                   <label>Telefone</label>
                   <input
                     className="admin-input"
-                    placeholder="(11) 99999-9999"
+                    placeholder="(51) 99999-9999"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })} id="admin-views-appointmentsview-744"
                   />
                 </div>
 
-                <div className="admin-field">
+                <div className="admin-field wide">
                   <label>Veículo / Placa</label>
-                  <VehiclePicker
-                    vehicles={vehicles}
-                    value={form.vehicle}
-                    clientName={form.customer_name}
-                    onSelectVehicle={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, vehicle: "" });
-                        return;
-                      }
-                      const ownerName = (picked.customer_name ?? "").trim();
-                      const ownerClient = ownerName
-                        ? clients.find(
-                            (c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase(),
-                          )
-                        : undefined;
-                      setForm({
-                        ...form,
-                        vehicle: vehiclePlate(picked),
-                        customer_name: form.customer_name || ownerName,
-                        phone: form.phone || ownerClient?.phone || "",
-                        marca: String(detail(picked, "marca") ?? ""),
-                        modelo: String(detail(picked, "modelo") ?? ""),
-                        ano: String(detail(picked, "ano") ?? ""),
-                      });
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="ABC1D23"
-                    value={form.vehicle}
-                    onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })} id="admin-views-appointmentsview-780"
-                  />
+                  {vehicles.length > 0 && !customVehicle ? (
+                    <VehiclePicker
+                      vehicles={vehicles}
+                      value={form.vehicle}
+                      clientName={form.customer_name}
+                      placeholder="Buscar veículo ou informar placa..."
+                      onSelectVehicle={(picked) => {
+                        if (!picked) {
+                          setForm({ ...form, vehicle: "" });
+                          return;
+                        }
+                        const ownerName = (picked.customer_name ?? "").trim();
+                        const ownerClient = ownerName
+                          ? clients.find(
+                              (c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase(),
+                            )
+                          : undefined;
+                        setForm({
+                          ...form,
+                          vehicle: vehiclePlate(picked),
+                          customer_name: form.customer_name || ownerName,
+                          phone: form.phone || ownerClient?.phone || "",
+                          marca: String(detail(picked, "marca") ?? ""),
+                          modelo: String(detail(picked, "modelo") ?? ""),
+                          ano: String(detail(picked, "ano") ?? ""),
+                        });
+                      }}
+                    />
+                  ) : (
+                    <input
+                      className="admin-input"
+                      placeholder="Buscar veículo ou informar placa..."
+                      value={form.vehicle}
+                      onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })}
+                      id="admin-views-appointmentsview-780"
+                    />
+                  )}
+                  {vehicles.length > 0 && (
+                    <button type="button" className="admin-appointment-add-link" onClick={() => setCustomVehicle((current) => !current)}>
+                      {customVehicle ? "+ Selecionar veículo cadastrado" : "+ Novo veículo"}
+                    </button>
+                  )}
                 </div>
+                </>}
 
+                <div className="admin-appointment-section-heading">Data e horário</div>
                 <div className="admin-field">
-                  <label>Data</label>
+                  <label>Data *</label>
                   <input
                     type="date"
                     className="admin-input"
+                    required
                     value={form.starts_at}
                     onChange={(e) => setForm({ ...form, starts_at: e.target.value })} id="admin-views-appointmentsview-790"
                   />
                 </div>
 
                 <div className="admin-field">
-                  <label>Horário</label>
+                  <label>Horário *</label>
                   <input
                     type="time"
                     className="admin-input"
+                    required
                     value={form.horario}
                     onChange={(e) => setForm({ ...form, horario: e.target.value })} id="admin-views-appointmentsview-800"
                   />
                 </div>
 
-                <div className="admin-field wide">
-                  <label>Observações</label>
+                {!rescheduling && <div className="admin-field wide admin-appointment-observations">
+                  <label className={creatingNew ? "admin-appointment-observations-label" : undefined}>
+                    <span>Observações</span>
+                    {creatingNew && <small>Opcional</small>}
+                  </label>
                   <textarea
                     className="admin-textarea"
                     rows={3}
@@ -814,7 +1144,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-appointmentsview-810"
                   />
-                </div>
+                </div>}
               </div>
 
               <div className="admin-modal-actions">
@@ -826,7 +1156,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                   Cancelar
                 </button>
                 <button type="submit" className="admin-primary" disabled={saving}>
-                  {saving ? "Salvando..." : "Salvar"}
+                  {saving ? "Salvando..." : rescheduling ? "Confirmar novo horário" : creatingNew ? "Criar agendamento" : "Salvar"}
                 </button>
               </div>
             </form>

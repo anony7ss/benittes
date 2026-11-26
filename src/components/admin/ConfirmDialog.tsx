@@ -84,52 +84,33 @@ export function ConfirmDialogHost() {
       aria-labelledby="confirm-dialog-title"
     >
       <div
-        className="admin-modal"
-        style={{ maxWidth: 420, padding: 22 }}
+        className="admin-modal admin-confirm-modal"
+        style={{ maxWidth: 420 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              marginTop: 2,
-              color: isDanger ? "#ef4444" : "var(--admin-orange)",
-            }}
-          >
-            {isDanger ? <Trash2 size={18} /> : <AlertTriangle size={18} />}
-          </span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <h2 id="confirm-dialog-title" style={{ margin: 0, fontSize: 16 }}>
+        <div className="admin-modal-head admin-confirm-modal-head">
+          <div className="admin-confirm-modal-copy">
+            <span className={isDanger ? "is-danger" : ""} aria-hidden="true">
+              {isDanger ? <Trash2 size={17} /> : <AlertTriangle size={17} />}
+            </span>
+            <div>
+              <h2 id="confirm-dialog-title">
                 {pending.title || "Confirmar exclusão"}
               </h2>
-              <button
-                type="button"
-                className="admin-icon-btn"
-                onClick={() => close(false)}
-                aria-label="Fechar"
-              >
-                <X size={15} />
-              </button>
+              <p>{pending.message}</p>
             </div>
-            <p
-              style={{
-                margin: "8px 0 0",
-                fontSize: 13.5,
-                color: "var(--admin-muted)",
-                lineHeight: 1.5,
-                wordBreak: "break-word",
-              }}
-            >
-              {pending.message}
-            </p>
           </div>
+          <button
+            type="button"
+            className="admin-icon-btn"
+            onClick={() => close(false)}
+            aria-label="Fechar"
+          >
+            <X size={15} />
+          </button>
         </div>
 
-        <div className="admin-modal-actions" style={{ marginTop: 20 }}>
+        <div className="admin-modal-actions">
           <button type="button" className="admin-secondary" onClick={() => close(false)}>
             {pending.cancelLabel || "Cancelar"}
           </button>

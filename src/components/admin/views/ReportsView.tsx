@@ -225,7 +225,6 @@ export function ReportsView() {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">EXPORTAÇÃO E INDICADORES</p>
           <h1>Relatórios</h1>
         </div>
         <div className="admin-title-actions">

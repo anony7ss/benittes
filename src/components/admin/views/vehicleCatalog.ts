@@ -1,152 +1,83 @@
-export const DEFAULT_VEHICLE_CATALOG: Record<string, string[]> = {
-  Volkswagen: [
-    "Gol",
-    "Polo",
-    "Virtus",
-    "Nivus",
-    "T-Cross",
-    "Taos",
-    "Tiguan",
-    "Jetta",
-    "Golf",
-    "Saveiro",
-    "Amarok",
-    "Fox",
-    "Voyage",
-    "Up!",
-    "Santana",
-    "Kombi",
-    "Fusca",
-  ],
-  Chevrolet: [
-    "Onix",
-    "Onix Plus",
-    "Prisma",
-    "Cruze",
-    "Tracker",
-    "Equinox",
-    "S10",
-    "Montana",
-    "Spin",
-    "Cobalt",
-    "Corsa",
-    "Celta",
-    "Astra",
-    "Vectra",
-    "Trailblazer",
-  ],
-  Fiat: [
-    "Uno",
-    "Palio",
-    "Argo",
-    "Cronos",
-    "Mobi",
-    "Pulse",
-    "Fastback",
-    "Strada",
-    "Toro",
-    "Fiorino",
-    "Ducato",
-    "Siena",
-    "Grand Siena",
-    "Punto",
-    "Bravo",
-  ],
-  Ford: [
-    "Ka",
-    "Fiesta",
-    "Focus",
-    "Fusion",
-    "EcoSport",
-    "Territory",
-    "Bronco Sport",
-    "Ranger",
-    "Maverick",
-    "Transit",
-  ],
-  Honda: [
-    "Civic",
-    "City",
-    "Fit",
-    "HR-V",
-    "WR-V",
-    "ZR-V",
-    "CR-V",
-    "Accord",
-    "CG 160",
-    "Biz 125",
-    "NXR 160 Bros",
-    "PCX",
-    "CB 300F Twister",
-    "XRE 300",
-  ],
-  Toyota: [
-    "Corolla",
-    "Corolla Cross",
-    "Yaris",
-    "Etios",
-    "Hilux",
-    "SW4",
-    "RAV4",
-    "Camry",
-    "Prius",
-  ],
-  Hyundai: [
-    "HB20",
-    "HB20S",
-    "Creta",
-    "Tucson",
-    "ix35",
-    "Santa Fe",
-    "Azera",
-    "i30",
-    "Kona",
-  ],
-  Renault: [
-    "Kwid",
-    "Sandero",
-    "Logan",
-    "Stepway",
-    "Duster",
-    "Oroch",
-    "Captur",
-    "Kardian",
-    "Megane",
-    "Master",
-  ],
-  Jeep: ["Renegade", "Compass", "Commander", "Wrangler", "Grand Cherokee"],
-  Nissan: ["March", "Versa", "Sentra", "Kicks", "Frontier", "Leaf"],
-  Peugeot: ["208", "2008", "3008", "308", "408", "Partner", "Boxer"],
-  Citroën: ["C3", "C3 Aircross", "C4 Cactus", "C4 Lounge", "Basalt", "Jumpy", "Jumper"],
-  Mitsubishi: ["L200 Triton", "Pajero Sport", "Eclipse Cross", "ASX", "Outlander", "Lancer"],
-  Kia: ["Picanto", "Rio", "Cerato", "Sportage", "Sorento", "Stonic", "Niro", "Bongo"],
-  BYD: ["Dolphin", "Dolphin Mini", "Seal", "Yuan Plus", "Song Plus", "Han", "Tan", "King"],
-  GWM: ["Haval H6", "Ora 03"],
-  "CAOA Chery": ["Tiggo 5x", "Tiggo 7", "Tiggo 8", "Arrizo 6", "iCar"],
-  BMW: ["Série 1", "Série 3", "Série 5", "X1", "X3", "X5", "X6", "Z4"],
-  "Mercedes-Benz": ["Classe A", "Classe C", "Classe E", "GLA", "GLB", "GLC", "GLE", "Sprinter"],
-  Audi: ["A3", "A4", "A5", "Q3", "Q5", "Q7", "Q8", "e-tron"],
-  Volvo: ["XC40", "XC60", "XC90", "EX30", "C40"],
-  "Land Rover": ["Evoque", "Discovery Sport", "Defender", "Velar", "Range Rover"],
-  Suzuki: ["Jimny", "Vitara", "S-Cross", "Swift"],
-  RAM: ["Rampage", "1500", "2500", "3500"],
-  Yamaha: ["Fazer 250", "Lander 250", "Crosser 150", "Factor 150", "MT-03", "NMax"],
+export type VehicleCatalogOption = {
+  code: string;
+  name: string;
 };
 
-export function mergeVehicleCatalog(
-  custom: Record<string, string[]> | null | undefined,
-): Record<string, string[]> {
-  const merged: Record<string, string[]> = {};
-  for (const [brand, models] of Object.entries(DEFAULT_VEHICLE_CATALOG)) {
-    merged[brand] = [...models];
+const FIPE_BRAND_ALIASES: Record<string, string> = {
+  "gm - chevrolet": "Chevrolet",
+  "vw - volkswagen": "Volkswagen",
+  "kia motors": "Kia",
+  "caoa chery": "CAOA Chery",
+};
+const NORMALIZED_BRAND_ALIASES: Record<string, string> = {
+  gmchevrolet: "chevrolet",
+  vwvolkswagen: "volkswagen",
+  kiamotors: "kia",
+};
+
+export function normalizeVehicleCatalogName(value: string): string {
+  const normalized = value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]/g, "");
+  return NORMALIZED_BRAND_ALIASES[normalized] ?? normalized;
+}
+
+export function displayFipeBrand(name: string): string {
+  const normalized = name.trim().toLocaleLowerCase("pt-BR");
+  return FIPE_BRAND_ALIASES[normalized] ?? name.trim();
+}
+
+export function findFipeBrandByName(
+  brands: VehicleCatalogOption[],
+  label: string,
+): VehicleCatalogOption | undefined {
+  const normalized = normalizeVehicleCatalogName(label);
+  return brands.find((brand) => normalizeVehicleCatalogName(displayFipeBrand(brand.name)) === normalized);
+}
+
+export function customCatalogKeyForBrand(
+  custom: Record<string, string[]>,
+  brand: string,
+): string | undefined {
+  const normalized = normalizeVehicleCatalogName(brand);
+  return Object.keys(custom).find((key) => normalizeVehicleCatalogName(key) === normalized);
+}
+
+export function customModelsForBrand(custom: Record<string, string[]>, brand: string): string[] {
+  const normalized = normalizeVehicleCatalogName(brand);
+  return Object.entries(custom)
+    .filter(([key, models]) => Array.isArray(models) && normalizeVehicleCatalogName(key) === normalized)
+    .flatMap(([, models]) => models.map((model) => String(model).trim()).filter(Boolean));
+}
+
+export function mergeVehicleBrands(
+  apiBrands: VehicleCatalogOption[],
+  custom: Record<string, string[]>,
+): string[] {
+  const unique = new Map<string, string>();
+  for (const brand of apiBrands) {
+    const label = displayFipeBrand(brand.name);
+    unique.set(normalizeVehicleCatalogName(label), label);
   }
-  if (custom && typeof custom === "object") {
-    for (const [brand, models] of Object.entries(custom)) {
-      if (!Array.isArray(models)) continue;
-      const existing = merged[brand] ?? [];
-      const set = new Set([...existing, ...models.map((m) => String(m).trim()).filter(Boolean)]);
-      merged[brand] = [...set];
-    }
+  for (const brand of Object.keys(custom)) {
+    const normalized = normalizeVehicleCatalogName(brand);
+    if (!unique.has(normalized)) unique.set(normalized, brand.trim());
   }
-  return merged;
+  return [...unique.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+export function mergeVehicleModels(
+  apiModels: VehicleCatalogOption[],
+  customModels: string[],
+): string[] {
+  const unique = new Map<string, string>();
+  for (const model of [...apiModels.map((item) => item.name), ...customModels]) {
+    const label = String(model ?? "").trim();
+    const normalized = normalizeVehicleCatalogName(label);
+    if (label && !unique.has(normalized)) unique.set(normalized, label);
+  }
+  return [...unique.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }

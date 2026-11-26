@@ -49,6 +49,25 @@ function publicQuoteItems(value: unknown): Array<{ id: string; name: string; typ
   });
 }
 
+function quoteDiscount(details: Record<string, unknown>) {
+  const type = details.desconto_tipo === "fixo" ? "fixo" : "percentual";
+  const raw = Number(details.desconto_valor ?? 0);
+  const value = Number.isFinite(raw) && raw > 0
+    ? Math.min(type === "percentual" ? 100 : 10_000_000, raw)
+    : 0;
+  return { type, value };
+}
+
+function totalAfterQuoteDiscount(subtotal: number, fullSubtotal: number, details: Record<string, unknown>) {
+  const discount = quoteDiscount(details);
+  const discountAmount = discount.type === "percentual"
+    ? subtotal * discount.value / 100
+    : fullSubtotal > 0
+      ? discount.value * subtotal / fullSubtotal
+      : 0;
+  return Math.max(0, Math.round((subtotal - discountAmount) * 100) / 100);
+}
+
 async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, token: string) {
   const { data: quote, error: quoteErr } = await supabase
     .from("quotes")
@@ -120,6 +139,9 @@ async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, t
       observacao_cliente: (quoteDetails.observacao_cliente as string | null) ?? null,
       motivo_recusa: (quoteDetails.motivo_recusa as string | null) ?? null,
       aprovacao_parcial: Boolean(quoteDetails.aprovacao_parcial),
+      desconto_tipo: quoteDiscount(quoteDetails).type,
+      desconto_valor: quoteDiscount(quoteDetails).value,
+      permitir_aprovacao_parcial: quoteDetails.permitir_aprovacao_parcial !== false,
       items: publicQuoteItems(quoteDetails.items),
       created_at: quote.created_at,
       updated_at: quote.updated_at,
@@ -229,6 +251,9 @@ export async function POST(
     }
 
     const existingDetails = asObj(quote.details);
+    if (action === "approve" && approvedItemIds && existingDetails.permitir_aprovacao_parcial === false) {
+      return NextResponse.json({ error: "Este orçamento deve ser aprovado por completo." }, { status: 400 });
+    }
     const currentApproval = String(existingDetails.aprovacao ?? "pendente");
     const validity = quote.valid_until ?? (typeof existingDetails.validade === "string" ? existingDetails.validade : null);
     if (validity && Number.isFinite(new Date(validity).getTime()) && new Date(`${validity.slice(0, 10)}T23:59:59`).getTime() < Date.now()) {
@@ -297,11 +322,19 @@ export async function POST(
         })) {
           return NextResponse.json({ error: "A quantidade de um dos itens é inválida." }, { status: 400 });
         }
-        nextTotal = approvedOnly.reduce((acc, it) => {
+        const approvedSubtotal = approvedOnly.reduce((acc, it) => {
           const qty = Number(it.qty ?? 1);
           const unitPrice = Number(it.unit_price ?? 0);
           return acc + qty * unitPrice;
         }, 0);
+        const fullSubtotal = rawItems.reduce((acc, it) => {
+          const qty = Number(it.qty ?? 1);
+          const unitPrice = Number(it.unit_price ?? 0);
+          return Number.isInteger(qty) && qty > 0 && Number.isFinite(unitPrice) && unitPrice > 0
+            ? acc + qty * unitPrice
+            : acc;
+        }, 0);
+        nextTotal = totalAfterQuoteDiscount(approvedSubtotal, fullSubtotal, existingDetails);
         if (!Number.isFinite(nextTotal) || nextTotal <= 0 || nextTotal > 10_000_000) return NextResponse.json({ error: "O total aprovado precisa ter um valor final maior que zero." }, { status: 422 });
         isPartial = approvedOnly.length < rawItems.length;
       } else if (nextTotal <= 0) {

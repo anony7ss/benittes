@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DOMAIN_TABLE_BY_MODULE, fromDomainRow, toDomainPayload } from "../../../../lib/domainTables";
+import { pricingModeForService, resolveServicePrice, vehiclePriceProfileFromRow } from "../../../../lib/servicePricing";
 import { consumeRateLimit, databaseErrorResponse, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
 import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 import { getAdminSession, migrateAdminSession, signOutAdminSession } from "../../../../lib/adminSessionApi";
@@ -52,6 +53,158 @@ function applyMessageTemplate(template: unknown, values: Record<string, string>)
   return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "").trim();
 }
 
+async function normalizeQuotePayload(
+  supabase: SupabaseClient,
+  payload: Record<string, unknown>,
+  isUpdate: boolean,
+): Promise<string | null> {
+  if (!isPlainObject(payload.details)) return "Os detalhes do orçamento são inválidos.";
+
+  const details = { ...payload.details };
+  const discountType = details.desconto_tipo === "fixo" ? "fixo" : "percentual";
+  const rawDiscount = details.desconto_valor ?? 0;
+  const discountValue = typeof rawDiscount === "string"
+    ? Number(rawDiscount.trim().replace(",", "."))
+    : Number(rawDiscount);
+  if (!Number.isFinite(discountValue) || discountValue < 0 || (discountType === "percentual" && discountValue > 100) || discountValue > 10_000_000) {
+    return "Informe um desconto válido.";
+  }
+
+  details.desconto_tipo = discountType;
+  details.desconto_valor = Math.round(discountValue * 100) / 100;
+  details.forma_pagamento = typeof details.forma_pagamento === "string"
+    ? details.forma_pagamento.trim().slice(0, 48)
+    : "A combinar";
+  details.permitir_aprovacao_parcial = details.permitir_aprovacao_parcial !== false;
+
+  const hasItems = Object.hasOwn(details, "items");
+  if (hasItems && !Array.isArray(details.items)) return "A lista de itens do orçamento é inválida.";
+  if (Array.isArray(details.items)) {
+    if (details.items.length > 200) return "O orçamento pode ter no máximo 200 itens.";
+
+    const items = details.items as unknown[];
+    const normalizedItems: Array<Record<string, unknown>> = [];
+    const itemIds = new Set<string>();
+    const serviceIds = new Set<string>();
+
+    for (const [index, value] of items.entries()) {
+      if (!isPlainObject(value)) return "Um dos itens do orçamento é inválido.";
+      const name = typeof value.name === "string" ? value.name.trim().slice(0, 160) : "";
+      const type = value.type === "peca" ? "peca" : value.type === "servico" ? "servico" : null;
+      const id = typeof value.id === "string" ? value.id.trim().slice(0, 100) : `item-${index + 1}`;
+      const qty = Number(value.qty ?? 1);
+      const unitPrice = Number(value.unit_price ?? 0);
+      const serviceId = typeof value.service_id === "string" ? value.service_id.trim() : "";
+      if (!name || !type || !id || itemIds.has(id)) return "Confira a descrição e a identificação dos itens do orçamento.";
+      if (!Number.isInteger(qty) || qty < 1 || qty > 1000) return "A quantidade de um item do orçamento é inválida.";
+      if (!Number.isFinite(unitPrice) || unitPrice < 0 || unitPrice > 1_000_000) return "O valor unitário de um item é inválido.";
+      if (serviceId.length > 100 || (type === "servico" && serviceId && !/^[0-9a-f-]{36}$/i.test(serviceId))) {
+        return "O serviço associado a um item é inválido.";
+      }
+      itemIds.add(id);
+      if (type === "servico" && serviceId) serviceIds.add(serviceId);
+      normalizedItems.push({
+        id,
+        name,
+        type,
+        qty,
+        unit_price: Math.round(unitPrice * 100) / 100,
+        price_pending: value.price_pending === true || unitPrice <= 0,
+        approved: value.approved === false ? false : true,
+        ...(type === "servico" && serviceId ? { service_id: serviceId } : {}),
+      });
+    }
+
+    const servicesById = new Map<string, ReturnType<typeof fromDomainRow>>();
+    const rulesByService = new Map<string, ReturnType<typeof fromDomainRow>[]>();
+    if (serviceIds.size > 0) {
+      const ids = [...serviceIds];
+      const [{ data: serviceRows, error: serviceError }, { data: ruleRows, error: ruleError }] = await Promise.all([
+        supabase.from("services").select("*").in("id", ids).limit(200),
+        supabase.from("service_price_rules").select("*").in("service_id", ids).eq("active", true).limit(5000),
+      ]);
+      if (serviceError || ruleError) return "Não foi possível validar os serviços e preços do orçamento.";
+      for (const row of serviceRows ?? []) {
+        const service = fromDomainRow("services", row as unknown as Record<string, unknown>);
+        servicesById.set(service.id, service);
+      }
+      for (const row of ruleRows ?? []) {
+        const rule = fromDomainRow("prices", row as unknown as Record<string, unknown>);
+        const serviceId = String((rule.details as Record<string, unknown> | undefined)?.service_id ?? "");
+        if (!serviceId) continue;
+        rulesByService.set(serviceId, [...(rulesByService.get(serviceId) ?? []), rule]);
+      }
+      if (ids.some((id) => !servicesById.has(id))) return "Um dos serviços selecionados não está mais disponível no catálogo.";
+    }
+
+    const needsVehicle = [...serviceIds].some((id) => {
+      const service = servicesById.get(id);
+      return service?.status !== "cancelado" && service && pricingModeForService(service) === "vehicle";
+    });
+    let trustedVehicle: ReturnType<typeof fromDomainRow> | null = null;
+    const plate = typeof payload.vehicle_plate === "string" ? payload.vehicle_plate.trim().toUpperCase() : "";
+    if (needsVehicle && plate) {
+      const { data: vehicleRow, error: vehicleError } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("license_plate", plate)
+        .maybeSingle();
+      if (vehicleError) return "Não foi possível validar o veículo do orçamento.";
+      if (vehicleRow) trustedVehicle = fromDomainRow("vehicles", vehicleRow as unknown as Record<string, unknown>);
+    }
+
+    for (const item of normalizedItems) {
+      if (item.type !== "servico") continue;
+      const serviceId = String(item.service_id ?? "");
+      if (!serviceId) continue;
+      const service = servicesById.get(serviceId);
+      if (!service || service.status === "cancelado") return "Um dos serviços selecionados está inativo.";
+      const vehicleProfile = needsVehicle ? vehiclePriceProfileFromRow(trustedVehicle) : null;
+      const resolution = resolveServicePrice(service, rulesByService.get(serviceId) ?? [], vehicleProfile);
+      const finalPrice = resolution.amount !== null && Number.isFinite(resolution.amount) && resolution.amount > 0
+        ? Math.round(resolution.amount * 100) / 100
+        : 0;
+      const manuallySetPrice = finalPrice <= 0
+        && item.price_pending !== true
+        && Number(item.unit_price) > 0;
+      item.unit_price = finalPrice > 0
+        ? finalPrice
+        : manuallySetPrice
+          ? Math.round(Number(item.unit_price) * 100) / 100
+          : 0;
+      item.price_pending = finalPrice <= 0 && !manuallySetPrice;
+      item.pricing_mode = resolution.mode;
+      if (resolution.rule?.id) item.pricing_rule_id = resolution.rule.id;
+    }
+
+    const fullSubtotal = normalizedItems.reduce((sum, item) => sum + Number(item.qty) * Number(item.unit_price), 0);
+    const approvedSubtotal = normalizedItems
+      .filter((item) => item.approved !== false)
+      .reduce((sum, item) => sum + Number(item.qty) * Number(item.unit_price), 0);
+    if (!Number.isFinite(fullSubtotal) || fullSubtotal > 10_000_000) return "O total dos itens ultrapassa o limite permitido.";
+
+    const discountAmount = discountType === "percentual"
+      ? approvedSubtotal * discountValue / 100
+      : fullSubtotal > 0
+        ? discountValue * approvedSubtotal / fullSubtotal
+        : 0;
+    payload.total = Math.max(0, Math.round((approvedSubtotal - discountAmount) * 100) / 100);
+    details.items = normalizedItems;
+  } else if (Object.hasOwn(payload, "total")) {
+    const subtotal = Number(payload.total);
+    if (!Number.isFinite(subtotal) || subtotal < 0 || subtotal > 10_000_000) return "O valor do orçamento é inválido.";
+    const discountAmount = discountType === "percentual"
+      ? subtotal * discountValue / 100
+      : discountValue;
+    payload.total = Math.max(0, Math.round((subtotal - Math.min(subtotal, discountAmount)) * 100) / 100);
+  } else if (!isUpdate) {
+    payload.total = 0;
+  }
+
+  payload.details = details;
+  return null;
+}
+
 async function validatePricingPayload(
   supabase: SupabaseClient,
   resource: string,
@@ -89,10 +242,14 @@ async function validatePricingPayload(
   const serviceId = typeof payload.service_id === "string" ? payload.service_id : "";
   const make = typeof payload.vehicle_make === "string" ? payload.vehicle_make.trim() : "";
   const model = typeof payload.vehicle_model === "string" ? payload.vehicle_model.trim() : "";
+  const application = payload.vehicle_application;
   const yearFrom = payload.year_from == null ? null : Number(payload.year_from);
   const yearTo = payload.year_to == null ? null : Number(payload.year_to);
   if (!serviceId || (!make && !model) || make.length > 100 || model.length > 120) {
     return "Vincule a tarifa a um serviço e informe a marca ou modelo do veículo.";
+  }
+  if (application != null && (typeof application !== "string" || application.length > 512)) {
+    return "Os dados de aplicação do veículo excedem o limite permitido.";
   }
   if ([yearFrom, yearTo].some((year) => year !== null && (!Number.isInteger(year) || year < 1900 || year > 2200))) {
     return "Use anos inteiros entre 1900 e 2200.";
@@ -445,8 +602,12 @@ export async function POST(
     if (!parsed.ok) return parsed.response;
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
-    const payload = domainTable ? toDomainPayload(resource, body, false) : body;
     const supabase = staff.supabase as unknown as SupabaseClient;
+    const payload = domainTable ? toDomainPayload(resource, body, false) : body;
+    if (resource === "quotes") {
+      const quoteError = await normalizeQuotePayload(supabase, payload, false);
+      if (quoteError) return NextResponse.json({ error: quoteError }, { status: 400 });
+    }
     const pricingError = await validatePricingPayload(supabase, resource, payload, false);
     if (pricingError) return NextResponse.json({ error: pricingError }, { status: 400 });
 
@@ -565,8 +726,12 @@ export async function PATCH(
     if (!parsed.ok) return parsed.response;
     const body = parsed.value;
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
-    const payload = domainTable ? toDomainPayload(resource, body, true) : body;
     const supabase = staff.supabase as unknown as SupabaseClient;
+    const payload = domainTable ? toDomainPayload(resource, body, true) : body;
+    if (resource === "quotes" && Object.hasOwn(payload, "details")) {
+      const quoteError = await normalizeQuotePayload(supabase, payload, true);
+      if (quoteError) return NextResponse.json({ error: quoteError }, { status: 400 });
+    }
     const pricingError = await validatePricingPayload(supabase, resource, payload, true, id);
     if (pricingError) return NextResponse.json({ error: pricingError }, { status: 400 });
 

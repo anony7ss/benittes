@@ -134,7 +134,6 @@ export function ContactsView() {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">ATENDIMENTO DO SITE</p>
           <h1>Mensagens de Contato</h1>
         </div>
         <div className="admin-title-actions">

@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { confirmModal } from "../ConfirmDialog";
+import { AdminActionMenu } from "../ActionMenu";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const ACCEPTED_IMAGES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -205,9 +206,13 @@ function GalleryCard({
             <strong title={item.title}>{item.title}</strong>
             <span>Galeria · posição {index + 1} de {count}</span>
           </div>
-          <button type="button" className="admin-icon-btn" onClick={() => setEditing((value) => !value)} aria-label={`Editar detalhes de ${item.title}`} title="Editar detalhes">
-            {editing ? <X size={16} /> : <Pencil size={15} />}
-          </button>
+          <AdminActionMenu
+            label={`Ações de ${item.title}`}
+            actions={[
+              { label: editing ? "Fechar edição" : "Editar detalhes", icon: editing ? <X size={14} /> : <Pencil size={14} />, onSelect: () => setEditing((value) => !value) },
+              { label: "Remover da galeria", icon: <Trash2 size={14} />, onSelect: () => void onDelete(item), destructive: true, disabled: busy, separatorBefore: true },
+            ]}
+          />
         </div>
 
         <div className="admin-gallery-controls">
@@ -260,8 +265,6 @@ function GalleryCard({
             <button type="submit" className="admin-primary" disabled={saving}><Check size={15} /> Salvar detalhes</button>
           </form>
         )}
-
-        <button type="button" className="admin-gallery-delete" disabled={busy} onClick={() => void onDelete(item)}><Trash2 size={14} /> Remover da galeria</button>
       </div>
     </article>
   );
@@ -463,7 +466,6 @@ export function GalleryView() {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">CONTEÚDO DO SITE</p>
           <h1>Galeria</h1>
         </div>
         <div className="admin-title-actions">

@@ -1,20 +1,32 @@
 "use client";
 
 import { SkeletonCards, SkeletonTable } from "../Skeletons";
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
-import { Car, History, LayoutGrid, List, Pencil, Plus, Printer, QrCode, Search, Tag, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowUpRight, CalendarPlus, Car, ChevronRight, ClipboardCheck, History, LayoutGrid, List, Pencil, Plus, Printer, QrCode, Search, Tag, Trash2, UserRound, Wrench, X } from "lucide-react";
 import { selectRows, type PanelRecord } from "../../../lib/supabase";
+import { routeFor } from "../../../admin/navigation";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
-import { asText, dateText, detail, money, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
+import { usePagination } from "../Pagination";
+import { asText, dateText, detail, money, todayIso, saveVehicleActionPrefill, saveVehicleOwnerLookup, useModuleRecords, usePersistedViewMode, modalBackdropProps } from "../utils";
 import { ClientPicker, clientDisplayName, ensureClientAndVehicle, useClientVehicleCatalog } from "../QuickPickers";
-import { DEFAULT_VEHICLE_CATALOG, mergeVehicleCatalog } from "./vehicleCatalog";
+import {
+  customCatalogKeyForBrand,
+  customModelsForBrand,
+  findFipeBrandByName,
+  mergeVehicleBrands,
+  mergeVehicleModels,
+  normalizeVehicleCatalogName,
+  type VehicleCatalogOption,
+} from "./vehicleCatalog";
 
 type VehicleForm = {
   vehicle: string;
   title: string;
   marca: string;
   modelo: string;
+  versao: string;
   ano: string;
   km: string;
   combustivel: string;
@@ -29,6 +41,7 @@ const emptyForm: VehicleForm = {
   title: "",
   marca: "",
   modelo: "",
+  versao: "",
   ano: "",
   km: "",
   combustivel: "Flex",
@@ -39,7 +52,7 @@ const emptyForm: VehicleForm = {
 };
 
 export function VehiclesView({ session }: { session: { user: { id: string } } }) {
-  const { rows, loading, error, setError, saveRecord, removeRecord } = useModuleRecords(
+  const { rows, loading, error, setError, saveRecord, patchRecord, removeRecord } = useModuleRecords(
     "vehicles",
     session.user.id,
   );
@@ -48,28 +61,65 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
     saveRecord: saveSettingsRecord,
   } = useModuleRecords("settings", session.user.id);
   const { clients, vehicles, reload: reloadCatalog } = useClientVehicleCatalog();
-  const [subPage, setSubPage] = useState<"vehicles" | "catalog">("vehicles");
+  const [subPage, setSubPage] = useState<"vehicles" | "archived" | "catalog">("vehicles");
   const [search, setSearch] = useState("");
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [newBrand, setNewBrand] = useState("");
-  const [newModel, setNewModel] = useState("");
+  const [selectedCatalogBrand, setSelectedCatalogBrand] = useState("");
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogEntryMode, setCatalogEntryMode] = useState<"brand" | "model">("brand");
+  const [catalogBrandName, setCatalogBrandName] = useState("");
+  const [catalogEntryBrand, setCatalogEntryBrand] = useState("");
+  const [catalogEntryModel, setCatalogEntryModel] = useState("");
+  const [catalogError, setCatalogError] = useState("");
   const [catalogSaving, setCatalogSaving] = useState(false);
+  const [fipeBrands, setFipeBrands] = useState<VehicleCatalogOption[]>([]);
+  const [fipeBrandsLoading, setFipeBrandsLoading] = useState(true);
+  const [fipeBrandsError, setFipeBrandsError] = useState("");
+  const [fipeBrandsRetry, setFipeBrandsRetry] = useState(0);
+  const [fipeModelsByBrand, setFipeModelsByBrand] = useState<Record<string, VehicleCatalogOption[]>>({});
+  const [fipeModelsLoading, setFipeModelsLoading] = useState<string[]>([]);
+  const [fipeModelsErrors, setFipeModelsErrors] = useState<Record<string, string>>({});
+  const fipeModelRequests = useRef(new Map<string, Promise<void>>());
   const [customBrandInput, setCustomBrandInput] = useState(false);
   const [customModelInput, setCustomModelInput] = useState(false);
   const [viewMode, setViewMode] = usePersistedViewMode("vehicles", "list", ["list", "cards"] as const);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<VehicleForm>(emptyForm);
+  const [customClient, setCustomClient] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lookingUpPlate, setLookingUpPlate] = useState(false);
   const [plateNotice, setPlateNotice] = useState("");
   const [historyVehicle, setHistoryVehicle] = useState<PanelRecord | null>(null);
   const [historyItems, setHistoryItems] = useState<Array<{ kind: string; title: string; date: string; status: string; amount?: number | null }>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [viewingVehicle, setViewingVehicle] = useState<PanelRecord | null>(null);
+  const [workOrders, setWorkOrders] = useState<PanelRecord[]>([]);
+  const [workOrdersLoaded, setWorkOrdersLoaded] = useState(false);
+  const [workOrdersLoadFailed, setWorkOrdersLoadFailed] = useState(false);
   const [qrVehicle, setQrVehicle] = useState<PanelRecord | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [nextOilKm, setNextOilKm] = useState("");
   const [nextOilDate, setNextOilDate] = useState("");
+
+  useEffect(() => {
+    if (subPage !== "vehicles" || viewMode !== "cards" || workOrdersLoaded) return;
+    let active = true;
+    void selectRows<PanelRecord>("work-orders", { order: "created_at.desc", limit: "500" })
+      .then((records) => {
+        if (active) setWorkOrders(records);
+      })
+      .catch(() => {
+        if (active) {
+          setWorkOrders([]);
+          setWorkOrdersLoadFailed(true);
+        }
+      })
+      .finally(() => {
+        if (active) setWorkOrdersLoaded(true);
+      });
+    return () => { active = false; };
+  }, [subPage, viewMode, workOrdersLoaded]);
 
   async function handleLookupPlate() {
     const clean = form.vehicle.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -113,6 +163,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         vehicle: json.plate || clean,
         marca: marca || prev.marca,
         modelo: modelo || prev.modelo,
+        versao: json.versao || prev.versao,
         title: summary || prev.title,
         ano: json.ano || prev.ano,
         cor: json.cor || prev.cor,
@@ -176,7 +227,90 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
     return raw as Record<string, string[]>;
   }, [catalogRecord]);
 
-  const vehicleCatalog = useMemo(() => mergeVehicleCatalog(customCatalog), [customCatalog]);
+  useEffect(() => {
+    let active = true;
+    setFipeBrandsLoading(true);
+    setFipeBrandsError("");
+    void fetch("/api/vehicle-catalog", { credentials: "same-origin" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as unknown;
+        if (!response.ok || !Array.isArray(payload)) {
+          const message = payload && typeof payload === "object" && "error" in payload
+            ? String(payload.error)
+            : "Não foi possível carregar as marcas da FIPE.";
+          throw new Error(message);
+        }
+        const options = payload.filter((item): item is VehicleCatalogOption =>
+          Boolean(item && typeof item === "object"
+            && "code" in item && (typeof item.code === "string" || typeof item.code === "number")
+            && "name" in item && typeof item.name === "string"),
+        ).map((item) => ({ code: String(item.code), name: item.name.trim() })).filter((item) => item.name);
+        if (!options.length) throw new Error("A FIPE não retornou marcas disponíveis.");
+        if (active) setFipeBrands(options);
+      })
+      .catch((reason: unknown) => {
+        if (active) setFipeBrandsError(reason instanceof Error ? reason.message : "Não foi possível carregar as marcas da FIPE.");
+      })
+      .finally(() => {
+        if (active) setFipeBrandsLoading(false);
+      });
+    return () => { active = false; };
+  }, [fipeBrandsRetry]);
+
+  const loadFipeModels = useCallback((brandName: string) => {
+    const brand = findFipeBrandByName(fipeBrands, brandName);
+    if (!brand || fipeModelsByBrand[brand.code]) return Promise.resolve();
+    const pending = fipeModelRequests.current.get(brand.code);
+    if (pending) return pending;
+
+    setFipeModelsLoading((current) => current.includes(brand.code) ? current : [...current, brand.code]);
+    setFipeModelsErrors((current) => {
+      if (!current[brand.code]) return current;
+      const next = { ...current };
+      delete next[brand.code];
+      return next;
+    });
+    const request = fetch(`/api/vehicle-catalog?brandId=${encodeURIComponent(brand.code)}`, { credentials: "same-origin" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as unknown;
+        if (!response.ok || !Array.isArray(payload)) {
+          const message = payload && typeof payload === "object" && "error" in payload
+            ? String(payload.error)
+            : "Não foi possível carregar os modelos da FIPE.";
+          throw new Error(message);
+        }
+        const options = payload.filter((item): item is VehicleCatalogOption =>
+          Boolean(item && typeof item === "object"
+            && "code" in item && (typeof item.code === "string" || typeof item.code === "number")
+            && "name" in item && typeof item.name === "string"),
+        ).map((item) => ({ code: String(item.code), name: item.name.trim() })).filter((item) => item.name);
+        setFipeModelsByBrand((current) => ({ ...current, [brand.code]: options }));
+      })
+      .catch((reason: unknown) => {
+        setFipeModelsErrors((current) => ({
+          ...current,
+          [brand.code]: reason instanceof Error ? reason.message : "Não foi possível carregar os modelos da FIPE.",
+        }));
+      })
+      .finally(() => {
+        fipeModelRequests.current.delete(brand.code);
+        setFipeModelsLoading((current) => current.filter((code) => code !== brand.code));
+      });
+    fipeModelRequests.current.set(brand.code, request);
+    return request;
+  }, [fipeBrands, fipeModelsByBrand]);
+
+  const vehicleCatalog = useMemo(() => {
+    const catalog: Record<string, string[]> = {};
+    for (const brand of mergeVehicleBrands(fipeBrands, customCatalog)) {
+      const fipeBrand = findFipeBrandByName(fipeBrands, brand);
+      catalog[brand] = mergeVehicleModels(
+        fipeBrand ? fipeModelsByBrand[fipeBrand.code] ?? [] : [],
+        customModelsForBrand(customCatalog, brand),
+      );
+    }
+    return catalog;
+  }, [customCatalog, fipeBrands, fipeModelsByBrand]);
 
   const sortedBrands = useMemo(
     () => Object.keys(vehicleCatalog).sort((a, b) => a.localeCompare(b, "pt-BR")),
@@ -185,27 +319,52 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
 
   const modelsForSelectedBrand = useMemo(() => {
     if (!form.marca.trim()) return [];
-    return [...(vehicleCatalog[form.marca.trim()] ?? [])].sort((a, b) =>
-      a.localeCompare(b, "pt-BR"),
-    );
-  }, [vehicleCatalog, form.marca]);
+    const loaded = vehicleCatalog[form.marca.trim()] ?? [];
+    return form.modelo && !loaded.some((model) => normalizeVehicleCatalogName(model) === normalizeVehicleCatalogName(form.modelo))
+      ? mergeVehicleModels([], [...loaded, form.modelo])
+      : loaded;
+  }, [vehicleCatalog, form.marca, form.modelo]);
 
   const filteredCatalog = useMemo(() => {
     const q = catalogSearch.trim().toLowerCase();
     return sortedBrands
       .map((brand) => {
         const models = vehicleCatalog[brand] ?? [];
-        if (!q) return { brand, models };
-        if (brand.toLowerCase().includes(q)) return { brand, models };
-        const matchedModels = models.filter((m) => m.toLowerCase().includes(q));
-        return matchedModels.length > 0 ? { brand, models: matchedModels } : null;
+        return !q || brand.toLowerCase().includes(q) ? { brand, models } : null;
       })
       .filter((item): item is { brand: string; models: string[] } => item !== null);
   }, [sortedBrands, vehicleCatalog, catalogSearch]);
+  const { pageItems: catalogBrandPage, controls: catalogBrandsPagination } = usePagination(filteredCatalog, 18);
+
+  const selectedCatalogEntry =
+    filteredCatalog.find((entry) => entry.brand === selectedCatalogBrand) ?? filteredCatalog[0] ?? null;
+  const visibleCatalogModels = selectedCatalogEntry?.models ?? [];
+  const { pageItems: catalogModelPage, controls: catalogModelsPagination } = usePagination(visibleCatalogModels, 16);
+  const selectedCatalogFipeBrand = selectedCatalogEntry
+    ? findFipeBrandByName(fipeBrands, selectedCatalogEntry.brand)
+    : undefined;
+  const selectedCatalogModelsLoading = Boolean(selectedCatalogFipeBrand && fipeModelsLoading.includes(selectedCatalogFipeBrand.code));
+  const selectedCatalogModelsError = selectedCatalogFipeBrand ? fipeModelsErrors[selectedCatalogFipeBrand.code] : "";
+  const formFipeBrand = form.marca ? findFipeBrandByName(fipeBrands, form.marca) : undefined;
+  const formModelsLoading = Boolean(formFipeBrand && fipeModelsLoading.includes(formFipeBrand.code));
+  const formModelsError = formFipeBrand ? fipeModelsErrors[formFipeBrand.code] : "";
+
+  useEffect(() => {
+    if (form.marca && !customBrandInput) void loadFipeModels(form.marca);
+  }, [customBrandInput, form.marca, loadFipeModels]);
+
+  useEffect(() => {
+    if (selectedCatalogEntry) void loadFipeModels(selectedCatalogEntry.brand);
+  }, [loadFipeModels, selectedCatalogEntry?.brand]);
+
+  useEffect(() => {
+    if (!selectedCatalogBrand && sortedBrands.length) setSelectedCatalogBrand(sortedBrands[0]);
+  }, [selectedCatalogBrand, sortedBrands]);
 
   async function saveCustomCatalog(nextCustom: Record<string, string[]>) {
     setCatalogSaving(true);
     setError("");
+    setCatalogError("");
     try {
       await saveSettingsRecord(catalogRecord, {
         title: "__marcas_modelos__",
@@ -213,47 +372,91 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         status: "ativo",
         details: nextCustom,
       });
+      return true;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Erro ao salvar marcas e modelos.");
+      const message = reason instanceof Error ? reason.message : "Erro ao salvar marcas e modelos.";
+      setError(message);
+      setCatalogError(message);
+      return false;
     } finally {
       setCatalogSaving(false);
     }
   }
 
-  async function handleAddBrandModel(e: FormEvent) {
+  function openCatalogModal(mode: "brand" | "model") {
+    setCatalogEntryMode(mode);
+    setCatalogBrandName("");
+    setCatalogEntryBrand(selectedCatalogEntry?.brand ?? sortedBrands[0] ?? "");
+    setCatalogEntryModel("");
+    setCatalogError("");
+    setCatalogModalOpen(true);
+  }
+
+  async function handleSaveCatalogEntry(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const b = newBrand.trim();
-    const m = newModel.trim();
-    if (!b || !m) return;
-    const existingBrand =
-      Object.keys(vehicleCatalog).find((k) => k.toLowerCase() === b.toLowerCase()) ?? b;
-    const currentCustom = [...(customCatalog[existingBrand] ?? [])];
-    if (!currentCustom.some((item) => item.toLowerCase() === m.toLowerCase())) {
-      currentCustom.push(m);
+    if (catalogEntryMode === "brand") {
+      const brand = catalogBrandName.trim();
+      if (!brand) return;
+      if (sortedBrands.some((item) => normalizeVehicleCatalogName(item) === normalizeVehicleCatalogName(brand))) {
+        setCatalogError("Essa marca já está no catálogo.");
+        return;
+      }
+      const saved = await saveCustomCatalog({ ...customCatalog, [brand]: [] });
+      if (saved) {
+        setCatalogSearch("");
+        setSelectedCatalogBrand(brand);
+        setCatalogModalOpen(false);
+      }
+      return;
     }
-    await saveCustomCatalog({
+
+    const brand = catalogEntryBrand.trim();
+    const model = catalogEntryModel.trim();
+    if (!brand || !model) return;
+    const existingModels = [
+      ...customModelsForBrand(customCatalog, brand),
+      ...(findFipeBrandByName(fipeBrands, brand)
+        ? fipeModelsByBrand[findFipeBrandByName(fipeBrands, brand)!.code]?.map((item) => item.name) ?? []
+        : []),
+    ];
+    if (existingModels.some((item) => normalizeVehicleCatalogName(item) === normalizeVehicleCatalogName(model))) {
+      setCatalogError("Esse modelo já está cadastrado para a marca selecionada.");
+      return;
+    }
+    const customKey = customCatalogKeyForBrand(customCatalog, brand) ?? brand;
+    const saved = await saveCustomCatalog({
       ...customCatalog,
-      [existingBrand]: currentCustom,
+      [customKey]: [...customModelsForBrand(customCatalog, brand), model],
     });
-    setNewModel("");
+    if (saved) {
+      setCatalogSearch("");
+      setSelectedCatalogBrand(brand);
+      setCatalogModalOpen(false);
+    }
   }
 
   async function handleRemoveCustomModel(brand: string, model: string) {
-    const currentCustom = customCatalog[brand] ?? [];
+    const key = customCatalogKeyForBrand(customCatalog, brand);
+    if (!key) return;
+    const currentCustom = customCatalog[key] ?? [];
     const nextList = currentCustom.filter((m) => m !== model);
     const nextCustom = { ...customCatalog };
     if (nextList.length > 0) {
-      nextCustom[brand] = nextList;
+      nextCustom[key] = nextList;
     } else {
-      delete nextCustom[brand];
+      delete nextCustom[key];
     }
     await saveCustomCatalog(nextCustom);
   }
 
+  const activeRows = useMemo(() => rows.filter((row) => !detail(row, "archived")), [rows]);
+  const archivedRows = useMemo(() => rows.filter((row) => Boolean(detail(row, "archived"))), [rows]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((row) => {
+    const source = subPage === "archived" ? archivedRows : activeRows;
+    if (!q) return source;
+    return source.filter((row) => {
       const haystack = [
         row.vehicle,
         row.title,
@@ -266,13 +469,84 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         .toLowerCase();
       return haystack.includes(q);
     });
-  }, [rows, search]);
+  }, [activeRows, archivedRows, search, subPage]);
+  const { pageItems: vehiclePageItems, controls: vehiclesPagination } = usePagination(filtered);
+
+  const latestServiceByPlate = useMemo(() => {
+    const latest = new Map<string, PanelRecord>();
+    for (const workOrder of workOrders) {
+      const plate = String(workOrder.vehicle ?? "").trim().toUpperCase();
+      if (plate && !latest.has(plate)) latest.set(plate, workOrder);
+    }
+    return latest;
+  }, [workOrders]);
+
+  function vehiclePlate(row: PanelRecord) {
+    return (row.vehicle || row.title || "").trim().toUpperCase();
+  }
+
+  function navigateToVehicleAction(path: string, row: PanelRecord) {
+    const ownerName = String(row.customer_name ?? "").trim();
+    const owner = clients.find((client) =>
+      clientDisplayName(client).trim().toLocaleLowerCase("pt-BR") === ownerName.toLocaleLowerCase("pt-BR"),
+    );
+    saveVehicleActionPrefill({
+      plate: vehiclePlate(row),
+      customerName: ownerName,
+      make: String(detail(row, "marca") ?? ""),
+      model: String(detail(row, "modelo") ?? ""),
+      year: String(detail(row, "ano") ?? ""),
+      phone: String(owner?.phone ?? ""),
+    });
+    const href = `${routeFor(path)}?novo=1`;
+    window.history.pushState({}, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
+  function openOwner(row: PanelRecord) {
+    const ownerName = String(row.customer_name ?? "").trim();
+    if (!ownerName) return;
+    saveVehicleOwnerLookup(ownerName);
+    const href = `${routeFor("clientes")}?ver-proprietario=1`;
+    window.history.pushState({}, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+
+  async function setVehicleArchived(row: PanelRecord, archived: boolean) {
+    try {
+      setError("");
+      await patchRecord(row.id, {
+        details: {
+          ...(row.details && typeof row.details === "object" ? row.details : {}),
+          archived,
+          archived_at: archived ? todayIso() : null,
+        },
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o veículo.");
+    }
+  }
+
+  function vehicleActions(row: PanelRecord) {
+    const isArchived = Boolean(detail(row, "archived"));
+    return [
+      { label: "Editar veículo", icon: <Pencil size={14} />, onSelect: () => openEdit(row) },
+      { label: "Nova ordem de serviço", icon: <Wrench size={14} />, onSelect: () => navigateToVehicleAction("ordens-de-servico", row) },
+      { label: "Novo agendamento", icon: <CalendarPlus size={14} />, onSelect: () => navigateToVehicleAction("agenda", row) },
+      { label: "Nova vistoria", icon: <ClipboardCheck size={14} />, onSelect: () => navigateToVehicleAction("inspecoes", row) },
+      { label: "Histórico de serviços", icon: <History size={14} />, onSelect: () => void openHistory(row) },
+      { label: "Ver proprietário", icon: <UserRound size={14} />, onSelect: () => openOwner(row), disabled: !String(row.customer_name ?? "").trim() },
+      { label: isArchived ? "Restaurar veículo" : "Arquivar veículo", icon: isArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />, onSelect: () => void setVehicleArchived(row, !isArchived), separatorBefore: true },
+      { label: "Excluir veículo", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true },
+    ];
+  }
 
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
     setCustomBrandInput(false);
     setCustomModelInput(false);
+    setCustomClient(false);
     setError("");
     setModalOpen(true);
   }
@@ -280,14 +554,22 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
   function openEdit(row: PanelRecord) {
     const m = String(detail(row, "marca") ?? "");
     const mod = String(detail(row, "modelo") ?? "");
-    const brandKnown = Boolean(!m || vehicleCatalog[m]);
-    const modelKnown = Boolean(!mod || (vehicleCatalog[m] ?? []).includes(mod));
+    const fipeBrand = findFipeBrandByName(fipeBrands, m);
+    if (fipeBrand) void loadFipeModels(m);
+    const brandKnown = Boolean(!m || customCatalogKeyForBrand(customCatalog, m) || fipeBrand || fipeBrandsLoading);
+    const loadedModels = fipeBrand ? fipeModelsByBrand[fipeBrand.code] : undefined;
+    const modelKnown = Boolean(!mod
+      || customModelsForBrand(customCatalog, m).some((model) => normalizeVehicleCatalogName(model) === normalizeVehicleCatalogName(mod))
+      || loadedModels?.some((model) => normalizeVehicleCatalogName(model.name) === normalizeVehicleCatalogName(mod))
+      || fipeBrandsLoading
+      || (fipeBrand && !loadedModels));
     setEditing(row);
     setForm({
       vehicle: row.vehicle ?? "",
       title: row.title ?? "",
       marca: m,
       modelo: mod,
+      versao: String(detail(row, "versao") ?? ""),
       ano: String(detail(row, "ano") ?? ""),
       km: String(detail(row, "km") ?? ""),
       combustivel: String(detail(row, "combustivel") ?? "Flex"),
@@ -298,6 +580,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
     });
     setCustomBrandInput(!brandKnown);
     setCustomModelInput(!modelKnown);
+    setCustomClient(false);
     setError("");
     setModalOpen(true);
   }
@@ -305,8 +588,8 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const plate = form.vehicle.trim().toUpperCase();
-    const title = form.title.trim() || `${form.marca} ${form.modelo}`.trim() || plate;
-    if (!title) return;
+    const title = [form.marca.trim(), form.modelo.trim(), form.versao.trim()].filter(Boolean).join(" ") || plate;
+    if (!plate || !form.marca.trim() || !form.modelo.trim() || !title) return;
     setSaving(true);
     setError("");
     try {
@@ -321,6 +604,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
           ...existingDetails,
           marca: form.marca.trim(),
           modelo: form.modelo.trim(),
+          versao: form.versao.trim(),
           ano: form.ano.trim(),
           km: form.km.trim(),
           combustivel: form.combustivel.trim(),
@@ -347,8 +631,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">FROTA E VEÍCULOS</p>
-          <h1>{subPage === "vehicles" ? "Veículos" : "Marcas e modelos"}</h1>
+          <h1>Veículos</h1>
         </div>
         {subPage === "vehicles" && (
           <div className="admin-title-actions">
@@ -363,11 +646,11 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         <div className="admin-filter-pills">
           <button
             type="button"
-            className={`admin-pill ${subPage === "vehicles" ? "active" : ""}`}
+            className={`admin-pill ${subPage !== "catalog" ? "active" : ""}`}
             onClick={() => setSubPage("vehicles")}
           >
             <Car size={13} style={{ marginRight: 5, verticalAlign: "-2px" }} />
-            Veículos ({rows.length})
+            Veículos ({activeRows.length})
           </button>
           <button
             type="button"
@@ -378,137 +661,146 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
             Marcas e modelos ({sortedBrands.length})
           </button>
         </div>
+        {subPage !== "catalog" && (
+          <div className="admin-filter-pills admin-toolbar-right" aria-label="Filtrar veículos">
+            <button
+              type="button"
+              className={`admin-pill ${subPage === "vehicles" ? "active" : ""}`}
+              onClick={() => setSubPage("vehicles")}
+            >
+              Ativos ({activeRows.length})
+            </button>
+            <button
+              type="button"
+              className={`admin-pill ${subPage === "archived" ? "active" : ""}`}
+              onClick={() => setSubPage("archived")}
+            >
+              Arquivados ({archivedRows.length})
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <p className="admin-form-error" style={{ marginBottom: 16 }}>{error}</p>}
 
       {subPage === "catalog" ? (
-        <div style={{ display: "grid", gap: 18 }}>
-          <div className="admin-panel">
-            <div className="admin-panel-head">
-              <h2>Adicionar marca ou modelo</h2>
+        <div className="admin-vehicle-catalog">
+          <header className="admin-vehicle-catalog-header">
+            <div>
+              <h2>Catálogo de veículos</h2>
             </div>
-            <form onSubmit={(e) => void handleAddBrandModel(e)}>
-              <div className="admin-form-grid">
-                <div className="admin-field">
-                  <label>Marca *</label>
-                  <input
-                    className="admin-input"
-                    list="catalog-brands-datalist"
-                    required
-                    value={newBrand}
-                    onChange={(e) => setNewBrand(e.target.value)}
-                    placeholder="Ex: Honda ou nova marca" id="admin-views-vehiclesview-395"
-                  />
-                  <datalist id="catalog-brands-datalist">
-                    {sortedBrands.map((b) => (
-                      <option key={b} value={b} />
-                    ))}
-                  </datalist>
-                </div>
-                <div className="admin-field">
-                  <label>Modelo *</label>
-                  <input
-                    className="admin-input"
-                    required
-                    value={newModel}
-                    onChange={(e) => setNewModel(e.target.value)}
-                    placeholder="Ex: Civic Touring" id="admin-views-vehiclesview-411"
-                  />
-                </div>
-              </div>
-              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                <button type="submit" className="admin-primary" disabled={catalogSaving}>
-                  <Plus size={15} /> {catalogSaving ? "Adicionando..." : "Adicionar ao catálogo"}
-                </button>
-              </div>
-            </form>
-          </div>
+          </header>
 
-          <div className="admin-panel">
-            <div className="admin-panel-head" style={{ flexWrap: "wrap", gap: 12 }}>
-              <h2>Catálogo ({filteredCatalog.length} marcas)</h2>
-              <div className="admin-search-wrap" style={{ maxWidth: 280 }}>
-                <Search size={14} />
+          <div className="admin-vehicle-catalog-layout">
+            <aside className="admin-vehicle-catalog-sidebar">
+              <div className="admin-vehicle-catalog-sidebar-title">
+                <strong>Marcas</strong>
+                <span>{filteredCatalog.length}</span>
+              </div>
+              <div className="admin-search-wrap admin-vehicle-catalog-search">
+                <Search size={14} aria-hidden="true" />
                 <input
                   className="admin-search"
-                  placeholder="Filtrar marca ou modelo..."
+                  placeholder="Buscar marca..."
                   value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)} id="admin-views-vehiclesview-433"
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                        aria-label="Buscar marca"
+                  id="admin-views-vehiclesview-433"
                 />
               </div>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                gap: 14,
-              }}
-            >
-              {filteredCatalog.map(({ brand, models }) => {
-                const defaults = new Set(DEFAULT_VEHICLE_CATALOG[brand] ?? []);
-                return (
-                  <div
+              <nav className="admin-vehicle-catalog-brands" aria-label="Marcas do catálogo">
+                {catalogBrandPage.map(({ brand }) => (
+                  <button
                     key={brand}
-                    style={{
-                      border: "1px solid var(--admin-line)",
-                      borderRadius: 12,
-                      padding: 14,
-                      display: "grid",
-                      gap: 10,
-                      alignContent: "start",
-                    }}
+                    type="button"
+                    className={`admin-vehicle-catalog-brand ${selectedCatalogEntry?.brand === brand ? "is-selected" : ""}`}
+                    onClick={() => setSelectedCatalogBrand(brand)}
+                    aria-current={selectedCatalogEntry?.brand === brand ? "true" : undefined}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: 14.5 }}>{brand}</strong>
-                      <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>
-                        {models.length} {models.length === 1 ? "modelo" : "modelos"}
-                      </span>
+                    <span>{brand}</span>
+                    <small>
+                      {findFipeBrandByName(fipeBrands, brand)
+                        ? fipeModelsByBrand[findFipeBrandByName(fipeBrands, brand)!.code]?.length ?? "—"
+                        : customModelsForBrand(customCatalog, brand).length}
+                    </small>
+                    <ChevronRight size={13} aria-hidden="true" />
+                  </button>
+                ))}
+                {fipeBrandsLoading && <p className="admin-vehicle-catalog-no-brands">Carregando marcas da FIPE...</p>}
+                {!fipeBrandsLoading && fipeBrandsError && (
+                  <p className="admin-form-error">
+                    {fipeBrandsError} <button type="button" className="admin-secondary" onClick={() => setFipeBrandsRetry((count) => count + 1)}>Tentar novamente</button>
+                  </p>
+                )}
+                {filteredCatalog.length === 0 && (
+                  <p className="admin-vehicle-catalog-no-brands">Nenhuma marca encontrada.</p>
+                )}
+              </nav>
+              {catalogBrandsPagination}
+            </aside>
+
+            <section className="admin-vehicle-catalog-content" aria-label="Modelos da marca selecionada">
+              {selectedCatalogEntry ? (
+                <>
+                  <header className="admin-vehicle-catalog-brand-head">
+                    <div>
+                      <h3>{selectedCatalogEntry.brand}</h3>
+                      <p>
+                        {selectedCatalogModelsLoading
+                          ? "Carregando modelos da FIPE..."
+                          : `${vehicleCatalog[selectedCatalogEntry.brand]?.length ?? 0} modelos cadastrados`}
+                      </p>
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {models.map((mod) => {
-                        const isCustom = !defaults.has(mod);
-                        return (
-                          <span
-                            key={mod}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              padding: "4px 9px",
-                              borderRadius: 999,
-                              fontSize: 12,
-                              border: "1px solid var(--admin-line)",
-                              color: isCustom ? "var(--admin-orange)" : "var(--admin-ink)",
-                            }}
-                          >
-                            {mod}
-                            {isCustom && (
-                              <button
-                                type="button"
-                                onClick={() => void handleRemoveCustomModel(brand, mod)}
-                                title="Remover modelo personalizado"
-                                style={{
-                                  border: 0,
-                                  background: "transparent",
-                                  color: "inherit",
-                                  cursor: "pointer",
-                                  padding: 0,
-                                  display: "inline-flex",
-                                }}
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
-                          </span>
-                        );
-                      })}
-                    </div>
+                  </header>
+                  <div className="admin-vehicle-catalog-models-head">
+                    <h4>Modelos</h4>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="admin-vehicle-catalog-models">
+                    {selectedCatalogModelsError && (
+                      <p className="admin-form-error">
+                        {selectedCatalogModelsError} <button type="button" className="admin-secondary" onClick={() => void loadFipeModels(selectedCatalogEntry.brand)}>Tentar novamente</button>
+                      </p>
+                    )}
+                    {catalogModelPage.map((model) => {
+                      const selectedFipeModels = selectedCatalogFipeBrand
+                        ? fipeModelsByBrand[selectedCatalogFipeBrand.code] ?? []
+                        : [];
+                      const isCustom = !selectedFipeModels.some((item) => normalizeVehicleCatalogName(item.name) === normalizeVehicleCatalogName(model));
+                      return (
+                        <article className="admin-vehicle-catalog-model" key={model}>
+                          <span>{model}</span>
+                          {isCustom && (
+                            <AdminActionMenu
+                              label={`Ações do modelo ${model}`}
+                              actions={[
+                                {
+                                  label: "Remover modelo personalizado",
+                                  icon: <Trash2 size={14} />,
+                                  onSelect: () => void handleRemoveCustomModel(selectedCatalogEntry.brand, model),
+                                  destructive: true,
+                                },
+                              ]}
+                            />
+                          )}
+                        </article>
+                      );
+                    })}
+                    {visibleCatalogModels.length === 0 && !selectedCatalogModelsError && (
+                      <p className="admin-vehicle-catalog-no-models">
+                        {selectedCatalogModelsLoading
+                          ? "Buscando modelos..."
+                          : catalogSearch
+                            ? "Nenhum modelo corresponde à busca."
+                            : "Nenhum modelo cadastrado para esta marca."}
+                      </p>
+                    )}
+                  </div>
+                  {catalogModelsPagination}
+                </>
+              ) : (
+                <div className="admin-vehicle-catalog-no-models">Selecione uma marca para ver os modelos.</div>
+              )}
+            </section>
           </div>
         </div>
       ) : (
@@ -558,12 +850,12 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
       ) : filtered.length === 0 ? (
         <div className="admin-empty">
           <Car size={24} />
-          <strong>Nenhum veículo encontrado</strong>
-          <p>Cadastre um veículo ou ajuste os termos de busca.</p>
+          <strong>{subPage === "archived" ? "Nenhum veículo arquivado" : "Nenhum veículo encontrado"}</strong>
+          <p>{subPage === "archived" ? "Veículos arquivados aparecerão aqui." : "Cadastre um veículo ou ajuste os termos de busca."}</p>
         </div>
       ) : viewMode === "list" ? (
         <div className="admin-table-wrap">
-          <table className="admin-table">
+          <table className="admin-table admin-vehicles-table">
             <thead>
               <tr>
                 <th>Placa</th>
@@ -576,7 +868,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => {
+              {vehiclePageItems.map((row) => {
                 const marca = detail(row, "marca");
                 const modelo = detail(row, "modelo");
                 const ano = detail(row, "ano");
@@ -596,24 +888,10 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     <td>{km ? `${km} km` : "—"}</td>
                     <td>{asText(combustivel)}</td>
                     <td>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Editar"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-icon-btn danger"
-                          title="Remover"
-                          onClick={() => void removeRecord(row)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <AdminActionMenu
+                        label={`Ações do veículo ${row.vehicle || row.title}`}
+                        actions={vehicleActions(row)}
+                      />
                     </td>
                   </tr>
                 );
@@ -623,7 +901,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
         </div>
       ) : (
         <div className="admin-three-col">
-          {filtered.map((row) => {
+          {vehiclePageItems.map((row) => {
             const marca = detail(row, "marca");
             const modelo = detail(row, "modelo");
             const ano = detail(row, "ano");
@@ -632,105 +910,158 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
             const makeModel = [marca, modelo].filter(Boolean).join(" ") || row.title;
 
             return (
-              <div key={row.id} className="admin-panel" style={{ marginTop: 0 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    marginBottom: 14,
-                  }}
-                >
+              <article key={row.id} className="admin-vehicle-card">
+                <div className="admin-vehicle-card-top">
                   <div className="mercosul-plate">
                     <div className="mercosul-plate-top">BRASIL</div>
                     <div className="mercosul-plate-code">{row.vehicle || row.title}</div>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      type="button"
-                      className="admin-icon-btn"
-                      title="Histórico do veículo"
-                      onClick={() => void openHistory(row)}
-                    >
-                      <History size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-icon-btn"
-                      title="Etiqueta de manutenção QR"
-                      onClick={() => void openQrSticker(row)}
-                    >
-                      <QrCode size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-icon-btn"
-                      title="Editar"
-                      onClick={() => openEdit(row)}
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-icon-btn danger"
-                      title="Remover"
-                      onClick={() => void removeRecord(row)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                  <AdminActionMenu
+                    label={`Ações do veículo ${row.vehicle || row.title}`}
+                    actions={vehicleActions(row)}
+                  />
+                </div>
+
+                <div className="admin-vehicle-card-identity">
+                  <div>{makeModel}</div>
+                  <div><UserRound size={12} />{asText(row.customer_name)}</div>
+                </div>
+
+                <div className="admin-vehicle-card-specs">
+                  <div><span>Ano</span><strong>{asText(ano)}</strong></div>
+                  <div><span>Quilometragem</span><strong>{km ? `${km} km` : "—"}</strong></div>
+                  <div><span>Combustível</span><strong>{asText(combustivel)}</strong></div>
+                </div>
+
+                <div className="admin-vehicle-card-last-service">
+                  <Wrench size={13} />
+                  <div>
+                    <span>Último serviço</span>
+                    <strong>
+                      {(() => {
+                        const service = latestServiceByPlate.get(vehiclePlate(row));
+                        if (!workOrdersLoaded) return "Carregando histórico...";
+                        if (workOrdersLoadFailed) return "Histórico indisponível";
+                        return service?.title || "Nenhum serviço registrado";
+                      })()}
+                    </strong>
                   </div>
                 </div>
 
-                <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>{makeModel}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--admin-muted)", marginTop: 2 }}>
-                    Proprietário: {asText(row.customer_name)}
-                  </div>
+                <div className="admin-vehicle-card-footer">
+                  <button type="button" className="admin-vehicle-history-link" onClick={() => void openHistory(row)}>
+                    <History size={12} /> Histórico
+                  </button>
+                  <button type="button" className="admin-secondary admin-vehicle-view-button" onClick={() => setViewingVehicle(row)}>
+                    Ver veículo <ArrowUpRight size={13} />
+                  </button>
                 </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                    gap: 8,
-                    paddingTop: 12,
-                    borderTop: "1px solid var(--admin-line)",
-                    fontSize: 12,
-                  }}
-                >
-                  <div>
-                    <div style={{ color: "var(--admin-muted)", fontSize: 10.5 }}>Ano</div>
-                    <div style={{ fontWeight: 600 }}>{asText(ano)}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "var(--admin-muted)", fontSize: 10.5 }}>KM</div>
-                    <div style={{ fontWeight: 600 }}>{km ? `${km} km` : "—"}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "var(--admin-muted)", fontSize: 10.5 }}>Combustível</div>
-                    <div style={{ fontWeight: 600 }}>{asText(combustivel)}</div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <AdminStatusBadge status={row.status} />
-                </div>
-              </div>
+              </article>
             );
           })}
         </div>
       )}
+      {!loading && vehiclesPagination}
         </>
+      )}
+
+      {catalogModalOpen && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setCatalogModalOpen(false))}>
+          <div className="admin-modal admin-vehicle-catalog-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div>
+                <h2>Adicionar ao catálogo</h2>
+                <p>Cadastre uma nova marca ou inclua um modelo.</p>
+              </div>
+              <button type="button" className="admin-icon-btn" onClick={() => setCatalogModalOpen(false)} aria-label="Fechar">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={(e) => void handleSaveCatalogEntry(e)}>
+              <div className="admin-vehicle-catalog-mode-switch" role="group" aria-label="Tipo de cadastro">
+                <button
+                  type="button"
+                  aria-pressed={catalogEntryMode === "brand"}
+                  className={catalogEntryMode === "brand" ? "is-active" : ""}
+                  onClick={() => { setCatalogEntryMode("brand"); setCatalogError(""); }}
+                >
+                  Nova marca
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={catalogEntryMode === "model"}
+                  className={catalogEntryMode === "model" ? "is-active" : ""}
+                  onClick={() => { setCatalogEntryMode("model"); setCatalogError(""); }}
+                >
+                  Novo modelo
+                </button>
+              </div>
+
+              {catalogEntryMode === "brand" ? (
+                <div className="admin-field">
+                  <label htmlFor="vehicle-catalog-new-brand">Nome da marca *</label>
+                  <input
+                    id="vehicle-catalog-new-brand"
+                    className="admin-input"
+                    required
+                    autoFocus
+                    value={catalogBrandName}
+                    onChange={(e) => setCatalogBrandName(e.target.value)}
+                    placeholder="Ex.: Honda"
+                  />
+                </div>
+              ) : (
+                <div className="admin-vehicle-catalog-model-form">
+                  <div className="admin-field">
+                    <label htmlFor="vehicle-catalog-model-brand">Marca *</label>
+                    <select
+                      id="vehicle-catalog-model-brand"
+                      className="admin-select"
+                      required
+                      value={catalogEntryBrand}
+                      onChange={(e) => setCatalogEntryBrand(e.target.value)}
+                    >
+                      <option value="" disabled>Selecionar marca</option>
+                      {sortedBrands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                    </select>
+                  </div>
+                  <div className="admin-field">
+                    <label htmlFor="vehicle-catalog-new-model">Nome do modelo *</label>
+                    <input
+                      id="vehicle-catalog-new-model"
+                      className="admin-input"
+                      required
+                      autoFocus
+                      value={catalogEntryModel}
+                      onChange={(e) => setCatalogEntryModel(e.target.value)}
+                      placeholder="Ex.: Civic Touring"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {catalogError && <p className="admin-form-error admin-vehicle-catalog-modal-error">{catalogError}</p>}
+
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-secondary" onClick={() => setCatalogModalOpen(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="admin-primary" disabled={catalogSaving}>
+                  {catalogSaving ? "Salvando..." : catalogEntryMode === "brand" ? "Cadastrar marca" : "Cadastrar modelo"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {modalOpen && (
         <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="admin-modal-head">
+          <div className="admin-modal admin-vehicle-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-head admin-vehicle-modal-head">
               <div>
                 <h2>{editing ? "Editar veículo" : "Novo veículo"}</h2>
-                <p>Informe os dados da placa, modelo e proprietário.</p>
+                <p>Cadastre um veículo e vincule seu proprietário.</p>
               </div>
               <button
                 type="button"
@@ -741,202 +1072,306 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSubmit}>
-              <div className="admin-form-grid">
-                <div className="admin-field">
-                  <label>Placa</label>
-                  <div style={{ display: "flex", gap: 6 }}>
+            <form className="admin-vehicle-form" onSubmit={handleSubmit}>
+              <section className="admin-vehicle-form-section admin-vehicle-identity-section">
+                <h3>Identificação do veículo</h3>
+                <div className="admin-vehicle-plate-panel">
+                  <div className="admin-vehicle-plate-layout">
+                    <label className="admin-field admin-vehicle-plate-field">
+                      <span>Placa do veículo *</span>
+                      <span className="admin-vehicle-plate-input">
+                        <span>BRASIL</span>
+                        <input
+                          required
+                          maxLength={7}
+                          value={form.vehicle}
+                          onChange={(e) => setForm({ ...form, vehicle: e.target.value.toUpperCase() })}
+                          placeholder="ABC1D23"
+                          id="admin-views-vehiclesview-749"
+                        />
+                      </span>
+                    </label>
+                    <div className="admin-vehicle-plate-lookup">
+                      <button
+                        type="button"
+                        className="admin-primary"
+                        onClick={() => void handleLookupPlate()}
+                        disabled={lookingUpPlate}
+                        title="Consultar placa e preencher dados automaticamente"
+                      >
+                        <Search size={13} />
+                        {lookingUpPlate ? "Consultando..." : "Consultar placa"}
+                      </button>
+                    </div>
+                  </div>
+                  {plateNotice && <small className="admin-vehicle-plate-notice">{plateNotice}</small>}
+                </div>
+              </section>
+
+              <section className="admin-vehicle-form-section admin-vehicle-data-section">
+                <h3>Dados do veículo</h3>
+                <div className="admin-form-grid admin-vehicle-fields">
+                  <div className="admin-field">
+                    <label htmlFor={customBrandInput ? "admin-views-vehiclesview-806" : "admin-views-vehiclesview-781"}>Marca *</label>
+                    {customBrandInput ? (
+                      <input
+                        className="admin-input"
+                        required
+                        value={form.marca}
+                        onChange={(e) => setForm({ ...form, marca: e.target.value })}
+                        placeholder="Digite a marca"
+                        id="admin-views-vehiclesview-806"
+                      />
+                    ) : (
+                      <select
+                        className="admin-select"
+                        required
+                        disabled={fipeBrandsLoading && sortedBrands.length === 0}
+                        value={form.marca}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__custom__") {
+                            setCustomBrandInput(true);
+                            setCustomModelInput(true);
+                            setForm({ ...form, marca: "", modelo: "" });
+                          } else {
+                            setCustomBrandInput(false);
+                            setCustomModelInput(false);
+                            setForm({ ...form, marca: val, modelo: "" });
+                          }
+                        }}
+                        id="admin-views-vehiclesview-781"
+                      >
+                        <option value="">
+                          {fipeBrandsLoading && sortedBrands.length === 0 ? "Carregando marcas..." : "Selecionar marca"}
+                        </option>
+                        {sortedBrands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}
+                        <option value="__custom__">+ Outra marca (digitar)</option>
+                      </select>
+                    )}
+                    {!customBrandInput && fipeBrandsError && (
+                      <small className="admin-form-error">
+                        {fipeBrandsError} Você ainda pode digitar uma marca manualmente. <button type="button" className="admin-secondary" onClick={() => setFipeBrandsRetry((count) => count + 1)}>Tentar novamente</button>
+                      </small>
+                    )}
+                  </div>
+
+                  <div className="admin-field">
+                    <label htmlFor={customModelInput ? "admin-views-vehiclesview-846" : "admin-views-vehiclesview-816"}>Modelo *</label>
+                    {customModelInput ? (
+                      <input
+                        className="admin-input"
+                        required
+                        value={form.modelo}
+                        onChange={(e) => setForm({ ...form, modelo: e.target.value })}
+                        placeholder="Digite o modelo"
+                        id="admin-views-vehiclesview-846"
+                      />
+                    ) : (
+                      <select
+                        className="admin-select"
+                        required
+                        value={form.modelo}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__custom__") {
+                            setCustomModelInput(true);
+                            setForm({ ...form, modelo: "" });
+                          } else {
+                            setCustomModelInput(false);
+                            const autoTitle =
+                              !form.title || form.title === `${form.marca} ${form.modelo}`.trim()
+                                ? `${form.marca} ${val}`.trim()
+                                : form.title;
+                            setForm({ ...form, modelo: val, title: autoTitle });
+                          }
+                        }}
+                        disabled={(!form.marca.trim() && !customBrandInput) || formModelsLoading}
+                        id="admin-views-vehiclesview-816"
+                      >
+                        <option value="">
+                          {!form.marca.trim() ? "Escolha a marca primeiro" : formModelsLoading ? "Carregando modelos..." : "Selecionar modelo"}
+                        </option>
+                        {modelsForSelectedBrand.map((model) => <option key={model} value={model}>{model}</option>)}
+                        <option value="__custom__">+ Outro modelo (digitar)</option>
+                      </select>
+                    )}
+                    {!customModelInput && formModelsError && (
+                      <small className="admin-form-error">{formModelsError} Você pode informar o modelo manualmente.</small>
+                    )}
+                  </div>
+
+                  <label className="admin-field">
+                    <span>Versão / motorização</span>
                     <input
                       className="admin-input"
-                      value={form.vehicle}
-                      onChange={(e) => setForm({ ...form, vehicle: e.target.value.toUpperCase() })}
-                      placeholder="ABC1D23" id="admin-views-vehiclesview-749"
+                      value={form.versao}
+                      onChange={(e) => setForm({ ...form, versao: e.target.value })}
+                      placeholder="Ex: EXL 2.0"
+                      id="admin-views-vehiclesview-771"
                     />
+                  </label>
+                  <label className="admin-field">
+                    <span>Ano</span>
+                    <input
+                      className="admin-input"
+                      value={form.ano}
+                      onChange={(e) => setForm({ ...form, ano: e.target.value })}
+                      placeholder="2022"
+                      id="admin-views-vehiclesview-856"
+                    />
+                  </label>
+
+                  <label className="admin-field">
+                    <span>Combustível</span>
+                    <select
+                      className="admin-select"
+                      value={form.combustivel}
+                      onChange={(e) => setForm({ ...form, combustivel: e.target.value })}
+                      id="admin-views-vehiclesview-874"
+                    >
+                      <option value="Flex">Flex</option>
+                      <option value="Gasolina">Gasolina</option>
+                      <option value="Etanol">Etanol</option>
+                      <option value="Diesel">Diesel</option>
+                      <option value="GNV">GNV</option>
+                      <option value="Híbrido">Híbrido</option>
+                      <option value="Elétrico">Elétrico</option>
+                      {!['Flex', 'Gasolina', 'Etanol', 'Diesel', 'GNV', 'Híbrido', 'Elétrico'].includes(form.combustivel) && form.combustivel && <option value={form.combustivel}>{form.combustivel}</option>}
+                    </select>
+                  </label>
+                  <label className="admin-field">
+                    <span>Cor</span>
+                    <input
+                      className="admin-input"
+                      value={form.cor}
+                      onChange={(e) => setForm({ ...form, cor: e.target.value })}
+                      placeholder="Prata"
+                      id="admin-views-vehiclesview-891"
+                    />
+                  </label>
+
+                  <label className="admin-field">
+                    <span>Quilometragem</span>
+                    <span className="admin-vehicle-mileage-input">
+                      <input
+                        className="admin-input"
+                        inputMode="numeric"
+                        value={form.km}
+                        onChange={(e) => setForm({ ...form, km: e.target.value.replace(/\D/g, "") })}
+                        placeholder="45.000"
+                        id="admin-views-vehiclesview-865"
+                      />
+                      <small>km</small>
+                    </span>
+                  </label>
+                  <label className="admin-field">
+                    <span>Chassi</span>
+                    <input
+                      className="admin-input"
+                      value={form.chassi}
+                      onChange={(e) => setForm({ ...form, chassi: e.target.value.toUpperCase() })}
+                      placeholder="Número do chassi"
+                      id="admin-views-vehiclesview-900"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="admin-vehicle-form-section is-separated">
+                <h3>Proprietário</h3>
+                <div className="admin-field">
+                  <label htmlFor="admin-views-vehiclesview-919">Cliente vinculado</label>
+                  {!customClient && clients.length > 0 ? (
+                    <ClientPicker
+                      clients={clients}
+                      value={form.customer_name}
+                      id="admin-views-vehiclesview-919"
+                      placeholder="Buscar cliente..."
+                      onSelectClient={(picked) => {
+                        if (!picked) {
+                          setForm((prev) => ({ ...prev, customer_name: "" }));
+                          return;
+                        }
+                        setCustomClient(false);
+                        setForm((prev) => ({
+                          ...prev,
+                          customer_name: clientDisplayName(picked),
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <input
+                      id="admin-views-vehiclesview-919"
+                      className="admin-input"
+                      placeholder="Nome do cliente"
+                      value={form.customer_name}
+                      onChange={(e) => {
+                        setCustomClient(true);
+                        setForm((prev) => ({ ...prev, customer_name: e.target.value }));
+                      }}
+                    />
+                  )}
+                  {clients.length > 0 && (
                     <button
                       type="button"
-                      className="admin-secondary"
-                      style={{ flexShrink: 0, padding: "0 12px" }}
-                      onClick={() => void handleLookupPlate()}
-                      disabled={lookingUpPlate}
-                      title="Consultar placa e preencher dados automaticamente"
+                      className="admin-vehicle-new-client-link"
+                      onClick={() => setCustomClient((current) => !current)}
                     >
-                      <Search size={13} />
-                      {lookingUpPlate ? "Buscando..." : "Preencher"}
+                      <Plus size={12} />
+                      {customClient ? "Selecionar cliente existente" : "Cadastrar novo cliente"}
                     </button>
-                  </div>
-                  {plateNotice && <small>{plateNotice}</small>}
-                </div>
-                <div className="admin-field">
-                  <label>Modelo resumido</label>
-                  <input
-                    className="admin-input"
-                    required
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="Ex: Civic EXL 2.0" id="admin-views-vehiclesview-771"
-                  />
-                </div>
-                <div className="admin-field">
-                  <label>Marca</label>
-                  <select
-                    className="admin-select"
-                    value={customBrandInput ? "__custom__" : form.marca}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "__custom__") {
-                        setCustomBrandInput(true);
-                        setCustomModelInput(true);
-                        setForm({ ...form, marca: "", modelo: "" });
-                      } else {
-                        setCustomBrandInput(false);
-                        setCustomModelInput(false);
-                        setForm({ ...form, marca: val, modelo: "" });
-                      }
-                    }} id="admin-views-vehiclesview-781"
-                  >
-                    <option value="">Selecionar marca...</option>
-                    {sortedBrands.map((brand) => (
-                      <option key={brand} value={brand}>
-                        {brand}
-                      </option>
-                    ))}
-                    <option value="__custom__">+ Outra marca (digitar)</option>
-                  </select>
-                  {customBrandInput && (
-                    <input
-                      className="admin-input"
-                      value={form.marca}
-                      onChange={(e) => setForm({ ...form, marca: e.target.value })}
-                      placeholder="Digite a marca" id="admin-views-vehiclesview-806"
-                    />
                   )}
                 </div>
-                <div className="admin-field">
-                  <label>Modelo</label>
-                  <select
-                    className="admin-select"
-                    value={customModelInput ? "__custom__" : form.modelo}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "__custom__") {
-                        setCustomModelInput(true);
-                        setForm({ ...form, modelo: "" });
-                      } else {
-                        setCustomModelInput(false);
-                        const autoTitle =
-                          !form.title || form.title === `${form.marca} ${form.modelo}`.trim()
-                            ? `${form.marca} ${val}`.trim()
-                            : form.title;
-                        setForm({ ...form, modelo: val, title: autoTitle });
-                      }
-                    }}
-                    disabled={!form.marca.trim() && !customBrandInput} id="admin-views-vehiclesview-816"
-                  >
-                    <option value="">
-                      {form.marca.trim() ? "Selecionar modelo..." : "Escolha a marca primeiro"}
-                    </option>
-                    {modelsForSelectedBrand.map((mod) => (
-                      <option key={mod} value={mod}>
-                        {mod}
-                      </option>
-                    ))}
-                    <option value="__custom__">+ Outro modelo (digitar)</option>
-                  </select>
-                  {customModelInput && (
-                    <input
-                      className="admin-input"
-                      value={form.modelo}
-                      onChange={(e) => setForm({ ...form, modelo: e.target.value })}
-                      placeholder="Digite o modelo" id="admin-views-vehiclesview-846"
-                    />
-                  )}
+              </section>
+
+              <div className="admin-vehicle-modal-footer">
+                <small>* Campos obrigatórios</small>
+                <div>
+                  <button type="button" className="admin-secondary" onClick={() => setModalOpen(false)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="admin-primary" disabled={saving}>
+                    {saving ? "Salvando..." : editing ? "Salvar veículo" : "Cadastrar veículo"}
+                  </button>
                 </div>
-                <div className="admin-field">
-                  <label>Ano</label>
-                  <input
-                    className="admin-input"
-                    value={form.ano}
-                    onChange={(e) => setForm({ ...form, ano: e.target.value })}
-                    placeholder="2022" id="admin-views-vehiclesview-856"
-                  />
-                </div>
-                <div className="admin-field">
-                  <label>Quilometragem (KM)</label>
-                  <input
-                    className="admin-input"
-                    value={form.km}
-                    onChange={(e) => setForm({ ...form, km: e.target.value })}
-                    placeholder="45000" id="admin-views-vehiclesview-865"
-                  />
-                </div>
-                <div className="admin-field">
-                  <label>Combustível</label>
-                  <select
-                    className="admin-select"
-                    value={form.combustivel}
-                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })} id="admin-views-vehiclesview-874"
-                  >
-                    <option value="Flex">Flex</option>
-                    <option value="Gasolina">Gasolina</option>
-                    <option value="Etanol">Etanol</option>
-                    <option value="Diesel">Diesel</option>
-                    <option value="GNV">GNV</option>
-                    <option value="Híbrido">Híbrido</option>
-                    <option value="Elétrico">Elétrico</option>
-                    {!['Flex', 'Gasolina', 'Etanol', 'Diesel', 'GNV', 'Híbrido', 'Elétrico'].includes(form.combustivel) && form.combustivel && <option value={form.combustivel}>{form.combustivel}</option>}
-                  </select>
-                </div>
-                <div className="admin-field">
-                  <label>Cor</label>
-                  <input
-                    className="admin-input"
-                    value={form.cor}
-                    onChange={(e) => setForm({ ...form, cor: e.target.value })}
-                    placeholder="Prata" id="admin-views-vehiclesview-891"
-                  />
-                </div>
-                <div className="admin-field">
-                  <label>Chassi</label>
-                  <input
-                    className="admin-input"
-                    value={form.chassi}
-                    onChange={(e) => setForm({ ...form, chassi: e.target.value.toUpperCase() })}
-                    placeholder="9BWZZZ377VT004251" id="admin-views-vehiclesview-900"
-                  />
-                </div>
-                <div className="admin-field">
-                  <label>Proprietário</label>
-                  <ClientPicker
-                    clients={clients}
-                    value={form.customer_name}
-                    onSelectClient={(picked) =>
-                      setForm({
-                        ...form,
-                        customer_name: picked ? clientDisplayName(picked) : "",
-                      })
-                    }
-                  />
-                  <input
-                    className="admin-input"
-                    value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
-                    placeholder="Nome do cliente" id="admin-views-vehiclesview-919"
-                  />
-                </div>
-              </div>
-              <div className="admin-modal-actions">
-                <button
-                  type="button"
-                  className="admin-secondary"
-                  onClick={() => setModalOpen(false)}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="admin-primary" disabled={saving}>
-                  {saving ? "Salvando..." : "Salvar"}
-                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {viewingVehicle && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setViewingVehicle(null))}>
+          <div className="admin-modal admin-vehicle-details-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div>
+                <h2>{[detail(viewingVehicle, "marca"), detail(viewingVehicle, "modelo")].filter(Boolean).join(" ") || viewingVehicle.title}</h2>
+                <p>Ficha do veículo · {viewingVehicle.vehicle || viewingVehicle.title}</p>
+              </div>
+              <button type="button" className="admin-icon-btn" aria-label="Fechar ficha do veículo" onClick={() => setViewingVehicle(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="admin-vehicle-details-grid">
+              <div><span>Proprietário</span><strong>{asText(viewingVehicle.customer_name)}</strong></div>
+              <div><span>Ano</span><strong>{asText(detail(viewingVehicle, "ano"))}</strong></div>
+              <div><span>Quilometragem</span><strong>{detail(viewingVehicle, "km") ? `${detail(viewingVehicle, "km")} km` : "—"}</strong></div>
+              <div><span>Combustível</span><strong>{asText(detail(viewingVehicle, "combustivel"))}</strong></div>
+              <div><span>Versão</span><strong>{asText(detail(viewingVehicle, "versao"))}</strong></div>
+              <div><span>Cor</span><strong>{asText(detail(viewingVehicle, "cor"))}</strong></div>
+              <div><span>Chassi</span><strong>{asText(detail(viewingVehicle, "chassi"))}</strong></div>
+            </div>
+            <div className="admin-modal-actions">
+              <button type="button" className="admin-secondary" onClick={() => void openQrSticker(viewingVehicle)}>
+                <QrCode size={14} /> Etiqueta QR
+              </button>
+              <button type="button" className="admin-secondary" onClick={() => void openHistory(viewingVehicle)}>
+                <History size={14} /> Histórico
+              </button>
+              <button type="button" className="admin-primary" onClick={() => { const row = viewingVehicle; setViewingVehicle(null); openEdit(row); }}>
+                <Pencil size={14} /> Editar veículo
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1027,7 +1462,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
 
             <div
               style={{
-                border: "1px dashed var(--admin-line)",
+                border: "1px solid var(--admin-line)",
                 borderRadius: 8,
                 padding: 16,
                 display: "flex",

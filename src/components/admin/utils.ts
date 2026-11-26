@@ -30,6 +30,104 @@ export const todayIso = () => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 
+export type VehicleActionPrefill = {
+  plate: string;
+  customerName: string;
+  make: string;
+  model: string;
+  year: string;
+  phone: string;
+};
+
+const VEHICLE_ACTION_PREFILL_KEY = "benittes_admin_vehicle_action_prefill";
+const VEHICLE_OWNER_LOOKUP_KEY = "benittes_admin_vehicle_owner_lookup";
+
+export function saveVehicleActionPrefill(prefill: VehicleActionPrefill) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(VEHICLE_ACTION_PREFILL_KEY, JSON.stringify(prefill));
+  } catch {
+    // The form can still be opened if session storage is unavailable.
+  }
+}
+
+export function consumeVehicleActionPrefill(): VehicleActionPrefill | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("novo") !== "1") return null;
+
+  const fromQuery = {
+    plate: params.get("placa") ?? "",
+    customerName: params.get("cliente") ?? "",
+    make: params.get("marca") ?? "",
+    model: params.get("modelo") ?? "",
+    year: params.get("ano") ?? "",
+    phone: params.get("telefone") ?? "",
+  };
+  let prefill = fromQuery;
+  try {
+    const stored = window.sessionStorage.getItem(VEHICLE_ACTION_PREFILL_KEY);
+    window.sessionStorage.removeItem(VEHICLE_ACTION_PREFILL_KEY);
+    if (stored) {
+      const value = JSON.parse(stored) as Partial<VehicleActionPrefill>;
+      prefill = {
+        plate: typeof value.plate === "string" ? value.plate : "",
+        customerName: typeof value.customerName === "string" ? value.customerName : "",
+        make: typeof value.make === "string" ? value.make : "",
+        model: typeof value.model === "string" ? value.model : "",
+        year: typeof value.year === "string" ? value.year : "",
+        phone: typeof value.phone === "string" ? value.phone : "",
+      };
+    }
+  } catch {
+    try {
+      window.sessionStorage.removeItem(VEHICLE_ACTION_PREFILL_KEY);
+    } catch {
+      // Ignore blocked browser storage.
+    }
+  }
+  for (const key of ["novo", "placa", "cliente", "marca", "modelo", "ano", "telefone"]) {
+    params.delete(key);
+  }
+  const query = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+  );
+  return prefill;
+}
+
+export function saveVehicleOwnerLookup(name: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(VEHICLE_OWNER_LOOKUP_KEY, name);
+  } catch {
+    // The client list remains available when session storage is unavailable.
+  }
+}
+
+export function consumeVehicleOwnerLookup(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("ver-proprietario") !== "1") return null;
+  let name = "";
+  try {
+    name = window.sessionStorage.getItem(VEHICLE_OWNER_LOOKUP_KEY) ?? "";
+    window.sessionStorage.removeItem(VEHICLE_OWNER_LOOKUP_KEY);
+  } catch {
+    // Fall through to an empty client search.
+  }
+  params.delete("ver-proprietario");
+  const query = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+  );
+  return name || null;
+}
+
 export const detail = (row: PanelRecord, key: string): unknown => {
   const d = row.details;
   return d && typeof d === "object" ? (d as Record<string, unknown>)[key] : undefined;

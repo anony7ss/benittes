@@ -4,6 +4,7 @@ import { SkeletonTable } from "../Skeletons";
 import { useMemo, useState } from "react";
 import { AlertTriangle, Minus, Package, Pencil, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
 import { insertRow, type PanelRecord } from "../../../lib/supabase";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
 
@@ -190,10 +191,6 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">
-            CONTROLE DE ESTOQUE
-            {lowStockCount > 0 ? ` • ${lowStockCount} ITEM(NS) COM ESTOQUE BAIXO` : ""}
-          </p>
           <h1>Estoque</h1>
         </div>
         <div className="admin-title-actions">
@@ -323,40 +320,15 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                       />
                     </td>
                     <td>
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Diminuir 1"
-                          onClick={() => void adjustStock(row, -1)}
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Adicionar 1"
-                          onClick={() => void adjustStock(row, 1)}
-                        >
-                          <Plus size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Editar"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-icon-btn danger"
-                          title="Remover"
-                          onClick={() => void removeRecord(row)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <AdminActionMenu
+                        label={`Ações de ${row.title}`}
+                        actions={[
+                          { label: "Diminuir 1", icon: <Minus size={14} />, onSelect: () => void adjustStock(row, -1) },
+                          { label: "Adicionar 1", icon: <Plus size={14} />, onSelect: () => void adjustStock(row, 1) },
+                          { label: "Editar item", icon: <Pencil size={14} />, onSelect: () => openEdit(row), separatorBefore: true },
+                          { label: "Remover item", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

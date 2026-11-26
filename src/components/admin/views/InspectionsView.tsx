@@ -1,11 +1,25 @@
 "use client";
 
 import { SkeletonTable } from "../Skeletons";
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
-import { Camera, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+  X,
+  XCircle,
+} from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge, statusLabels } from "../StatusBadge";
-import { asText, dateText, detail, useModuleRecords, modalBackdropProps } from "../utils";
+import { asText, dateText, detail, consumeVehicleActionPrefill, useModuleRecords, modalBackdropProps } from "../utils";
 import {
   ClientPicker,
   VehiclePicker,
@@ -14,8 +28,6 @@ import {
   useClientVehicleCatalog,
   vehiclePlate,
 } from "../QuickPickers";
-
-const STATUS_OPTIONS = ["novo", "em_andamento", "aguardando", "concluido", "cancelado"] as const;
 
 const RESULT_FILTERS = [
   { key: "todos", label: "Todos" },
@@ -42,20 +54,30 @@ type FormState = {
   customer_name: string;
   resultado: string;
   quilometragem: string;
+  tecnico: string;
   status: string;
   description: string;
   fotos: string[];
+  checklist: InspectionChecklistItem[];
+};
+
+type InspectionChecklistItem = {
+  id: string;
+  name: string;
+  result: string;
 };
 
 const emptyForm = (): FormState => ({
   title: "",
   vehicle: "",
   customer_name: "",
-  resultado: "aprovado",
+  resultado: "",
   quilometragem: "",
-  status: "concluido",
+  tecnico: "",
+  status: "em_andamento",
   description: "",
   fotos: [],
+  checklist: [],
 });
 
 async function compressPhoto(file: File): Promise<string> {
@@ -82,6 +104,24 @@ async function compressPhoto(file: File): Promise<string> {
   });
 }
 
+function normalizeChecklist(value: unknown): InspectionChecklistItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    if (!name) return [];
+    const result = ["aprovado", "atencao", "reprovado"].includes(String(item.result))
+      ? String(item.result)
+      : "aprovado";
+    return [{
+      id: typeof item.id === "string" && item.id ? item.id : `${index}-${name}`,
+      name,
+      result,
+    }];
+  });
+}
+
 export function InspectionsView({ session }: { session: { user: { id: string } } }) {
   const { rows, loading, error, setError, saveRecord, removeRecord } = useModuleRecords(
     "inspections",
@@ -94,6 +134,10 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [customClient, setCustomClient] = useState(false);
+  const [customVehicle, setCustomVehicle] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistDraft, setChecklistDraft] = useState("");
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -110,8 +154,25 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
   function openCreate() {
     setEditing(null);
     setForm(emptyForm());
+    setCustomClient(clients.length === 0);
+    setCustomVehicle(vehicles.length === 0);
+    setChecklistOpen(false);
+    setChecklistDraft("");
+    setError("");
     setModalOpen(true);
   }
+
+  useEffect(() => {
+    const prefill = consumeVehicleActionPrefill();
+    if (!prefill) return;
+    openCreate();
+    setForm((current) => ({
+      ...current,
+      title: prefill.plate ? `Vistoria · ${prefill.plate}` : current.title,
+      vehicle: prefill.plate,
+      customer_name: prefill.customerName,
+    }));
+  }, []);
 
   function openEdit(row: PanelRecord) {
     setEditing(row);
@@ -120,21 +181,31 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
       title: row.title ?? "",
       vehicle: row.vehicle ?? "",
       customer_name: row.customer_name ?? "",
-      resultado: String(detail(row, "resultado") ?? "aprovado"),
+      resultado: String(detail(row, "resultado") ?? ""),
       quilometragem: String(detail(row, "quilometragem") ?? ""),
-      status: row.status ?? "concluido",
+      tecnico: String(detail(row, "tecnico") ?? ""),
+      status: row.status ?? "em_andamento",
       description: row.description ?? "",
       fotos: Array.isArray(rawFotos) ? rawFotos.map(String) : [],
+      checklist: normalizeChecklist(detail(row, "checklist")),
     });
+    setCustomClient(!clients.some((client) => clientDisplayName(client).toLowerCase() === (row.customer_name ?? "").trim().toLowerCase()));
+    setCustomVehicle(!vehicles.some((vehicle) => vehiclePlate(vehicle) === (row.vehicle ?? "").trim().toUpperCase()));
+    setChecklistOpen(false);
+    setChecklistDraft("");
+    setError("");
     setModalOpen(true);
   }
 
-  async function handlePhotoUpload(e: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []).slice(0, 6);
-    e.target.value = "";
-    if (files.length === 0) return;
+  async function addPhotos(files: File[]) {
+    const available = Math.max(0, 8 - form.fotos.length);
+    const images = files.filter((file) => file.type.startsWith("image/")).slice(0, available);
+    if (!images.length) {
+      if (available === 0) setError("O limite de 8 fotos já foi atingido.");
+      return;
+    }
     try {
-      const compressed = await Promise.all(files.map(compressPhoto));
+      const compressed = await Promise.all(images.map(compressPhoto));
       setForm((prev) => ({
         ...prev,
         fotos: [...prev.fotos, ...compressed].slice(0, 8),
@@ -144,9 +215,27 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
     }
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!form.title.trim()) return;
+  async function handlePhotoUpload(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    await addPhotos(files);
+  }
+
+  function addChecklistItem() {
+    const name = checklistDraft.trim();
+    if (!name) return;
+    setForm((prev) => ({
+      ...prev,
+      checklist: [...prev.checklist, { id: `${Date.now()}-${Math.random()}`, name, result: "aprovado" }],
+    }));
+    setChecklistDraft("");
+  }
+
+  async function saveInspection(status: string) {
+    if (!form.title.trim()) {
+      setError("Informe o título da vistoria.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -156,13 +245,15 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
         title: form.title.trim(),
         vehicle: form.vehicle.trim().toUpperCase() || null,
         customer_name: form.customer_name.trim() || null,
-        status: form.status,
+        status,
         description: form.description.trim() || null,
         details: {
           ...existingDetails,
           resultado: form.resultado,
           quilometragem: form.quilometragem.trim() || null,
+          tecnico: form.tecnico.trim() || null,
           fotos: form.fotos,
+          checklist: form.checklist,
         },
       });
       await ensureClientAndVehicle({
@@ -182,11 +273,15 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
     }
   }
 
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    void saveInspection("concluido");
+  }
+
   return (
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">CHECKLIST E LAUDOS</p>
           <h1>Vistorias</h1>
         </div>
         <div className="admin-title-actions">
@@ -241,12 +336,12 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                 <th>Resultado</th>
                 <th>Data</th>
                 <th>Status</th>
-                <th>Ações</th>
+                <th style={{ width: 72, textAlign: "right" }}>Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((row) => {
-                const resultado = String(detail(row, "resultado") ?? "aprovado");
+                const resultado = String(detail(row, "resultado") ?? "");
                 const km = detail(row, "quilometragem");
                 return (
                   <tr key={row.id}>
@@ -262,8 +357,8 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     <td>{row.title}</td>
                     <td>
                       <AdminStatusBadge
-                        status={RESULT_BADGE_CLASS[resultado] ?? resultado}
-                        label={RESULT_LABELS[resultado] ?? asText(resultado)}
+                        status={RESULT_BADGE_CLASS[resultado] ?? (resultado || "novo")}
+                        label={RESULT_LABELS[resultado] ?? (resultado ? asText(resultado) : "Não definido")}
                       />
                     </td>
                     <td>{dateText(row.created_at)}</td>
@@ -271,24 +366,13 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                       <AdminStatusBadge status={row.status} />
                     </td>
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Editar vistoria"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-ghost-danger"
-                          title="Remover vistoria"
-                          onClick={() => void removeRecord(row)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <AdminActionMenu
+                        label={`Ações da vistoria ${row.title}`}
+                        actions={[
+                          { label: "Editar vistoria", icon: <Pencil size={14} />, onSelect: () => openEdit(row) },
+                          { label: "Excluir vistoria", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true, separatorBefore: true },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );
@@ -300,11 +384,11 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
 
       {modalOpen && (
         <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="admin-modal admin-inspection-modal" onClick={(e) => e.stopPropagation()}>
             <div className="admin-modal-head">
               <div>
-                <h2>{editing ? "Editar Vistoria" : "Nova Vistoria"}</h2>
-                <p>Registre o resultado da inspeção técnica e observações do checklist.</p>
+                <h2>{editing ? "Editar vistoria" : "Nova vistoria"}</h2>
+                <p>Registre as condições e os resultados da inspeção do veículo.</p>
               </div>
               <button
                 type="button"
@@ -316,205 +400,333 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleSubmit(e)}>
-              <div className="admin-form-grid">
-                <div className="admin-field wide">
-                  <label>Laudo / Título *</label>
-                  <input
-                    className="admin-input"
-                    required
-                    placeholder="Ex: Vistoria preventiva 40.000 km"
-                    value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })} id="admin-views-inspectionsview-323"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Veículo / Placa</label>
-                  <VehiclePicker
-                    vehicles={vehicles}
-                    value={form.vehicle}
-                    clientName={form.customer_name}
-                    onSelectVehicle={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, vehicle: "" });
-                        return;
-                      }
-                      const km = String(detail(picked, "km") ?? "").trim();
-                      setForm({
-                        ...form,
-                        vehicle: vehiclePlate(picked),
-                        customer_name: form.customer_name || (picked.customer_name ?? "").trim(),
-                        quilometragem: form.quilometragem || km,
-                      });
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="ABC1D23"
-                    value={form.vehicle}
-                    onChange={(e) => setForm({ ...form, vehicle: e.target.value })} id="admin-views-inspectionsview-352"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Cliente</label>
-                  <ClientPicker
-                    clients={clients}
-                    value={form.customer_name}
-                    onSelectClient={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, customer_name: "" });
-                        return;
-                      }
-                      const name = clientDisplayName(picked);
-                      const matchVeh = vehicles.find(
-                        (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
-                      );
-                      const km = matchVeh ? String(detail(matchVeh, "km") ?? "").trim() : "";
-                      setForm({
-                        ...form,
-                        customer_name: name,
-                        vehicle: matchVeh && !form.vehicle ? vehiclePlate(matchVeh) : form.vehicle,
-                        quilometragem: !form.quilometragem && km ? km : form.quilometragem,
-                      });
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="Nome do cliente"
-                    value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-inspectionsview-383"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Resultado</label>
-                  <select
-                    className="admin-select"
-                    value={form.resultado}
-                    onChange={(e) => setForm({ ...form, resultado: e.target.value })} id="admin-views-inspectionsview-393"
-                  >
-                    <option value="aprovado">Aprovado</option>
-                    <option value="atencao">Atenção</option>
-                    <option value="reprovado">Reprovado</option>
-                  </select>
-                </div>
-
-                <div className="admin-field">
-                  <label>Quilometragem</label>
-                  <input
-                    className="admin-input"
-                    placeholder="Ex: 42500"
-                    value={form.quilometragem}
-                    onChange={(e) => setForm({ ...form, quilometragem: e.target.value })} id="admin-views-inspectionsview-406"
-                  />
-                </div>
-
-                <div className="admin-field wide">
-                  <label>Status</label>
-                  <select
-                    className="admin-select"
-                    value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })} id="admin-views-inspectionsview-416"
-                  >
-                    {STATUS_OPTIONS.map((st) => (
-                      <option key={st} value={st}>
-                        {statusLabels[st] ?? st}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="admin-field wide">
-                  <label>Observações / Checklist</label>
-                  <textarea
-                    className="admin-textarea"
-                    rows={3}
-                    placeholder="Itens inspecionados, apontamentos e recomendações..."
-                    value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-inspectionsview-431"
-                  />
-                </div>
-
-                <div className="admin-field wide">
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                    <label style={{ margin: 0 }}>Fotos da vistoria ({form.fotos.length}/8)</label>
-                    <label className="admin-secondary" style={{ height: 30, minHeight: 30, padding: "0 10px", fontSize: 12, cursor: "pointer" }}>
-                      <Camera size={13} /> Anexar fotos
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        multiple
-                        onChange={(e) => void handlePhotoUpload(e)}
-                        style={{ display: "none" }} id="admin-views-inspectionsview-445"
-                      />
-                    </label>
+            <form className="admin-inspection-form" onSubmit={handleSubmit}>
+              <section className="admin-inspection-section is-first">
+                <h3>Identificação</h3>
+                <div className="admin-inspection-grid">
+                  <div className="admin-field wide">
+                    <label htmlFor="inspection-title">Título da vistoria *</label>
+                    <input
+                      id="inspection-title"
+                      className="admin-input"
+                      required
+                      placeholder="Ex.: Vistoria preventiva de 40.000 km"
+                      value={form.title}
+                      onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                    />
                   </div>
-                  {form.fotos.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                      {form.fotos.map((src, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            position: "relative",
-                            width: 76,
-                            height: 76,
-                            borderRadius: 6,
-                            overflow: "hidden",
-                            border: "1px solid var(--admin-line)",
+
+                  <div className="admin-field">
+                    <label htmlFor="inspection-vehicle">Veículo / placa</label>
+                    {!customVehicle && vehicles.length > 0 ? (
+                      <VehiclePicker
+                        id="inspection-vehicle"
+                        vehicles={vehicles}
+                        value={form.vehicle}
+                        clientName={form.customer_name}
+                        placeholder="Buscar veículo..."
+                        onSelectVehicle={(picked) => {
+                          if (!picked) {
+                            setForm((prev) => ({ ...prev, vehicle: "" }));
+                            return;
+                          }
+                          setCustomVehicle(false);
+                          const ownerName = (picked.customer_name ?? "").trim();
+                          const km = String(detail(picked, "km") ?? "").trim();
+                          setForm((prev) => ({
+                            ...prev,
+                            vehicle: vehiclePlate(picked),
+                            customer_name: prev.customer_name || ownerName,
+                            quilometragem: prev.quilometragem || km,
+                          }));
+                        }}
+                      />
+                    ) : (
+                      <input
+                        id="inspection-vehicle"
+                        className="admin-input"
+                        placeholder="Buscar ou informar placa..."
+                        value={form.vehicle}
+                        onChange={(e) => setForm((prev) => ({ ...prev, vehicle: e.target.value }))}
+                      />
+                    )}
+                    {vehicles.length > 0 && (
+                      <button
+                        type="button"
+                        className="admin-work-order-link"
+                        onClick={() => setCustomVehicle((value) => !value)}
+                      >
+                        {customVehicle ? "+ Buscar veículo salvo" : "+ Novo veículo"}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="admin-field">
+                    <label htmlFor="inspection-client">Cliente</label>
+                    {!customClient && clients.length > 0 ? (
+                      <ClientPicker
+                        id="inspection-client"
+                        clients={clients}
+                        value={form.customer_name}
+                        placeholder="Buscar cliente..."
+                        onSelectClient={(picked) => {
+                          if (!picked) {
+                            setForm((prev) => ({ ...prev, customer_name: "" }));
+                            return;
+                          }
+                          setCustomClient(false);
+                          const name = clientDisplayName(picked);
+                          const matchVehicle = vehicles.find(
+                            (vehicle) => (vehicle.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
+                          );
+                          setForm((prev) => ({
+                            ...prev,
+                            customer_name: name,
+                            vehicle: matchVehicle && !prev.vehicle ? vehiclePlate(matchVehicle) : prev.vehicle,
+                            quilometragem: !prev.quilometragem && matchVehicle
+                              ? String(detail(matchVehicle, "km") ?? "").trim()
+                              : prev.quilometragem,
+                          }));
+                        }}
+                      />
+                    ) : (
+                      <input
+                        id="inspection-client"
+                        className="admin-input"
+                        placeholder="Buscar ou informar cliente..."
+                        value={form.customer_name}
+                        onChange={(e) => setForm((prev) => ({ ...prev, customer_name: e.target.value }))}
+                      />
+                    )}
+                    {clients.length > 0 && (
+                      <button
+                        type="button"
+                        className="admin-work-order-link"
+                        onClick={() => setCustomClient((value) => !value)}
+                      >
+                        {customClient ? "+ Buscar cliente salvo" : "+ Novo cliente"}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="admin-field">
+                    <label htmlFor="inspection-odometer">Quilometragem</label>
+                    <div className="admin-inspection-input-with-suffix">
+                      <input
+                        id="inspection-odometer"
+                        className="admin-input"
+                        inputMode="numeric"
+                        placeholder="42.500"
+                        value={form.quilometragem}
+                        onChange={(e) => setForm((prev) => ({ ...prev, quilometragem: e.target.value }))}
+                      />
+                      <span>km</span>
+                    </div>
+                  </div>
+
+                  <div className="admin-field">
+                    <label htmlFor="inspection-technician">Técnico responsável</label>
+                    <input
+                      id="inspection-technician"
+                      className="admin-input"
+                      list="inspection-technician-options"
+                      placeholder="Selecionar técnico"
+                      value={form.tecnico}
+                      onChange={(e) => setForm((prev) => ({ ...prev, tecnico: e.target.value }))}
+                    />
+                    <datalist id="inspection-technician-options">
+                      {Array.from(new Set(rows.map((row) => String(detail(row, "tecnico") ?? "").trim()).filter(Boolean))).map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              </section>
+
+              <section className="admin-inspection-section">
+                <h3>Avaliação técnica</h3>
+                <div className="admin-field">
+                  <label>Resultado da vistoria</label>
+                  <div className="admin-inspection-results" role="group" aria-label="Resultado da vistoria">
+                    <button
+                      type="button"
+                      className={`admin-inspection-result is-approved${form.resultado === "aprovado" ? " is-selected" : ""}`}
+                      aria-pressed={form.resultado === "aprovado"}
+                      onClick={() => setForm((prev) => ({ ...prev, resultado: "aprovado" }))}
+                    >
+                      <CheckCircle2 size={14} /> Aprovado
+                    </button>
+                    <button
+                      type="button"
+                      className={`admin-inspection-result is-caution${form.resultado === "atencao" ? " is-selected" : ""}`}
+                      aria-pressed={form.resultado === "atencao"}
+                      onClick={() => setForm((prev) => ({ ...prev, resultado: "atencao" }))}
+                    >
+                      <AlertCircle size={14} /> Com ressalvas
+                    </button>
+                    <button
+                      type="button"
+                      className={`admin-inspection-result is-rejected${form.resultado === "reprovado" ? " is-selected" : ""}`}
+                      aria-pressed={form.resultado === "reprovado"}
+                      onClick={() => setForm((prev) => ({ ...prev, resultado: "reprovado" }))}
+                    >
+                      <XCircle size={14} /> Reprovado
+                    </button>
+                  </div>
+                  <small className="admin-inspection-result-hint">
+                    {form.resultado ? RESULT_LABELS[form.resultado] : "Nenhum resultado definido."}
+                  </small>
+                </div>
+
+                <div className="admin-inspection-checklist">
+                  <button
+                    type="button"
+                    className="admin-inspection-checklist-summary"
+                    aria-expanded={checklistOpen}
+                    onClick={() => setChecklistOpen((open) => !open)}
+                  >
+                    <span className="admin-inspection-checklist-icon"><ClipboardCheck size={15} /></span>
+                    <span className="admin-inspection-checklist-copy">
+                      <strong>Checklist de inspeção</strong>
+                      <small>{form.checklist.length ? `${form.checklist.length} componentes avaliados` : "Adicione os componentes avaliados"}</small>
+                    </span>
+                    <span className="admin-inspection-checklist-config">{checklistOpen ? "Fechar" : "Configurar"}</span>
+                    <ChevronRight className={checklistOpen ? "is-open" : ""} size={15} />
+                  </button>
+                  {checklistOpen && (
+                    <div className="admin-inspection-checklist-editor">
+                      <div className="admin-inspection-checklist-add">
+                        <input
+                          className="admin-input"
+                          placeholder="Ex.: Freios, pneus, iluminação..."
+                          value={checklistDraft}
+                          onChange={(e) => setChecklistDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addChecklistItem();
+                            }
                           }}
-                        >
-                          <img
-                            src={src}
-                            alt={`Vistoria ${idx + 1}`}
-                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                          />
+                        />
+                        <button type="button" className="admin-secondary" onClick={addChecklistItem}>
+                          <Plus size={14} /> Adicionar
+                        </button>
+                      </div>
+                      {form.checklist.map((item) => (
+                        <div className="admin-inspection-checklist-row" key={item.id}>
+                          <span>{item.name}</span>
+                          <select
+                            className="admin-select"
+                            aria-label={`Resultado de ${item.name}`}
+                            value={item.result}
+                            onChange={(e) => setForm((prev) => ({
+                              ...prev,
+                              checklist: prev.checklist.map((current) => current.id === item.id
+                                ? { ...current, result: e.target.value }
+                                : current),
+                            }))}
+                          >
+                            <option value="aprovado">Aprovado</option>
+                            <option value="atencao">Com ressalvas</option>
+                            <option value="reprovado">Reprovado</option>
+                          </select>
                           <button
                             type="button"
-                            onClick={() =>
-                              setForm((prev) => ({
-                                ...prev,
-                                fotos: prev.fotos.filter((_, i) => i !== idx),
-                              }))
-                            }
-                            style={{
-                              position: "absolute",
-                              top: 3,
-                              right: 3,
-                              width: 20,
-                              height: 20,
-                              borderRadius: 999,
-                              background: "rgba(0,0,0,0.7)",
-                              color: "#fff",
-                              border: 0,
-                              display: "grid",
-                              placeItems: "center",
-                              cursor: "pointer",
-                            }}
-                            aria-label="Remover foto"
+                            className="admin-icon-btn"
+                            aria-label={`Remover ${item.name} do checklist`}
+                            onClick={() => setForm((prev) => ({
+                              ...prev,
+                              checklist: prev.checklist.filter((current) => current.id !== item.id),
+                            }))}
                           >
-                            <X size={11} />
+                            <X size={13} />
                           </button>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-              </div>
 
-              <div className="admin-modal-actions">
-                <button
-                  type="button"
-                  className="admin-secondary"
-                  onClick={() => setModalOpen(false)}
+                <div className="admin-field admin-inspection-observations">
+                  <label htmlFor="inspection-observations">Observações e recomendações</label>
+                  <textarea
+                    id="inspection-observations"
+                    className="admin-textarea"
+                    rows={3}
+                    placeholder="Descreva os problemas encontrados e as recomendações técnicas..."
+                    value={form.description}
+                    onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                  />
+                </div>
+              </section>
+
+              <section className="admin-inspection-section admin-inspection-photos-section">
+                <div className="admin-inspection-section-title-row">
+                  <h3>Registro fotográfico</h3>
+                  <span>{form.fotos.length}/8 fotos</span>
+                </div>
+                <label
+                  className={`admin-inspection-upload${form.fotos.length >= 8 ? " is-full" : ""}`}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    void addPhotos(Array.from(e.dataTransfer.files));
+                  }}
                 >
-                  Cancelar
-                </button>
-                <button type="submit" className="admin-primary" disabled={saving}>
-                  {saving ? "Salvando..." : "Salvar"}
-                </button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    disabled={form.fotos.length >= 8}
+                    onChange={(e) => void handlePhotoUpload(e)}
+                  />
+                  <span className="admin-inspection-upload-camera"><Camera size={17} /></span>
+                  <span className="admin-inspection-upload-copy">
+                    <strong>{form.fotos.length >= 8 ? "Limite de fotos atingido" : "Anexar fotos da vistoria"}</strong>
+                    <small>Selecione ou arraste até {8 - form.fotos.length} imagens</small>
+                  </span>
+                  <Upload size={15} className="admin-inspection-upload-icon" />
+                </label>
+                {form.fotos.length > 0 && (
+                  <div className="admin-inspection-photo-list">
+                    {form.fotos.map((src, idx) => (
+                      <div className="admin-inspection-photo" key={`${idx}-${src.slice(0, 18)}`}>
+                        <img src={src} alt={`Foto da vistoria ${idx + 1}`} />
+                        <button
+                          type="button"
+                          aria-label={`Remover foto ${idx + 1}`}
+                          onClick={() => setForm((prev) => ({
+                            ...prev,
+                            fotos: prev.fotos.filter((_, i) => i !== idx),
+                          }))}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {error && <p className="admin-form-error admin-inspection-modal-error">{error}</p>}
+
+              <div className="admin-inspection-footer">
+                <div className="admin-inspection-footer-status">
+                  <span>Status da vistoria</span>
+                  <strong>{statusLabels[form.status] ?? form.status.replaceAll("_", " ")}</strong>
+                </div>
+                <div className="admin-inspection-footer-actions">
+                  <button type="button" className="admin-secondary" onClick={() => setModalOpen(false)} disabled={saving}>
+                    Cancelar
+                  </button>
+                  <button type="button" className="admin-secondary" onClick={() => void saveInspection("novo")} disabled={saving}>
+                    {saving ? "Salvando..." : "Salvar rascunho"}
+                  </button>
+                  <button type="submit" className="admin-primary" disabled={saving}>
+                    {saving ? "Salvando..." : "Concluir vistoria"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

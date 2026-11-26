@@ -53,6 +53,9 @@ type PublicQuoteData = {
     observacao_cliente: string | null;
     motivo_recusa: string | null;
     aprovacao_parcial?: boolean;
+    desconto_tipo?: "percentual" | "fixo";
+    desconto_valor?: number;
+    permitir_aprovacao_parcial?: boolean;
     items?: Array<{
       id: string;
       name: string;
@@ -264,7 +267,9 @@ export function QuoteSheetClient({ token }: { token: string }) {
     if (action === "approve" && quote) {
       const items = quote.items ?? [];
       if (items.length > 0) {
-        const selected = items.filter((item) => selectedItemIds.includes(item.id));
+        const selected = quote.permitir_aprovacao_parcial === false
+          ? items.filter((item) => item.approved !== false)
+          : items.filter((item) => selectedItemIds.includes(item.id));
         if (selected.length === 0) {
           setError("Selecione ao menos um item com valor definido para aprovar.");
           return;
@@ -293,7 +298,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
         body: JSON.stringify({
           action,
           note,
-          ...(action === "approve" && (quote?.items?.length ?? 0) > 0
+          ...(action === "approve" && quote && (quote.items?.length ?? 0) > 0 && quote.permitir_aprovacao_parcial !== false
             ? { approved_item_ids: selectedItemIds }
             : {}),
         }),
@@ -325,12 +330,20 @@ export function QuoteSheetClient({ token }: { token: string }) {
     quote?.aprovacao === "recusado" || quote?.status === "cancelado";
   const isPending = Boolean(quote && !isApproved && !isRejected);
   const quoteItems = quote?.items ?? [];
-  const displayedItems = isPending
+  const displayedItems = isPending && quote?.permitir_aprovacao_parcial !== false
     ? quoteItems.filter((item) => selectedItemIds.includes(item.id))
     : quoteItems.filter((item) => item.approved !== false);
   const displayedTotal = quoteItems.length > 0
     ? displayedItems.length > 0 && displayedItems.every((item) => Number.isFinite(item.unit_price) && item.unit_price > 0)
-      ? displayedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0)
+      ? (() => {
+          const subtotal = displayedItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
+          const fullSubtotal = quoteItems.reduce((sum, item) => sum + item.qty * Math.max(0, item.unit_price), 0);
+          const requestedDiscount = Math.max(0, Number(quote?.desconto_valor ?? 0) || 0);
+          const discount = quote?.desconto_tipo === "fixo"
+            ? fullSubtotal > 0 ? requestedDiscount * subtotal / fullSubtotal : 0
+            : subtotal * Math.min(100, requestedDiscount) / 100;
+          return Math.max(0, Math.round((subtotal - discount) * 100) / 100);
+        })()
       : null
     : quote && quote.amount > 0 ? quote.amount : null;
   const selectedItemsHavePendingPrice = displayedItems.some((item) => !Number.isFinite(item.unit_price) || item.unit_price <= 0);
@@ -823,7 +836,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
                             }}
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                              {isPending && (
+                              {isPending && quote.permitir_aprovacao_parcial !== false && (
                                 <Checkbox
                                   checked={checked}
                                   onCheckedChange={(val) => {
@@ -854,7 +867,7 @@ export function QuoteSheetClient({ token }: { token: string }) {
                       {isPending && (
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, paddingTop: 4 }}>
                           <span style={{ color: "var(--admin-muted)" }}>
-                            Total selecionado ({selectedItemIds.length}/{quote.items.length} itens):
+                            {quote.permitir_aprovacao_parcial === false ? "Total do orçamento:" : `Total selecionado (${displayedItems.length}/${quote.items.length} itens):`}
                           </span>
                           <strong>
                             {displayedItems.length === 0

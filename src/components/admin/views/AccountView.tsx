@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { hasModulePermission, PANEL_PERMISSION_MODULES, type PanelPermissionModule, type PanelPermissions } from "../../../admin/permissions";
+import { AdminActionMenu } from "../ActionMenu";
 import {
   selectRows,
   updatePassword,
@@ -606,7 +607,6 @@ export function AccountView({
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">SISTEMA · CONTA & EQUIPE</p>
           <h1>Minha conta e equipe</h1>
         </div>
       </div>
@@ -1104,28 +1104,28 @@ export function AccountView({
                         </td>
                         <td>{dateText(m.created_at)}</td>
                         <td>
-                          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                            <button
-                              type="button"
-                              className="admin-icon-btn"
-                              title="Editar membro"
-                              onClick={() => {
-                                setEditingMember(m);
-                                setEditMemberName(m.full_name ?? "");
-                                setEditMemberRole(m.role);
-                              }}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className={m.active ? "admin-ghost-danger" : "admin-secondary"}
-                              disabled={busyUserId === m.user_id || isSelf}
-                              onClick={() => void handleToggleActive(m)}
-                            >
-                              {m.active ? "Suspender" : "Reativar"}
-                            </button>
-                          </div>
+                          <AdminActionMenu
+                            label={`Ações de ${m.full_name || "membro"}`}
+                            actions={[
+                              {
+                                label: "Editar membro",
+                                icon: <Pencil size={14} />,
+                                onSelect: () => {
+                                  setEditingMember(m);
+                                  setEditMemberName(m.full_name ?? "");
+                                  setEditMemberRole(m.role);
+                                },
+                              },
+                              {
+                                label: m.active ? "Suspender membro" : "Reativar membro",
+                                icon: <User size={14} />,
+                                onSelect: () => void handleToggleActive(m),
+                                disabled: busyUserId === m.user_id || isSelf,
+                                destructive: m.active,
+                                separatorBefore: true,
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );

@@ -126,7 +126,6 @@ export function DashboardView() {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">BENITTES · OFICINA MECÂNICA</p>
           <h1>Visão geral</h1>
         </div>
         <div className="admin-title-actions">
@@ -205,7 +204,6 @@ export function DashboardView() {
         <section className="admin-panel">
           <div className="admin-panel-head">
             <div>
-              <p className="admin-kicker">FATURAMENTO REALIZADO</p>
               <h2>Últimos 6 meses (OS + Balcão)</h2>
             </div>
             <a href={routeFor("financeiro")}>
@@ -228,81 +226,59 @@ export function DashboardView() {
         <section className="admin-panel">
           <div className="admin-panel-head">
             <div>
-              <p className="admin-kicker">ALERTAS DO DIA</p>
               <h2>Atenção operacional</h2>
             </div>
           </div>
-          {loading ? <SkeletonDashboardRows count={3} variant="metric" /> : (
-          <div className="admin-dashboard-data-list">
-            <a
-              href={routeFor("estoque")}
-              className="admin-data-enter"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: 12,
-                borderRadius: 6,
-                background: "var(--admin-soft)",
-                border: "1px solid var(--admin-line)",
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500 }}>
-                <Package size={16} style={{ color: "var(--admin-orange)" }} />
-                Peças abaixo do mínimo
-              </span>
-              <strong>{lowStock.length}</strong>
-            </a>
+          {loading ? <SkeletonDashboardRows count={4} variant="alert" /> : (
+            <div className="admin-dashboard-data-list admin-dashboard-alert-list">
+              <a href={routeFor("estoque")} className="admin-data-enter admin-dashboard-alert-row">
+                <span className="admin-dashboard-alert-icon"><Package size={15} aria-hidden="true" /></span>
+                <span className="admin-dashboard-alert-copy">
+                  <strong>Peças abaixo do mínimo</strong>
+                  <small>Estoque da oficina</small>
+                </span>
+                <strong className="admin-dashboard-alert-value">{lowStock.length}</strong>
+              </a>
 
-            <a
-              href={routeFor("veiculos")}
-              className="admin-data-enter"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: 12,
-                borderRadius: 6,
-                background: "var(--admin-soft)",
-                border: "1px solid var(--admin-line)",
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500 }}>
-                <Car size={16} style={{ color: "#3b82f6" }} />
-                OS aguardando aprovação / peça
-              </span>
-              <strong>{workOrders.filter((w) => w.status === "aguardando").length}</strong>
-            </a>
+              <a href={routeFor("ordens-de-servico")} className="admin-data-enter admin-dashboard-alert-row">
+                <span className="admin-dashboard-alert-icon"><Car size={15} aria-hidden="true" /></span>
+                <span className="admin-dashboard-alert-copy">
+                  <strong>Aguardando aprovação ou peça</strong>
+                  <small>Ordens de serviço</small>
+                </span>
+                <strong className="admin-dashboard-alert-value">
+                  {workOrders.filter((w) => w.status === "aguardando").length}
+                </strong>
+              </a>
 
-            <a
-              href={routeFor("agenda")}
-              className="admin-data-enter"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: 12,
-                borderRadius: 6,
-                background: "var(--admin-soft)",
-                border: "1px solid var(--admin-line)",
-              }}
-            >
-              <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 500 }}>
-                <CalendarDays size={16} style={{ color: "#22c55e" }} />
-                Total de agendamentos ativos
-              </span>
-              <strong>{appointments.filter((a) => a.status !== "cancelado" && a.status !== "concluido").length}</strong>
-            </a>
-          </div>
+              <a href={routeFor("agenda")} className="admin-data-enter admin-dashboard-alert-row">
+                <span className="admin-dashboard-alert-icon"><CalendarDays size={15} aria-hidden="true" /></span>
+                <span className="admin-dashboard-alert-copy">
+                  <strong>Entradas previstas hoje</strong>
+                  <small>Agenda da oficina</small>
+                </span>
+                <strong className="admin-dashboard-alert-value">{todayAppointments.length}</strong>
+              </a>
+
+              <a href={routeFor("financeiro")} className="admin-data-enter admin-dashboard-alert-row">
+                <span className="admin-dashboard-alert-icon"><Wallet size={15} aria-hidden="true" /></span>
+                <span className="admin-dashboard-alert-copy">
+                  <strong>Em aberto</strong>
+                  <small>
+                    {receivables.count} {receivables.count === 1 ? "lançamento a receber" : "lançamentos a receber"}
+                  </small>
+                </span>
+                <strong className="admin-dashboard-alert-value">{money(receivables.total)}</strong>
+              </a>
+            </div>
           )}
         </section>
       </div>
 
-      <div className="admin-two-col">
+      <div className="admin-two-col admin-dashboard-lower">
         <section className="admin-panel">
           <div className="admin-panel-head">
             <div>
-              <p className="admin-kicker">BOX DA OFICINA</p>
               <h2>Ordens recentes</h2>
             </div>
             <a href={routeFor("ordens-de-servico")}>
@@ -317,31 +293,38 @@ export function DashboardView() {
               <p>Abra uma OS para acompanhar diagnóstico, peças e execução.</p>
             </div>
           ) : (
-            <div className="admin-dashboard-data-list">
-              {workOrders.slice(0, 5).map((os) => (
-                <div
-                  key={os.id}
-                  className="admin-data-enter"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    padding: "10px 12px",
-                    borderRadius: 6,
-                    background: "var(--admin-soft)",
-                    border: "1px solid var(--admin-line)",
-                  }}
-                >
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ fontSize: 13, display: "block" }}>{os.title} · {os.vehicle || "Veículo"}</strong>
-                    <span style={{ fontSize: 11.5, color: "var(--admin-muted)" }}>
-                      {os.customer_name || "Cliente não informado"} · {money(os.amount)}
-                    </span>
-                  </div>
-                  <AdminStatusBadge status={os.status} />
-                </div>
-              ))}
+            <div className="admin-dashboard-data-list admin-dashboard-work-orders">
+              {workOrders.slice(0, 5).map((os) => {
+                const technician = String(detail(os, "tecnico") ?? "").trim();
+                const bay = String(detail(os, "box") ?? "").trim();
+                const approved = String(detail(os, "aprovacao") ?? "pendente") === "aprovado";
+
+                return (
+                  <article key={os.id} className="admin-data-enter admin-dashboard-work-order">
+                    <div className="admin-dashboard-work-order-main">
+                      <strong className="admin-dashboard-work-order-title">
+                        {os.title || "Serviço sem nome"}
+                      </strong>
+                      <div className="admin-dashboard-work-order-context">
+                        <span>{os.vehicle ? `Placa ${os.vehicle.trim().toUpperCase()}` : "Veículo não informado"}</span>
+                        <span>{os.customer_name || "Cliente não informado"}</span>
+                      </div>
+                      <div className="admin-dashboard-work-order-meta">
+                        <span className={approved ? "is-approved" : "is-pending"}>
+                          {approved ? "Aprovado pelo cliente" : "Aguardando aprovação"}
+                        </span>
+                        <span>{technician ? `Técnico: ${technician}` : "Técnico a definir"}</span>
+                        {bay && <span>Box: {bay}</span>}
+                        <span>{dateText(os.created_at, { dateStyle: "short" })}</span>
+                      </div>
+                    </div>
+                    <div className="admin-dashboard-work-order-side">
+                      <AdminStatusBadge status={os.status} />
+                      <strong className="admin-dashboard-work-order-amount">{money(os.amount)}</strong>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -349,7 +332,6 @@ export function DashboardView() {
         <section className="admin-panel">
           <div className="admin-panel-head">
             <div>
-              <p className="admin-kicker">SITE INSTITUCIONAL</p>
               <h2>Mensagens recentes</h2>
             </div>
             <a href={routeFor("contatos")}>

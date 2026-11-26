@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { type PanelRecord } from "../../../lib/supabase";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
 import { CashflowBarChart, DonutBreakdownChart } from "../AdminCharts";
 import { asText, dateText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
@@ -362,7 +363,6 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">CONTROLE FINANCEIRO</p>
           <h1>Financeiro</h1>
         </div>
         <div className="admin-title-actions">
@@ -554,22 +554,13 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                             <CheckCircle2 size={14} /> {tipo === "receber" ? "Recebido" : "Pago"}
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="admin-icon-btn"
-                          title="Editar"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-icon-btn danger"
-                          title="Excluir"
-                          onClick={() => void removeRecord(row)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <AdminActionMenu
+                          label={`Ações do lançamento ${row.title}`}
+                          actions={[
+                            { label: "Editar lançamento", icon: <Pencil size={14} />, onSelect: () => openEdit(row) },
+                            { label: "Excluir lançamento", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true, separatorBefore: true },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

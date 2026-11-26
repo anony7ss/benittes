@@ -88,13 +88,27 @@ export function SkeletonDashboardRows({
   variant = "record",
 }: {
   count?: number;
-  variant?: "metric" | "record";
+  variant?: "metric" | "record" | "alert";
 }) {
   return (
-    <div className="admin-dashboard-data-list" role="status" aria-label="Carregando registros" aria-busy="true">
+    <div
+      className={`admin-dashboard-data-list ${variant === "alert" ? "admin-dashboard-alert-list" : ""}`}
+      role="status"
+      aria-label="Carregando registros"
+      aria-busy="true"
+    >
       {Array.from({ length: count }).map((_, index) => (
         <div className="admin-dashboard-row-skeleton" key={index} aria-hidden="true">
-          {variant === "metric" ? (
+          {variant === "alert" ? (
+            <>
+              <SkeletonBox width={16} height={16} radius={4} />
+              <div style={{ display: "grid", gap: 6, flex: 1 }}>
+                <SkeletonBox width="58%" height={12} radius={4} />
+                <SkeletonBox width="38%" height={10} radius={4} />
+              </div>
+              <SkeletonBox width={36} height={13} radius={4} />
+            </>
+          ) : variant === "metric" ? (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
                 <SkeletonBox width={16} height={16} radius={4} />

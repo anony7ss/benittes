@@ -344,7 +344,6 @@ export function WhatsAppBotView() {
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">AUTOMAÇÃO · WHATSAPP</p>
           <h1>Bot WhatsApp</h1>
         </div>
         <div className="admin-title-actions">

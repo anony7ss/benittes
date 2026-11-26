@@ -10,9 +10,11 @@ export function useClientVehicleCatalog() {
   const [vehicles, setVehicles] = useState<PanelRecord[]>([]);
   const [services, setServices] = useState<PanelRecord[]>([]);
   const [priceRules, setPriceRules] = useState<PanelRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const reload = useCallback(() => {
     let active = true;
+    setLoading(true);
     void Promise.all([
       selectRows<PanelRecord>("clients", {
         order: "title.asc",
@@ -36,6 +38,8 @@ export function useClientVehicleCatalog() {
       setVehicles(veh);
       setServices(srv.filter((s) => s.status !== "cancelado"));
       setPriceRules(prices.filter((rule) => rule.status !== "cancelado"));
+    }).finally(() => {
+      if (active) setLoading(false);
     });
 
     return () => {
@@ -45,7 +49,7 @@ export function useClientVehicleCatalog() {
 
   useEffect(() => reload(), [reload]);
 
-  return { clients, vehicles, services, priceRules, reload };
+  return { clients, vehicles, services, priceRules, loading, reload };
 }
 
 export async function ensureClientAndVehicle({
@@ -148,10 +152,14 @@ export function vehicleSummary(v: PanelRecord): string {
 export function ClientPicker({
   clients,
   value,
+  id = "admin-quickpickers-164",
+  placeholder = "Selecionar cliente salvo…",
   onSelectClient,
 }: {
   clients: PanelRecord[];
   value: string;
+  id?: string;
+  placeholder?: string;
   onSelectClient: (client: PanelRecord | null) => void;
 }) {
   if (clients.length === 0) return null;
@@ -163,14 +171,15 @@ export function ClientPicker({
   return (
     <select
       className="admin-select"
+      id={id}
       value={matched?.id ?? ""}
       onChange={(e) => {
         const picked = clients.find((c) => c.id === e.target.value) ?? null;
         onSelectClient(picked);
       }}
-      style={{ marginBottom: 6 }} id="admin-quickpickers-164"
+      style={{ marginBottom: 6 }}
     >
-      <option value="">Selecionar cliente salvo…</option>
+      <option value="">{placeholder}</option>
       {clients.map((c) => {
         const name = clientDisplayName(c);
         return (
@@ -188,11 +197,15 @@ export function VehiclePicker({
   vehicles,
   value,
   clientName,
+  id = "admin-quickpickers-213",
+  placeholder = "Selecionar veículo salvo…",
   onSelectVehicle,
 }: {
   vehicles: PanelRecord[];
   value: string;
   clientName?: string;
+  id?: string;
+  placeholder?: string;
   onSelectVehicle: (vehicle: PanelRecord | null) => void;
 }) {
   if (vehicles.length === 0) return null;
@@ -212,14 +225,15 @@ export function VehiclePicker({
   return (
     <select
       className="admin-select"
+      id={id}
       value={matched?.id ?? ""}
       onChange={(e) => {
         const picked = vehicles.find((v) => v.id === e.target.value) ?? null;
         onSelectVehicle(picked);
       }}
-      style={{ marginBottom: 6 }} id="admin-quickpickers-213"
+      style={{ marginBottom: 6 }}
     >
-      <option value="">Selecionar veículo salvo…</option>
+      <option value="">{placeholder}</option>
       {sorted.map((v) => (
         <option key={v.id} value={v.id}>
           {vehicleSummary(v)}
@@ -233,13 +247,19 @@ export function ServicePicker({
   services,
   priceRules = [],
   value,
+  id = "admin-quickpickers-254",
   vehicleProfile = null,
+  placeholder = "Selecionar serviço salvo…",
+  required = false,
   onSelectService,
 }: {
   services: PanelRecord[];
   value: string;
   priceRules?: PanelRecord[];
+  id?: string;
   vehicleProfile?: VehiclePriceProfile;
+  placeholder?: string;
+  required?: boolean;
   onSelectService: (service: PanelRecord | null, resolution: ServicePriceResolution | null) => void;
 }) {
   if (services.length === 0) return null;
@@ -253,14 +273,16 @@ export function ServicePicker({
     <>
       <select
         className="admin-select"
+        id={id}
+        required={required}
         value={matched?.id ?? ""}
         onChange={(e) => {
           const picked = services.find((s) => s.id === e.target.value) ?? null;
           onSelectService(picked, picked ? resolveServicePrice(picked, priceRules, vehicleProfile) : null);
         }}
-        style={{ marginBottom: 6 }} id="admin-quickpickers-254"
+        style={{ marginBottom: 6 }}
       >
-        <option value="">Selecionar serviço salvo…</option>
+        <option value="">{placeholder}</option>
         {services.map((s) => {
           const cat = String(detail(s, "categoria") ?? "").trim();
           const resolution = resolveServicePrice(s, priceRules, vehicleProfile);

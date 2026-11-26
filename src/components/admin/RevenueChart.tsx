@@ -2,7 +2,7 @@
 
 import { useId, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowDownRight, ArrowUpRight, TrendingUp } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -165,17 +165,15 @@ export function RevenueChart({
           <div
             style={{
               height: 228,
-              border: "1px dashed var(--admin-line)",
-              borderRadius: 6,
-              display: "grid",
-              placeItems: "center",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               textAlign: "center",
-              padding: "24px 16px",
+              padding: "24px 0",
               color: "var(--admin-muted)",
             }}
           >
             <div style={{ display: "grid", gap: 6, justifyItems: "center" }}>
-              <TrendingUp size={24} style={{ opacity: 0.55 }} />
               <strong style={{ fontSize: 13.5, color: "var(--admin-ink)" }}>
                 Nenhum faturamento registrado nos últimos {period} meses
               </strong>
@@ -218,8 +216,7 @@ export function RevenueChart({
                     y1={y}
                     y2={y}
                     stroke="var(--admin-line)"
-                    strokeDasharray="4 4"
-                    strokeOpacity={0.75}
+                    strokeOpacity={0.5}
                   />
                 </g>
               );
@@ -257,7 +254,7 @@ export function RevenueChart({
                 y1={padTop}
                 y2={height - padBottom}
                 stroke="var(--admin-green)"
-                strokeDasharray="3 3"
+                strokeOpacity={0.35}
               />
             )}
 

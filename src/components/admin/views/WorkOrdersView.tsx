@@ -1,16 +1,18 @@
 "use client";
 
 import { SkeletonKanban } from "../Skeletons";
-import { useMemo, useState, type FormEvent } from "react";
-import { Archive, ArchiveRestore, ArrowRight, CheckCircle2, ClipboardList, Eye, GripVertical, MessageCircle, Package, Pencil, Plus, Search, Trash2, Tv, Wrench, X } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Archive, ArchiveRestore, ArrowRight, CheckCircle2, ClipboardList, Clock3, ExternalLink, Eye, MessageCircle, MoreHorizontal, Package, Pencil, Plus, Search, Trash2, Tv, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
 import { mergeVehiclePriceProfile, resolveServicePrice } from "../../../lib/servicePricing";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
 import {
   asText,
   detail,
   money,
   todayIso,
+  consumeVehicleActionPrefill,
   useKanbanDrag,
   useModuleRecords,
   modalBackdropProps,
@@ -78,6 +80,24 @@ const emptyForm = (): FormState => ({
   vehicle_year: "",
 });
 
+function partsTotal(parts: PartUsage[]): number {
+  return parts.reduce((total, part) => {
+    const quantity = Math.max(0, Number(part.quantidade) || 0);
+    const unitPrice = Math.max(0, Number(part.valor_unitario) || 0);
+    return total + quantity * unitPrice;
+  }, 0);
+}
+
+function amountInput(value: number): string {
+  const rounded = Math.max(0, Math.round((value + Number.EPSILON) * 100) / 100);
+  return rounded > 0 ? String(rounded) : "";
+}
+
+function serviceAndPartsTotal(serviceAmount: number | null, parts: PartUsage[]): string {
+  const total = Math.max(0, serviceAmount ?? 0) + partsTotal(parts);
+  return total > 0 ? String(Math.round((total + Number.EPSILON) * 100) / 100) : "";
+}
+
 export function WorkOrdersView({ session }: { session: { user: { id: string } } }) {
   const { rows, setRows, loading, error, setError, saveRecord, patchRecord, removeRecord } = useModuleRecords(
     "work-orders",
@@ -88,10 +108,33 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
     rows: settingsRows,
     saveRecord: saveSettingsRecord,
   } = useModuleRecords("settings", session.user.id);
-  const { clients, vehicles, services, priceRules, reload: reloadCatalog } = useClientVehicleCatalog();
+  const { clients, vehicles, services, priceRules, loading: catalogLoading, reload: reloadCatalog } = useClientVehicleCatalog();
   const [subPage, setSubPage] = useState<"board" | "archived">("board");
   const [selectedPartId, setSelectedPartId] = useState("");
   const [selectedPartQty, setSelectedPartQty] = useState("1");
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [actionMenuPlacement, setActionMenuPlacement] = useState<"above" | "below">("below");
+
+  useEffect(() => {
+    if (!openActionMenuId) return;
+
+    function closeMenuOnOutsideClick(event: PointerEvent) {
+      if (!(event.target instanceof Element) || !event.target.closest("[data-workorder-actions]")) {
+        setOpenActionMenuId(null);
+      }
+    }
+
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenActionMenuId(null);
+    }
+
+    document.addEventListener("pointerdown", closeMenuOnOutsideClick);
+    document.addEventListener("keydown", closeMenuOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenuOnOutsideClick);
+      document.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [openActionMenuId]);
 
   const osConfigRecord = useMemo(
     () => settingsRows.find((r) => r.title === "__os_config__") ?? null,
@@ -127,6 +170,9 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
   const [viewing, setViewing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [customService, setCustomService] = useState(false);
+  const [customClient, setCustomClient] = useState(false);
+  const [customVehicle, setCustomVehicle] = useState(false);
 
   const serviceVehicleProfile = mergeVehiclePriceProfile(
     vehicles.find((vehicle) => vehiclePlate(vehicle) === form.vehicle.trim().toUpperCase()),
@@ -147,7 +193,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
       vehicle_make: String(profile?.make ?? ""),
       vehicle_model: String(profile?.model ?? ""),
       vehicle_year: String(profile?.year ?? ""),
-      amount: variable ? (resolution.amount === null ? "" : String(resolution.amount)) : previous.amount,
+      amount: variable ? serviceAndPartsTotal(resolution.amount, previous.pecas) : previous.amount,
       pricing_rule_id: variable ? resolution.rule?.id ?? "" : previous.pricing_rule_id,
     };
   }
@@ -155,14 +201,28 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
   function workOrderServicePatch(previous: FormState, title: string) {
     const service = services.find((item) => item.title.trim().toLowerCase() === title.trim().toLowerCase()) ?? null;
     if (!service) {
-      return { ...previous, title, service_id: "", pricing_mode: "", pricing_rule_id: "", amount: previous.pricing_mode === "vehicle" ? "" : previous.amount };
+      return {
+        ...previous,
+        title,
+        service_id: "",
+        pricing_mode: "",
+        pricing_rule_id: "",
+        amount: previous.pricing_mode ? serviceAndPartsTotal(null, previous.pecas) : previous.amount,
+      };
     }
     const profile = mergeVehiclePriceProfile(
       vehicles.find((vehicle) => vehiclePlate(vehicle) === previous.vehicle.trim().toUpperCase()),
       { make: previous.vehicle_make, model: previous.vehicle_model, year: previous.vehicle_year },
     );
     const resolution = resolveServicePrice(service, priceRules, profile);
-    return { ...previous, title, service_id: service.id, pricing_mode: resolution.mode, pricing_rule_id: resolution.rule?.id ?? "", amount: resolution.amount === null ? "" : String(resolution.amount) };
+    return {
+      ...previous,
+      title,
+      service_id: service.id,
+      pricing_mode: resolution.mode,
+      pricing_rule_id: resolution.rule?.id ?? "",
+      amount: serviceAndPartsTotal(resolution.amount, previous.pecas),
+    };
   }
 
   const vehicleByPlate = useMemo(() => {
@@ -230,13 +290,50 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
   function openCreate() {
     setEditing(null);
     setForm(emptyForm());
+    setCustomService(services.length === 0 && !catalogLoading);
+    setCustomClient(clients.length === 0);
+    setCustomVehicle(vehicles.length === 0);
     setSelectedPartId("");
     setSelectedPartQty("1");
     setModalOpen(true);
   }
 
+  useEffect(() => {
+    const prefill = consumeVehicleActionPrefill();
+    if (!prefill) return;
+    openCreate();
+    setForm((current) => ({
+      ...current,
+      vehicle: prefill.plate,
+      customer_name: prefill.customerName,
+      phone: prefill.phone,
+      vehicle_make: prefill.make,
+      vehicle_model: prefill.model,
+      vehicle_year: prefill.year,
+    }));
+  }, []);
+
   function openEdit(row: PanelRecord) {
     const rawParts = detail(row, "pecas");
+    const parts = Array.isArray(rawParts) ? (rawParts as PartUsage[]) : [];
+    const serviceId = String(detail(row, "service_id") ?? "");
+    const serviceTitle = (row.title ?? "").trim().toLowerCase();
+    const customerName = (row.customer_name ?? "").trim().toLowerCase();
+    const vehicle = (row.vehicle ?? "").trim().toUpperCase();
+    const selectedService = services.find((service) => service.id === serviceId)
+      ?? services.find((service) => service.title.trim().toLowerCase() === serviceTitle)
+      ?? null;
+    const savedVehicle = vehicles.find((saved) => vehiclePlate(saved) === vehicle) ?? null;
+    const serviceProfile = mergeVehiclePriceProfile(savedVehicle, {
+      make: detail(row, "marca"),
+      model: detail(row, "modelo"),
+      year: detail(row, "ano"),
+    });
+    const resolvedAmount = resolveServicePrice(selectedService, priceRules, serviceProfile).amount;
+    const savedAmount = Number(row.amount);
+    setCustomService(!services.some((service) => service.id === serviceId || service.title.trim().toLowerCase() === serviceTitle));
+    setCustomClient(!clients.some((client) => clientDisplayName(client).toLowerCase() === customerName));
+    setCustomVehicle(!vehicles.some((savedVehicle) => vehiclePlate(savedVehicle) === vehicle));
     setEditing(row);
     setForm({
       title: row.title ?? "",
@@ -244,12 +341,14 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
       phone: row.phone ?? "",
       vehicle: row.vehicle ?? "",
       status: row.status ?? "novo",
-      amount: row.amount !== null && row.amount !== undefined ? String(row.amount) : "",
+      amount: savedAmount > 0
+        ? String(savedAmount)
+        : serviceAndPartsTotal(resolvedAmount, parts),
       description: row.description ?? "",
       tecnico: String(detail(row, "tecnico") ?? ""),
       box: String(detail(row, "box") ?? ""),
-      pecas: Array.isArray(rawParts) ? (rawParts as PartUsage[]) : [],
-      service_id: String(detail(row, "service_id") ?? services.find((service) => service.title.trim().toLowerCase() === (row.title ?? "").trim().toLowerCase())?.id ?? ""),
+      pecas: parts,
+      service_id: serviceId || services.find((service) => service.title.trim().toLowerCase() === (row.title ?? "").trim().toLowerCase())?.id || "",
       pricing_mode: String(detail(row, "pricing_mode") ?? ""),
       pricing_rule_id: String(detail(row, "pricing_rule_id") ?? ""),
       vehicle_make: String(detail(row, "marca") ?? ""),
@@ -276,7 +375,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
             ...prev.pecas,
             { id: item.id, nome: item.title, quantidade: qty, valor_unitario: unit },
           ];
-      return { ...prev, pecas: nextPecas };
+      return { ...prev, pecas: nextPecas, amount: amountInput(Number(prev.amount) + qty * unit) };
     });
     setSelectedPartId("");
     setSelectedPartQty("1");
@@ -334,7 +433,6 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">OPERAÇÃO DE OFICINA</p>
           <h1>Ordens de Serviço</h1>
         </div>
         <div className="admin-title-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -426,7 +524,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     <th>Cliente</th>
                     <th>Valor</th>
                     <th>Status</th>
-                    <th style={{ width: 140 }}>Ações</th>
+                    <th style={{ width: 72, textAlign: "right" }}>Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -443,39 +541,24 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       <td><strong>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong></td>
                       <td><AdminStatusBadge status={row.status} /></td>
                       <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button
-                            type="button"
-                            className="admin-icon-btn"
-                            title="Ver detalhes"
-                            onClick={() => setViewing(row)}
-                          >
-                            <Eye size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="admin-icon-btn"
-                            title="Restaurar para o quadro"
-                            onClick={() =>
-                              void patchRecord(row.id, {
+                        <AdminActionMenu
+                          label={`Ações da ordem de serviço ${row.title}`}
+                          actions={[
+                            { label: "Ver detalhes", icon: <Eye size={14} />, onSelect: () => setViewing(row) },
+                            {
+                              label: "Restaurar para o quadro",
+                              icon: <ArchiveRestore size={14} />,
+                              onSelect: () => void patchRecord(row.id, {
                                 details: {
                                   ...(row.details && typeof row.details === "object" ? row.details : {}),
                                   archived: false,
                                 },
-                              })
-                            }
-                          >
-                            <ArchiveRestore size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="admin-icon-btn danger"
-                            title="Remover OS"
-                            onClick={() => void removeRecord(row)}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                              }),
+                              separatorBefore: true,
+                            },
+                            { label: "Remover OS", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -492,16 +575,24 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
             const laneRows = filtered.filter((r) =>
               (lane.statuses as readonly string[]).includes(r.status),
             );
+            const laneTotal = laneRows.reduce((sum, row) => {
+              const amount = Number(row.amount);
+              return sum + (Number.isFinite(amount) ? Math.max(0, amount) : 0);
+            }, 0);
             return (
               <div
                 key={lane.key}
-                className={`admin-lane ${dragOverLane === lane.key ? "drag-over" : ""}`}
+                className={`admin-lane admin-workorder-lane ${dragOverLane === lane.key ? "drag-over" : ""}`}
                 {...laneDropProps(lane.key)}
               >
-                <div className="admin-lane-head">
-                  <span>{lane.label}</span>
+                <div className="admin-lane-head admin-workorder-lane-head">
+                  <span className="admin-workorder-lane-label">
+                    <span className={`admin-workorder-lane-indicator ${lane.key}`} aria-hidden="true" />
+                    {lane.label}
+                  </span>
                   <span className="admin-lane-count">{laneRows.length}</span>
                 </div>
+                <div className="admin-quote-status-card-amount">{money(laneTotal)}</div>
 
                 {laneRows.length === 0 ? (
                   <div className="admin-empty" style={{ padding: "24px 12px" }}>
@@ -509,101 +600,174 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                   </div>
                 ) : (
                   laneRows.map((row) => {
-                    const tecnico = detail(row, "tecnico");
-                    const box = detail(row, "box");
                     const aprovacao = String(detail(row, "aprovacao") ?? "pendente");
                     const isApproved = aprovacao === "aprovado";
                     const existingDetails =
                       row.details && typeof row.details === "object" ? row.details : {};
-                    const vehicleLabel = getVehicleLabel(row);
+                    const plate = (row.vehicle ?? "").trim().toUpperCase();
+                    const matchedVehicle = plate ? vehicleByPlate.get(plate) : undefined;
+                    const vehicleDetails = matchedVehicle ?? row;
+                    const catalogVehicleLabel = [detail(vehicleDetails, "marca"), detail(vehicleDetails, "modelo")]
+                      .map((value) => String(value ?? "").trim())
+                      .filter(Boolean)
+                      .join(" ");
+                    const catalogVehicleTitle = matchedVehicle?.title?.trim();
+                    const vehicleLabel = catalogVehicleLabel
+                      || (catalogVehicleTitle && catalogVehicleTitle.toUpperCase() !== plate ? catalogVehicleTitle : "")
+                      || (plate ? `Veículo ${plate}` : "Veículo não informado");
+                    const vehicleLabelLoading = catalogLoading && Boolean(plate) && !catalogVehicleLabel && !catalogVehicleTitle;
+                    const serviceTitle = row.title.trim();
+                    const displayServiceTitle = serviceTitle === serviceTitle.toLocaleUpperCase("pt-BR")
+                      ? serviceTitle
+                          .toLocaleLowerCase("pt-BR")
+                          .replace(/^(\p{L})/u, (letter) => letter.toLocaleUpperCase("pt-BR"))
+                          .replace(/\b([a-z]{2,}\d+[a-z0-9]*)\b/giu, (code) => code.toLocaleUpperCase("pt-BR"))
+                      : serviceTitle;
+                    const canAdvance = row.status === "novo" || row.status === "aguardando";
+                    const canFinish = row.status === "em_andamento";
                     return (
                       <div
                         key={row.id}
-                        className={`admin-kanban-card ${draggingId === row.id ? "dragging" : ""}`}
+                        className={`admin-kanban-card admin-workorder-card ${draggingId === row.id ? "dragging" : ""}`}
                         {...cardDragProps(row)}
                       >
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr auto 1fr",
-                            alignItems: "start",
-                            gap: 8,
-                          }}
-                        >
-                          <span />
-                          {row.vehicle ? (
-                            <div className="mercosul-plate">
-                              <div className="mercosul-plate-top">BRASIL</div>
-                              <div className="mercosul-plate-code">{row.vehicle}</div>
-                            </div>
-                          ) : (
-                            <span />
-                          )}
-                          <div style={{ display: "flex", gap: 4, alignItems: "center", justifySelf: "end" }}>
-                            <span
-                              className="admin-drag-handle"
-                              title="Arrastar OS"
-                              {...handleTouchProps(row)}
+                        <div className="admin-workorder-card-head">
+                          <span
+                            className="admin-workorder-eyebrow admin-workorder-touch-handle"
+                            title="Toque e arraste para mover a OS"
+                            {...handleTouchProps(row)}
+                          >
+                            Ordem de serviço
+                          </span>
+                          <div className="admin-workorder-actions" data-workorder-actions>
+                            <button
+                              type="button"
+                              className="admin-icon-btn admin-workorder-more"
+                              aria-label={`Ações da ordem de serviço de ${asText(row.customer_name)}`}
+                              aria-haspopup="menu"
+                              aria-expanded={openActionMenuId === row.id}
+                              onClick={(event) => {
+                                if (openActionMenuId === row.id) {
+                                  setOpenActionMenuId(null);
+                                  return;
+                                }
+                                const trigger = event.currentTarget.getBoundingClientRect();
+                                const spaceBelow = window.innerHeight - trigger.bottom;
+                                const spaceAbove = trigger.top;
+                                setActionMenuPlacement(spaceBelow >= 216 || spaceBelow >= spaceAbove ? "below" : "above");
+                                setOpenActionMenuId(row.id);
+                              }}
                             >
-                              <GripVertical size={14} />
-                            </span>
-                            <AdminStatusBadge status={row.status} />
+                              <MoreHorizontal size={17} />
+                            </button>
+                            {openActionMenuId === row.id && (
+                              <div
+                                className="admin-appointment-actions-menu admin-workorder-actions-menu"
+                                data-placement={actionMenuPlacement}
+                                role="menu"
+                                aria-label="Ações da ordem de serviço"
+                              >
+                                <button type="button" role="menuitem" onClick={() => { setOpenActionMenuId(null); openEdit(row); }}>
+                                  <Pencil size={15} /> Editar OS
+                                </button>
+                                {!isApproved && (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      if (!(Number(row.amount) > 0)) {
+                                        setError("Defina o valor final antes de aprovar a OS.");
+                                        return;
+                                      }
+                                      void patchRecord(row.id, {
+                                        status: row.status === "novo" ? "em_andamento" : row.status,
+                                        details: {
+                                          ...existingDetails,
+                                          aprovacao: "aprovado",
+                                          aprovado_em: todayIso(),
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    <CheckCircle2 size={15} /> Aprovar OS
+                                  </button>
+                                )}
+                                {(row.status === "concluido" || row.status === "cancelado") && (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      void patchRecord(row.id, {
+                                        details: { ...existingDetails, archived: true, archived_at: todayIso() },
+                                      });
+                                    }}
+                                  >
+                                    <Archive size={15} /> Arquivar OS
+                                  </button>
+                                )}
+                                <div className="admin-appointment-actions-divider" role="separator" />
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="is-danger"
+                                  onClick={() => {
+                                    setOpenActionMenuId(null);
+                                    void removeRecord(row);
+                                  }}
+                                >
+                                  <Trash2 size={15} /> Excluir OS
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
 
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <strong style={{ fontSize: 15, lineHeight: 1.25, minWidth: 0, wordBreak: "break-word" }}>
-                            {vehicleLabel}
-                          </strong>
-                          {vehicleLabel !== row.title && (
-                            <span
-                              style={{
-                                fontSize: 13,
-                                color: "var(--admin-text)",
-                                fontWeight: 500,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                              }}
-                            >
-                              <Wrench size={12} style={{ color: "var(--admin-muted)", flexShrink: 0 }} />
-                              {row.title}
-                            </span>
+                        <div className="admin-workorder-vehicle">
+                          {plate && (
+                            <div className="mercosul-plate admin-workorder-plate">
+                              <div className="mercosul-plate-top">BRASIL</div>
+                              <div className="mercosul-plate-code">{plate}</div>
+                            </div>
                           )}
+                          <div className="admin-workorder-vehicle-copy">
+                            <strong>
+                              {vehicleLabelLoading ? (
+                                <span className="admin-skeleton admin-workorder-vehicle-skeleton" role="status" aria-label="Carregando veículo" />
+                              ) : vehicleLabel}
+                            </strong>
+                            <span>{asText(row.customer_name)}</span>
+                          </div>
                         </div>
 
-                        <div style={{ fontSize: 12.5, color: "var(--admin-muted)", display: "grid", gap: 3 }}>
-                          <span>Cliente: {asText(row.customer_name)}</span>
-                          <span
-                            style={{
-                              color: isApproved ? "var(--admin-green)" : "var(--admin-amber)",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {isApproved ? "✓ Aprovado pelo cliente" : "• Aguardando aprovação"}
+                        <div className="admin-workorder-service">
+                          <strong>{displayServiceTitle || "Serviço não informado"}</strong>
+                          <span className={isApproved ? "approved" : "pending"}>
+                            {isApproved
+                              ? <CheckCircle2 size={12} aria-hidden="true" />
+                              : <Clock3 size={12} aria-hidden="true" />}
+                            {isApproved ? "Aprovado pelo cliente" : "Aguardando aprovação"}
                           </span>
-                          {Boolean(tecnico || box) && (
-                            <span>
-                              {tecnico ? `Téc: ${String(tecnico)}` : ""}
-                              {tecnico && box ? " · " : ""}
-                              {box ? `Box: ${String(box)}` : ""}
-                            </span>
-                          )}
                         </div>
 
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        <div className="admin-workorder-price-row">
+                          <strong>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong>
                           <button
                             type="button"
-                            className="admin-secondary"
-                            style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5 }}
+                            className="admin-workorder-details"
                             onClick={() => setViewing(row)}
                           >
-                            <Eye size={12} /> Ver detalhes
+                            Ver detalhes <ExternalLink size={12} />
                           </button>
+                        </div>
+
+                        <div className="admin-workorder-card-footer">
                           <button
                             type="button"
-                            className="admin-secondary"
-                            style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5 }}
+                            className="admin-icon-btn admin-workorder-whatsapp"
+                            aria-label={`Abrir WhatsApp para ${asText(row.customer_name)}`}
+                            title="Abrir WhatsApp para o cliente"
                             onClick={() => {
                               if (!(Number(row.amount) > 0)) {
                                 setError("Defina o valor final antes de pedir aprovação pelo WhatsApp.");
@@ -611,106 +775,21 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                               }
                               window.open(whatsappApprovalUrl(row, "os"), "_blank", "noopener,noreferrer");
                             }}
-                            title="Enviar OS pelo WhatsApp para o cliente aprovar"
                           >
-                            <MessageCircle size={12} /> WhatsApp
+                            <MessageCircle size={14} />
                           </button>
-                          {!isApproved && (
+                          {(canAdvance || canFinish) && (
                             <button
                               type="button"
-                              className="admin-secondary"
-                              style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5, color: "#22c55e" }}
-                              onClick={() => {
-                                if (!(Number(row.amount) > 0)) {
-                                  setError("Defina o valor final antes de aprovar a OS.");
-                                  return;
-                                }
-                                void patchRecord(row.id, {
-                                  status: row.status === "novo" ? "em_andamento" : row.status,
-                                  details: {
-                                    ...existingDetails,
-                                    aprovacao: "aprovado",
-                                    aprovado_em: todayIso(),
-                                  },
-                                });
-                              }}
+                              className="admin-primary admin-workorder-advance"
+                              onClick={() => canAdvance
+                                ? void patchRecord(row.id, { status: "em_andamento" })
+                                : void handleFinalizeOrPatch(row.id, { status: "concluido" })}
+                              title={canAdvance ? "Mover para No Box" : "Finalizar OS"}
                             >
-                              <CheckCircle2 size={12} /> Aprovar
+                              {canAdvance ? "Avançar etapa" : "Finalizar OS"} <ArrowRight size={14} />
                             </button>
                           )}
-                          {(row.status === "novo" || row.status === "aguardando") && (
-                            <button
-                              type="button"
-                              className="admin-secondary"
-                              style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5 }}
-                              onClick={() => void patchRecord(row.id, { status: "em_andamento" })}
-                              title="Mover para No Box"
-                            >
-                              <ArrowRight size={12} /> Avançar
-                            </button>
-                          )}
-                          {row.status !== "concluido" && row.status !== "cancelado" && (
-                            <button
-                              type="button"
-                              className="admin-secondary"
-                              style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5, color: "var(--admin-green)" }}
-                              onClick={() => void handleFinalizeOrPatch(row.id, { status: "concluido" })}
-                              title="Finalizar OS, contabilizar em finanças e dar baixa no estoque"
-                            >
-                              <CheckCircle2 size={12} /> Finalizar
-                            </button>
-                          )}
-                          {(row.status === "concluido" || row.status === "cancelado") && (
-                            <button
-                              type="button"
-                              className="admin-secondary"
-                              style={{ height: 28, minHeight: 28, padding: "0 10px", fontSize: 11.5 }}
-                              onClick={() =>
-                                void patchRecord(row.id, {
-                                  details: {
-                                    ...existingDetails,
-                                    archived: true,
-                                    archived_at: todayIso(),
-                                  },
-                                })
-                              }
-                              title="Mover para Arquivadas"
-                            >
-                              <Archive size={12} /> Arquivar
-                            </button>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            paddingTop: 8,
-                            borderTop: "1px solid var(--admin-line)",
-                            gap: 8,
-                          }}
-                        >
-                          <strong style={{ fontSize: 13.5 }}>{Number(row.amount) > 0 ? money(row.amount) : "A definir"}</strong>
-                          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                            <button
-                              type="button"
-                              className="admin-icon-btn"
-                              title="Editar OS"
-                              onClick={() => openEdit(row)}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              className="admin-ghost-danger"
-                              title="Remover OS"
-                              onClick={() => void removeRecord(row)}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
                         </div>
                       </div>
                     );
@@ -730,11 +809,14 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
 
       {modalOpen && (
         <div className="admin-modal-backdrop" {...modalBackdropProps(() => setModalOpen(false))}>
-          <div className="admin-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className={`admin-modal admin-work-order-modal${editing ? "" : " admin-work-order-create-modal"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="admin-modal-head">
               <div>
-                <h2>{editing ? "Editar Ordem de Serviço" : "Nova Ordem de Serviço"}</h2>
-                <p>Registre os dados do veículo, diagnóstico e responsável técnico.</p>
+                <h2>{editing ? "Editar ordem de serviço" : "Nova ordem de serviço"}</h2>
+                <p>{editing ? "Atualize as informações do atendimento." : "Registre um novo atendimento na oficina."}</p>
               </div>
               <button
                 type="button"
@@ -746,226 +828,278 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleSubmit(e)}>
-              <div className="admin-form-grid">
+            <form className="admin-work-order-form" onSubmit={(e) => void handleSubmit(e)}>
+              <div className="admin-work-order-grid">
+                <h3 className="admin-work-order-section is-first">Informações do serviço</h3>
                 <div className="admin-field wide">
-                  <label>Título / Serviço *</label>
-                  <ServicePicker
-                    services={services}
-                    priceRules={priceRules}
-                    value={form.title}
-                    vehicleProfile={serviceVehicleProfile}
-                    onSelectService={(picked, resolution) => {
-                      if (!picked) {
-                        setForm((prev) => workOrderServicePatch(prev, ""));
-                        return;
-                      }
-                      setForm((prev) => ({
-                        ...prev,
-                        service_id: picked.id,
-                        pricing_mode: resolution?.mode ?? "",
-                        pricing_rule_id: resolution?.rule?.id ?? "",
-                        title: picked.title,
-                        amount: resolution?.amount === null || !resolution ? "" : String(resolution.amount),
-                        description: prev.description || picked.description || "",
-                      }));
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    required
-                    placeholder="Ex: Revisão completa + troca de pastilhas"
-                    value={form.title}
-                    onChange={(e) => setForm((prev) => workOrderServicePatch(prev, e.target.value))} id="admin-views-workordersview-774"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Cliente</label>
-                  <ClientPicker
-                    clients={clients}
-                    value={form.customer_name}
-                    onSelectClient={(picked) => {
-                      if (!picked) {
-                        setForm({ ...form, customer_name: "" });
-                        return;
-                      }
-                      const name = clientDisplayName(picked);
-                      const matchVeh = vehicles.find(
-                        (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
-                      );
-                      setForm((prev) => ({
-                        ...prev,
-                        customer_name: name,
-                        phone: picked.phone ?? prev.phone,
-                        ...(matchVeh && !prev.vehicle ? workOrderVehiclePatch(prev, vehiclePlate(matchVeh), matchVeh) : {}),
-                      }));
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="Nome do cliente"
-                    value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-workordersview-805"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Telefone</label>
-                  <input
-                    className="admin-input"
-                    placeholder="(11) 99999-9999"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })} id="admin-views-workordersview-815"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Veículo / Placa</label>
-                  <VehiclePicker
-                    vehicles={vehicles}
-                    value={form.vehicle}
-                    clientName={form.customer_name}
-                    onSelectVehicle={(picked) => {
-                      if (!picked) { setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, "") })); return; }
-                      const ownerName = (picked.customer_name ?? "").trim();
-                      const ownerClient = ownerName
-                        ? clients.find(
-                            (c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase(),
-                          )
-                        : undefined;
-                      setForm((prev) => ({
-                        ...prev,
-                        ...workOrderVehiclePatch(prev, vehiclePlate(picked), picked),
-                        customer_name: form.customer_name || ownerName,
-                        phone: form.phone || ownerClient?.phone || "",
-                      }));
-                    }}
-                  />
-                  <input
-                    className="admin-input"
-                    placeholder="ABC1D23"
-                    value={form.vehicle}
-                    onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))} id="admin-views-workordersview-845"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Valor (R$)</label>
-                  <input
-                    className="admin-input"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })} id="admin-views-workordersview-855"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Técnico responsável</label>
-                  <input
-                    className="admin-input"
-                    placeholder="Nome do mecânico"
-                    value={form.tecnico}
-                    onChange={(e) => setForm({ ...form, tecnico: e.target.value })} id="admin-views-workordersview-868"
-                  />
-                </div>
-
-                <div className="admin-field">
-                  <label>Box</label>
-                  <input
-                    className="admin-input"
-                    placeholder="Ex: Box 02"
-                    value={form.box}
-                    onChange={(e) => setForm({ ...form, box: e.target.value })} id="admin-views-workordersview-878"
-                  />
-                </div>
-
-                <div className="admin-field wide">
-                  <label>Peças do estoque (opcional)</label>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                    <select
-                      className="admin-select"
-                      style={{ flex: "1 1 220px" }}
-                      value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)} id="admin-views-workordersview-889"
-                    >
-                      <option value="">Selecionar peça do estoque…</option>
-                      {inventoryRows
-                        .filter((i) => i.status !== "cancelado")
-                        .map((item) => (
-                          <option key={item.id} value={item.id}>
-                            {item.title} (disp: {String(detail(item, "quantidade") ?? 0)} {String(detail(item, "unidade") ?? "un")} · {money(item.amount)})
-                          </option>
-                        ))}
-                    </select>
-                    <input
-                      className="admin-input"
-                      type="number"
-                      min="1"
-                      style={{ width: 80 }}
-                      value={selectedPartQty}
-                      onChange={(e) => setSelectedPartQty(e.target.value)} id="admin-views-workordersview-904"
+                  <label htmlFor="work-order-service">Serviço *</label>
+                  {!customService && services.length > 0 ? (
+                    <ServicePicker
+                      services={services}
+                      priceRules={priceRules}
+                      value={form.title}
+                      id="work-order-service"
+                      vehicleProfile={serviceVehicleProfile}
+                      placeholder="Buscar ou inserir serviço..."
+                      required
+                      onSelectService={(picked, resolution) => {
+                        if (!picked) {
+                          setForm((prev) => workOrderServicePatch(prev, ""));
+                          return;
+                        }
+                        setCustomService(false);
+                        setForm((prev) => ({
+                          ...prev,
+                          service_id: picked.id,
+                          pricing_mode: resolution?.mode ?? "",
+                          pricing_rule_id: resolution?.rule?.id ?? "",
+                          title: picked.title,
+                          amount: serviceAndPartsTotal(resolution?.amount ?? null, prev.pecas),
+                          description: prev.description || picked.description || "",
+                        }));
+                      }}
                     />
-                    <button
-                      type="button"
-                      className="admin-secondary"
-                      onClick={addPartToForm}
-                      disabled={!selectedPartId}
-                    >
-                      <Plus size={14} /> Incluir peça
+                  ) : (
+                    <input
+                      id="work-order-service"
+                      className="admin-input"
+                      required
+                      placeholder="Nome do serviço"
+                      value={form.title}
+                      onChange={(e) => {
+                        setCustomService(true);
+                        setForm((prev) => workOrderServicePatch(prev, e.target.value));
+                      }}
+                    />
+                  )}
+                  {services.length > 0 && (
+                    <button type="button" className="admin-work-order-link" onClick={() => setCustomService((value) => !value)}>
+                      {customService ? "+ Buscar no catálogo" : "+ Inserir serviço personalizado"}
                     </button>
-                  </div>
-                  {form.pecas.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                      {form.pecas.map((p) => (
-                        <span
-                          key={p.id}
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            border: "1px solid var(--admin-line)",
-                          }}
-                        >
-                          <Package size={12} />
-                          {p.quantidade}x {p.nome}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setForm((prev) => ({
-                                ...prev,
-                                pecas: prev.pecas.filter((item) => item.id !== p.id),
-                              }))
-                            }
-                            style={{ border: 0, background: "transparent", color: "inherit", cursor: "pointer", padding: 0 }}
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))}
-                    </div>
                   )}
                 </div>
 
+                <h3 className="admin-work-order-section">Cliente e veículo</h3>
+                <div className="admin-field">
+                  <label htmlFor="work-order-client">Cliente</label>
+                  {!customClient && clients.length > 0 ? (
+                    <ClientPicker
+                      clients={clients}
+                      value={form.customer_name}
+                      id="work-order-client"
+                      placeholder="Buscar cliente..."
+                      onSelectClient={(picked) => {
+                        if (!picked) {
+                          setForm((prev) => ({ ...prev, customer_name: "" }));
+                          return;
+                        }
+                        setCustomClient(false);
+                        const name = clientDisplayName(picked);
+                        const matchVeh = vehicles.find(
+                          (v) => (v.customer_name ?? "").trim().toLowerCase() === name.toLowerCase(),
+                        );
+                        setForm((prev) => ({
+                          ...prev,
+                          customer_name: name,
+                          phone: picked.phone ?? prev.phone,
+                          ...(matchVeh && !prev.vehicle ? workOrderVehiclePatch(prev, vehiclePlate(matchVeh), matchVeh) : {}),
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <input
+                      id="work-order-client"
+                      className="admin-input"
+                      placeholder="Nome do cliente"
+                      value={form.customer_name}
+                      onChange={(e) => {
+                        setCustomClient(true);
+                        setForm((prev) => ({ ...prev, customer_name: e.target.value }));
+                      }}
+                    />
+                  )}
+                  {clients.length > 0 && (
+                    <button type="button" className="admin-work-order-link" onClick={() => setCustomClient((value) => !value)}>
+                      {customClient ? "+ Buscar cliente salvo" : "+ Novo cliente"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="admin-field">
+                  <label htmlFor="work-order-phone">Telefone</label>
+                  <input
+                    id="work-order-phone"
+                    className="admin-input"
+                    type="tel"
+                    placeholder="(51) 99999-9999"
+                    value={form.phone}
+                    onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))}
+                  />
+                </div>
+
                 <div className="admin-field wide">
-                  <label>Diagnóstico / Observações</label>
+                  <label htmlFor="work-order-vehicle">Veículo / placa</label>
+                  {!customVehicle && vehicles.length > 0 ? (
+                    <VehiclePicker
+                      vehicles={vehicles}
+                      value={form.vehicle}
+                      clientName={form.customer_name}
+                      id="work-order-vehicle"
+                      placeholder="Buscar veículo ou informar placa..."
+                      onSelectVehicle={(picked) => {
+                        if (!picked) {
+                          setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, "") }));
+                          return;
+                        }
+                        setCustomVehicle(false);
+                        const ownerName = (picked.customer_name ?? "").trim();
+                        const ownerClient = ownerName
+                          ? clients.find((c) => clientDisplayName(c).toLowerCase() === ownerName.toLowerCase())
+                          : undefined;
+                        setForm((prev) => ({
+                          ...prev,
+                          ...workOrderVehiclePatch(prev, vehiclePlate(picked), picked),
+                          customer_name: prev.customer_name || ownerName,
+                          phone: prev.phone || ownerClient?.phone || "",
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <input
+                      id="work-order-vehicle"
+                      className="admin-input"
+                      placeholder="Informe a placa"
+                      value={form.vehicle}
+                      onChange={(e) => {
+                        setCustomVehicle(true);
+                        setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }));
+                      }}
+                    />
+                  )}
+                  {vehicles.length > 0 && (
+                    <button type="button" className="admin-work-order-link" onClick={() => setCustomVehicle((value) => !value)}>
+                      {customVehicle ? "+ Buscar veículo salvo" : "+ Novo veículo"}
+                    </button>
+                  )}
+                </div>
+
+                <h3 className="admin-work-order-section">Execução do serviço</h3>
+                <div className="admin-field">
+                  <label htmlFor="work-order-technician">Técnico responsável</label>
+                  <input
+                    id="work-order-technician"
+                    className="admin-input"
+                    placeholder="Selecionar mecânico"
+                    value={form.tecnico}
+                    onChange={(e) => setForm((prev) => ({ ...prev, tecnico: e.target.value }))}
+                  />
+                </div>
+                <div className="admin-field">
+                  <label htmlFor="work-order-box">Box de atendimento</label>
+                  <input
+                    id="work-order-box"
+                    className="admin-input"
+                    placeholder="Selecionar box"
+                    value={form.box}
+                    onChange={(e) => setForm((prev) => ({ ...prev, box: e.target.value }))}
+                  />
+                </div>
+                <div className="admin-field wide">
+                  <label htmlFor="work-order-description">Diagnóstico / observações</label>
                   <textarea
+                    id="work-order-description"
                     className="admin-textarea"
                     rows={3}
-                    placeholder="Sintomas relatados, diagnóstico técnico e peças previstas..."
+                    placeholder="Sintomas relatados, diagnóstico técnico e serviços previstos..."
                     value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-workordersview-958"
+                    onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                   />
+                </div>
+
+                <h3 className="admin-work-order-section admin-work-order-parts-heading">
+                  <span>Peças e valores</span>
+                  <small>Peças opcionais</small>
+                </h3>
+                <div className="admin-field wide admin-work-order-parts-picker">
+                  <select
+                    id="work-order-part"
+                    className="admin-select"
+                    aria-label="Buscar peça no estoque"
+                    value={selectedPartId}
+                    onChange={(e) => setSelectedPartId(e.target.value)}
+                  >
+                    <option value="">Buscar peça no estoque...</option>
+                    {inventoryRows
+                      .filter((i) => i.status !== "cancelado")
+                      .map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.title} (disp: {String(detail(item, "quantidade") ?? 0)} {String(detail(item, "unidade") ?? "un")} · {money(item.amount)})
+                        </option>
+                      ))}
+                  </select>
+                  <input
+                    className="admin-input"
+                    aria-label="Quantidade de peças"
+                    type="number"
+                    min="1"
+                    value={selectedPartQty}
+                    onChange={(e) => setSelectedPartQty(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="admin-work-order-add-part"
+                    aria-label="Adicionar peça"
+                    onClick={addPartToForm}
+                    disabled={!selectedPartId}
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
+                <div className="admin-field wide admin-work-order-price-summary">
+                  <div className="admin-work-order-part-list">
+                    {form.pecas.length > 0 ? form.pecas.map((part) => (
+                      <div className="admin-work-order-part-row" key={part.id}>
+                        <span>{part.quantidade} × {part.nome}</span>
+                        <strong>{money(part.quantidade * part.valor_unitario)}</strong>
+                        <button
+                          type="button"
+                          aria-label={`Remover ${part.nome}`}
+                          onClick={() => setForm((prev) => ({
+                            ...prev,
+                            pecas: prev.pecas.filter((item) => item.id !== part.id),
+                            amount: amountInput(Number(prev.amount) - part.quantidade * part.valor_unitario),
+                          }))}
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    )) : (
+                      <div className="admin-work-order-empty-parts">Nenhuma peça adicionada</div>
+                    )}
+                  </div>
+                  <div className="admin-work-order-labor-row">
+                    <span>Mão de obra</span>
+                    <strong>{money(Math.max(0, (Number(form.amount.replace(",", ".")) || 0) - partsTotal(form.pecas)))}</strong>
+                  </div>
+                  <label className="admin-work-order-amount-label" htmlFor="work-order-amount">Valor total da OS</label>
+                  <div className="admin-work-order-amount-control">
+                    <span>R$</span>
+                    <input
+                      id="work-order-amount"
+                      className="admin-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0,00"
+                      value={form.amount}
+                      onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="admin-modal-actions">
+                <span className="admin-work-order-required-note">* Campos obrigatórios</span>
                 <button
                   type="button"
                   className="admin-secondary"
@@ -974,7 +1108,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                   Cancelar
                 </button>
                 <button type="submit" className="admin-primary" disabled={saving}>
-                  {saving ? "Salvando..." : "Salvar"}
+                  {saving ? "Salvando..." : editing ? "Salvar alterações" : "Criar ordem de serviço"}
                 </button>
               </div>
             </form>

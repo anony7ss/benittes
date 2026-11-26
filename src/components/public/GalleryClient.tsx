@@ -84,7 +84,7 @@ export function GalleryClient({ closeIcon }: { closeIcon: ReactNode }) {
 
   return (
     <>
-      <div className="gallery">
+      <div className="gallery" aria-busy={loading}>
         {items.map((item, index) => (
           <figure key={item.id} id={item.id}>
             <button

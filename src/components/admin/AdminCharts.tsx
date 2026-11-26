@@ -76,8 +76,8 @@ export function CashflowBarChart({ data }: { data: CashflowPoint[] }) {
               left: 0,
               right: 0,
               bottom: `${step * 100}%`,
-              borderTop: "1px dashed var(--admin-line)",
-              opacity: 0.55,
+              borderTop: "1px solid var(--admin-line)",
+              opacity: 0.45,
               pointerEvents: "none",
             }}
           />
@@ -325,8 +325,7 @@ export function AreaTrendChart({
                 y1={y}
                 y2={y}
                 stroke="var(--admin-line)"
-                strokeDasharray="4 4"
-                strokeOpacity={0.75}
+                strokeOpacity={0.5}
               />
             </g>
           );
@@ -363,7 +362,6 @@ export function AreaTrendChart({
             y2={height - padBottom}
             stroke="var(--admin-green)"
             strokeOpacity={0.45}
-            strokeDasharray="3 3"
           />
         )}
 

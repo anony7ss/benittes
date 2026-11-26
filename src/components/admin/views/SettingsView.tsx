@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { selectRows, updateRow, type PanelRecord, type SiteContent } from "../../../lib/supabase";
+import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
 import { asText, dateText, detail, modalBackdropProps, todayIso, useModuleRecords } from "../utils";
 import {
@@ -498,7 +499,6 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
     <>
       <div className="admin-page-title">
         <div>
-          <p className="admin-kicker">SISTEMA · CONFIGURAÇÕES</p>
           <h1>Estabelecimento e configurações</h1>
         </div>
         {tab === "parametros" && (
@@ -1180,7 +1180,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                       <th>Parâmetro</th>
                       <th>Valor / Conteúdo</th>
                       <th style={{ width: 110 }}>Situação</th>
-                      <th style={{ width: 120 }}>Ações</th>
+                      <th style={{ width: 72, textAlign: "right" }}>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1204,36 +1204,18 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                             />
                           </td>
                           <td>
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button
-                                type="button"
-                                className="admin-icon-btn"
-                                title={isActive ? "Desativar parâmetro" : "Ativar parâmetro"}
-                                onClick={() =>
-                                  void patchRecord(row.id, {
-                                    status: isActive ? "cancelado" : "ativo",
-                                  })
-                                }
-                              >
-                                <Power size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                className="admin-icon-btn"
-                                title="Editar"
-                                onClick={() => openEdit(row)}
-                              >
-                                <Pencil size={14} />
-                              </button>
-                              <button
-                                type="button"
-                                className="admin-icon-btn danger"
-                                title="Remover"
-                                onClick={() => void removeRecord(row)}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+                            <AdminActionMenu
+                              label={`Ações de ${row.title}`}
+                              actions={[
+                                {
+                                  label: isActive ? "Desativar parâmetro" : "Ativar parâmetro",
+                                  icon: <Power size={14} />,
+                                  onSelect: () => void patchRecord(row.id, { status: isActive ? "cancelado" : "ativo" }),
+                                },
+                                { label: "Editar parâmetro", icon: <Pencil size={14} />, onSelect: () => openEdit(row), separatorBefore: true },
+                                { label: "Remover parâmetro", icon: <Trash2 size={14} />, onSelect: () => void removeRecord(row), destructive: true },
+                              ]}
+                            />
                           </td>
                         </tr>
                       );
@@ -1260,7 +1242,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                       <th>Resumo</th>
                       <th style={{ width: 100 }}>Visibilidade</th>
                       <th style={{ width: 120 }}>Atualizado</th>
-                      <th style={{ width: 72 }}>Ações</th>
+                      <th style={{ width: 72, textAlign: "right" }}>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1281,14 +1263,12 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                         </td>
                         <td>{dateText(entry.updated_at)}</td>
                         <td>
-                          <button
-                            type="button"
-                            className="admin-icon-btn"
-                            title="Editar conteúdo"
-                            onClick={() => openSiteModal(entry)}
-                          >
-                            <Pencil size={14} />
-                          </button>
+                          <AdminActionMenu
+                            label={`Ações do conteúdo ${SITE_KEY_LABELS[entry.key] ?? entry.key}`}
+                            actions={[
+                              { label: "Editar conteúdo", icon: <Pencil size={14} />, onSelect: () => openSiteModal(entry) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}
