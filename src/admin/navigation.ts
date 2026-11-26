@@ -3,7 +3,7 @@ import { hasModulePermission, type PanelPermissions } from "./permissions";
 export type AdminPage = {
   path: string;
   label: string;
-  group: "Operação" | "Oficina" | "Comercial" | "Sistema" | "Acesso";
+  group: "Operação" | "Cadastros" | "Oficina" | "Comercial" | "Financeiro" | "Administração" | "Acesso";
   icon: string;
   module?: string;
   description?: string;
@@ -17,22 +17,22 @@ export const adminPages: AdminPage[] = [
   { path: "orcamentos", label: "Orçamentos", group: "Operação", icon: "quotes", module: "quotes", description: "Propostas, aprovação do cliente e validade." },
   { path: "inspecoes", label: "Inspeções", group: "Operação", icon: "inspections", module: "inspections", description: "Checklists veiculares por sistema e laudos." },
 
-  { path: "clientes", label: "Clientes", group: "Oficina", icon: "clients", module: "clients", description: "Base de clientes, contatos e histórico de retorno." },
-  { path: "veiculos", label: "Veículos", group: "Oficina", icon: "vehicles", module: "vehicles", description: "Placas, modelos, quilometragem e ficha técnica." },
+  { path: "clientes", label: "Clientes", group: "Cadastros", icon: "clients", module: "clients", description: "Base de clientes, contatos e histórico de retorno." },
+  { path: "veiculos", label: "Veículos", group: "Cadastros", icon: "vehicles", module: "vehicles", description: "Placas, modelos, quilometragem e ficha técnica." },
   { path: "servicos", label: "Serviços", group: "Oficina", icon: "services", module: "services", description: "Catálogo de mão de obra, tempo estimado e valores." },
   { path: "precos", label: "Preços por veículo", group: "Oficina", icon: "prices", module: "prices", description: "Tarifas específicas por marca, modelo e ano." },
   { path: "estoque", label: "Estoque", group: "Oficina", icon: "inventory", module: "inventory", description: "Peças, insumos, estoque mínimo e margem." },
 
   { path: "contatos", label: "Mensagens", group: "Comercial", icon: "contacts", special: "contacts", description: "Solicitações recebidas pelo formulário do site." },
-  { path: "financeiro", label: "Finanças", group: "Comercial", icon: "finance", module: "finance", description: "Receitas, despesas, fluxo de caixa e vencimentos." },
+  { path: "financeiro", label: "Finanças", group: "Financeiro", icon: "finance", module: "finance", description: "Receitas, despesas, fluxo de caixa e vencimentos." },
   { path: "vendas", label: "Vendas e PDV", group: "Comercial", icon: "sales", module: "sales", description: "Vendas de balcão, formas de pagamento e comandas." },
 
-  { path: "relatorios", label: "Relatórios", group: "Sistema", icon: "reports", module: "reports", description: "Extração por período e exportação CSV." },
-  { path: "ponto", label: "Ponto Eletrônico", group: "Sistema", icon: "agenda", special: "ponto", description: "Registro de entrada, intervalo, saída e horas." },
-  { path: "bot", label: "Bot WhatsApp", group: "Sistema", icon: "bot", special: "bot", description: "Conexão QR Code, terminal ao vivo e automações." },
-  { path: "configuracoes", label: "Configurações", group: "Sistema", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
-  { path: "conta", label: "Conta & Equipe", group: "Sistema", icon: "account", special: "account", description: "Seu perfil, equipe, permissões e auditoria." },
-  { path: "galeria", label: "Galeria do site", group: "Sistema", icon: "gallery", module: "gallery", description: "Fotos, vídeos, destaques e ordem de exibição no site." },
+  { path: "relatorios", label: "Relatórios", group: "Administração", icon: "reports", module: "reports", description: "Extração por período e exportação CSV." },
+  { path: "ponto", label: "Ponto Eletrônico", group: "Administração", icon: "agenda", special: "ponto", description: "Registro de entrada, intervalo, saída e horas." },
+  { path: "bot", label: "Bot WhatsApp", group: "Administração", icon: "bot", special: "bot", description: "Conexão QR Code, terminal ao vivo e automações." },
+  { path: "galeria", label: "Galeria do site", group: "Administração", icon: "gallery", module: "gallery", description: "Fotos, vídeos, destaques e ordem de exibição no site." },
+  { path: "conta", label: "Conta & Equipe", group: "Administração", icon: "account", special: "account", description: "Seu perfil, equipe, permissões e auditoria." },
+  { path: "configuracoes", label: "Configurações", group: "Administração", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
 
   { path: "login", label: "Entrar", group: "Acesso", icon: "account", special: "login" },
   { path: "recuperar-senha", label: "Recuperar senha", group: "Acesso", icon: "account", special: "recovery" },

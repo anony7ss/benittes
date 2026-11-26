@@ -796,6 +796,16 @@ body:has(.admin-shell) {
   margin: 0 auto;
 }
 
+.admin-sidebar:not(:hover):not(:focus-within):not(.pinned):not(.mobile-open) .admin-nav-group-toggle {
+  display: none;
+}
+
+.admin-sidebar:not(:hover):not(:focus-within):not(.pinned):not(.mobile-open) .admin-nav-group + .admin-nav-group {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .admin-sidebar:not(:hover):not(:focus-within):not(.pinned):not(.mobile-open) .admin-user-pill {
   justify-content: center;
   padding: 5px;
@@ -939,6 +949,70 @@ body:has(.admin-shell) {
 
 .admin-sidebar-nav::-webkit-scrollbar {
   display: none;
+}
+
+.admin-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-nav-group + .admin-nav-group {
+  margin-top: 3px;
+  padding-top: 7px;
+  border-top: 1px solid var(--admin-sidebar-line);
+}
+
+.admin-nav-group-toggle {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--admin-sidebar-muted);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.admin-nav-group-toggle:hover {
+  background: rgba(128, 128, 128, 0.06);
+  color: var(--admin-sidebar-ink);
+}
+
+.admin-nav-group-toggle.has-current {
+  color: var(--admin-orange);
+}
+
+.admin-nav-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-nav-group-chevron {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  opacity: 0.76;
+}
+
+.admin-nav-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
 }
 
 .admin-nav-divider {

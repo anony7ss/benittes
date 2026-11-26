@@ -2,13 +2,14 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   BarChart3,
   Bell,
   Bot,
   CalendarDays,
   Car,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   ContactRound,
@@ -65,6 +66,16 @@ const roleLabels: Record<string, string> = {
   finance: "Financeiro",
 };
 
+const navigationGroupOrder: AdminPage["group"][] = [
+  "Operação",
+  "Cadastros",
+  "Oficina",
+  "Comercial",
+  "Financeiro",
+  "Administração",
+];
+const collapsedGroupsStorageKey = "admin-sidebar-collapsed-groups";
+
 export function AdminShell({
   page,
   role,
@@ -87,6 +98,8 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsCount, setNotificationsCount] = useState(0);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const prefersReducedMotion = useReducedMotion();
   const { avatarUrl } = useProfilePhoto();
 
   useLayoutEffect(() => {
@@ -94,6 +107,26 @@ export function AdminShell({
       const isDark = localStorage.getItem("admin-theme") === "dark";
       setDarkMode(isDark);
       setPinned(localStorage.getItem("admin-sidebar-pinned") === "1");
+
+      try {
+        const savedGroups = localStorage.getItem(collapsedGroupsStorageKey);
+        if (savedGroups) {
+          const parsedGroups: unknown = JSON.parse(savedGroups);
+          if (parsedGroups && typeof parsedGroups === "object" && !Array.isArray(parsedGroups)) {
+            const savedRecord = parsedGroups as Record<string, unknown>;
+            const validGroups: Record<string, boolean> = {};
+            for (const group of navigationGroupOrder) {
+              if (typeof savedRecord[group] === "boolean") {
+                validGroups[group] = savedRecord[group] as boolean;
+              }
+            }
+            setCollapsedGroups(validGroups);
+          }
+        }
+      } catch {
+        // ignore invalid or unavailable saved preferences
+      }
+
       document.documentElement.classList.toggle("dark", isDark);
       document.documentElement.style.backgroundColor = isDark ? "#11110f" : "#efefeb";
     } catch {
@@ -309,6 +342,16 @@ export function AdminShell({
     }
   }
 
+  function toggleNavigationGroup(group: AdminPage["group"]) {
+    const next = { ...collapsedGroups, [group]: !collapsedGroups[group] };
+    setCollapsedGroups(next);
+    try {
+      localStorage.setItem(collapsedGroupsStorageKey, JSON.stringify(next));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   const visiblePages = useMemo(
     () =>
       adminPages.filter(
@@ -318,8 +361,7 @@ export function AdminShell({
   );
 
   const groups = useMemo(() => {
-    const order: AdminPage["group"][] = ["Operação", "Oficina", "Comercial", "Sistema"];
-    return order
+    return navigationGroupOrder
       .map((group) => ({
         group,
         items: visiblePages.filter((item) => item.group === group),
@@ -381,35 +423,68 @@ export function AdminShell({
         </div>
 
         <nav className="admin-sidebar-nav">
-          {groups.map((group, idx) => (
-            <div key={group.group} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {idx > 0 && <div className="admin-nav-divider" />}
-              {group.items.map((item) => {
-                const Icon = iconMap[item.icon] ?? LayoutDashboard;
-                const active = item.path === page.path;
-                return (
-                  <a
-                    key={item.path}
-                    href={routeFor(item.path)}
-                    className={`admin-nav-item ${active ? "active" : ""}`}
-                    onClick={() => setMobileOpen(false)}
-                    aria-current={active ? "page" : undefined}
-                    title={item.label}
+          {groups.map((group) => {
+            const collapsed = collapsedGroups[group.group] === true;
+            const containsCurrentPage = group.items.some((item) => item.path === page.path);
+            const groupId = `admin-nav-group-${group.group.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+
+            return (
+              <section key={group.group} className="admin-nav-group">
+                <button
+                  type="button"
+                  className={`admin-nav-group-toggle ${containsCurrentPage ? "has-current" : ""}`}
+                  onClick={() => toggleNavigationGroup(group.group)}
+                  aria-expanded={!collapsed}
+                  aria-controls={groupId}
+                  title={`${collapsed ? "Abrir" : "Fechar"} categoria ${group.group}`}
+                >
+                  <span className="admin-nav-group-label">{group.group}</span>
+                  <motion.span
+                    className="admin-nav-group-chevron"
+                    aria-hidden="true"
+                    animate={{ rotate: collapsed ? -90 : 0 }}
+                    transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: "easeOut" }}
                   >
-                    {active && (
-                      <motion.span
-                        layoutId="sidebar-active-indicator"
-                        className="admin-active-bar"
-                        transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                      />
-                    )}
-                    <Icon size={18} />
-                    <span className="admin-nav-label-text">{item.label}</span>
-                  </a>
-                );
-              })}
-            </div>
-          ))}
+                    <ChevronDown size={14} />
+                  </motion.span>
+                </button>
+                <motion.div
+                  id={groupId}
+                  className="admin-nav-group-items"
+                  initial={false}
+                  animate={{ height: collapsed ? 0 : "auto", opacity: collapsed ? 0 : 1 }}
+                  transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: "easeOut" }}
+                  aria-hidden={collapsed}
+                  inert={collapsed}
+                >
+                  {group.items.map((item) => {
+                    const Icon = iconMap[item.icon] ?? LayoutDashboard;
+                    const active = item.path === page.path;
+                    return (
+                      <a
+                        key={item.path}
+                        href={routeFor(item.path)}
+                        className={`admin-nav-item ${active ? "active" : ""}`}
+                        onClick={() => setMobileOpen(false)}
+                        aria-current={active ? "page" : undefined}
+                        title={item.label}
+                      >
+                        {active && (
+                          <motion.span
+                            layoutId="sidebar-active-indicator"
+                            className="admin-active-bar"
+                            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                          />
+                        )}
+                        <Icon size={18} />
+                        <span className="admin-nav-label-text">{item.label}</span>
+                      </a>
+                    );
+                  })}
+                </motion.div>
+              </section>
+            );
+          })}
 
           <div className="admin-nav-divider" />
           <a href="/" target="_blank" rel="noopener noreferrer" className="admin-nav-item" title="Abrir o site">
