@@ -20,7 +20,6 @@ export default function SobrePage() {
       <div className="about">
         <figure>
           <Photo id="bancada" priority sizes="(max-width:700px) 100vw, 50vw" />
-          <figcaption>Fotografia editorial · Artem Podrez</figcaption>
         </figure>
         <div>
           <span className="kicker">Nosso caderno</span>
