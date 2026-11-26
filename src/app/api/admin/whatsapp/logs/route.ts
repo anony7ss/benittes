@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceSupabase, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 import { databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, rateLimitedResponse } from "../../../../../lib/security/http";
 
 export async function GET(request: NextRequest) {
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (staff.member.role !== "owner" && staff.member.role !== "manager") {
+  if (!hasPanelPermission(staff.member, "bot", "read")) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 
@@ -24,7 +24,7 @@ export async function DELETE(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (staff.member.role !== "owner" && staff.member.role !== "manager") {
+  if (!hasPanelPermission(staff.member, "bot", "write")) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 

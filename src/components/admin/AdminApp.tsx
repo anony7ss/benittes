@@ -355,7 +355,7 @@ export function AdminApp({ section }: { section?: string }) {
     );
   }
 
-  const allowed = page ? canSeePage(member.role, page) : true;
+  const allowed = page ? canSeePage(member.role, page, member.permissions) : true;
 
   return (
     <div className="admin-root" onClick={handleNavigationClick}>
@@ -363,6 +363,7 @@ export function AdminApp({ section }: { section?: string }) {
         <AdminShell
           page={activePage}
           role={member.role}
+          permissions={member.permissions}
           email={session.user.email ?? ""}
           fullName={member.full_name}
           onSignOut={() => void handleSignOut()}

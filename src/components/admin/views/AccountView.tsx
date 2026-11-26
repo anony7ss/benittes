@@ -15,6 +15,8 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { hasModulePermission, PANEL_PERMISSION_MODULES, type PanelPermissionModule, type PanelPermissions } from "../../../admin/permissions";
 import {
   selectRows,
   updatePassword,
@@ -37,9 +39,15 @@ const roleLabels: Record<string, string> = {
   finance: "Financeiro",
 };
 
-const roleOptions = ["owner", "manager", "advisor", "technician", "finance"] as const;
+type PanelRole = {
+  role_key: string;
+  name: string;
+  permissions: PanelPermissions;
+  is_system: boolean;
+  created_at: string;
+};
 
-type AccountTab = "perfil" | "seguranca" | "equipe" | "auditoria";
+type AccountTab = "perfil" | "seguranca" | "equipe" | "cargos" | "auditoria";
 
 export function AccountView({
   session,
@@ -51,6 +59,8 @@ export function AccountView({
   onMemberUpdate?: (next: PanelMember) => void;
 }) {
   const canManageTeam = member.role === "owner" || member.role === "manager";
+  const isOwner = member.role === "owner";
+  const canAccessAudit = canManageTeam || hasModulePermission(member.permissions, "audit", "read");
   const [activeTab, setActiveTab] = useState<AccountTab>("perfil");
 
   // Perfil
@@ -84,10 +94,16 @@ export function AccountView({
   // Equipe & Auditoria
   const [members, setMembers] = useState<PanelMember[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-  const [teamLoading, setTeamLoading] = useState(canManageTeam);
+  const [teamLoading, setTeamLoading] = useState(canManageTeam || canAccessAudit);
   const [teamError, setTeamError] = useState("");
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [auditSearch, setAuditSearch] = useState("");
+  const [roles, setRoles] = useState<PanelRole[]>([]);
+  const [roleEditorOpen, setRoleEditorOpen] = useState(false);
+  const [editingRole, setEditingRole] = useState<PanelRole | null>(null);
+  const [roleName, setRoleName] = useState("");
+  const [rolePermissions, setRolePermissions] = useState<PanelPermissions>({});
+  const [savingRole, setSavingRole] = useState(false);
 
   // Modal editar membro
   const [editingMember, setEditingMember] = useState<PanelMember | null>(null);
@@ -276,20 +292,33 @@ export function AccountView({
   }
 
   useEffect(() => {
-    if (!canManageTeam) return;
+    if (!canManageTeam && !canAccessAudit) return;
     setTeamLoading(true);
     setTeamError("");
     void Promise.all([
-      selectRows<PanelMember>("panel_members", { order: "created_at.asc", limit: "100" }),
-      selectRows<AuditEntry>("audit_logs", { order: "created_at.desc", limit: "50" }).catch(() => []),
+      canManageTeam ? selectRows<PanelMember>("panel_members", { order: "created_at.asc", limit: "100" }) : Promise.resolve([] as PanelMember[]),
+      canAccessAudit ? selectRows<AuditEntry>("audit_logs", { order: "created_at.desc", limit: "50" }).catch(() => []) : Promise.resolve([] as AuditEntry[]),
+      isOwner
+        ? fetch("/api/admin/roles", { headers: { Authorization: `Bearer ${session.access_token}` }, cache: "no-store" })
+            .then(async (response) => {
+              const result = await response.json() as { roles?: PanelRole[]; error?: string };
+              if (!response.ok) throw new Error(result.error || "Não foi possível carregar os cargos.");
+              return result.roles ?? [];
+            })
+            .catch((reason: Error) => {
+              setTeamError(reason.message);
+              return [] as PanelRole[];
+            })
+        : Promise.resolve([] as PanelRole[]),
     ])
-      .then(([teamData, auditData]) => {
+      .then(([teamData, auditData, roleData]) => {
         setMembers(teamData);
         setAuditLogs(auditData);
+        setRoles(roleData);
       })
       .catch((reason: Error) => setTeamError(reason.message))
       .finally(() => setTeamLoading(false));
-  }, [canManageTeam]);
+  }, [canManageTeam, canAccessAudit, isOwner, session.access_token]);
 
   const filteredAudit = useMemo(() => {
     const q = auditSearch.trim().toLowerCase();
@@ -301,6 +330,10 @@ export function AccountView({
     );
   }, [auditLogs, auditSearch]);
   const { pageItems: auditPage, controls: auditPagination } = usePagination(filteredAudit);
+  const availableRoles = roles.length
+    ? roles
+    : Object.entries(roleLabels).map(([role_key, name]) => ({ role_key, name, permissions: {}, is_system: true, created_at: "" }));
+  const roleNameFor = (roleKey: string) => availableRoles.find((role) => role.role_key === roleKey)?.name ?? roleLabels[roleKey] ?? roleKey;
 
   const initials = (fullName.trim() || session.user.email || "B")
     .split(/\s+/)
@@ -467,6 +500,66 @@ export function AccountView({
     }
   }
 
+  function openRoleEditor(role?: PanelRole) {
+    setEditingRole(role ?? null);
+    setRoleName(role?.name ?? "");
+    const next: PanelPermissions = {};
+    for (const { key } of PANEL_PERMISSION_MODULES) {
+      const existing = role?.permissions?.[key];
+      next[key] = { read: existing?.read === true || existing?.write === true, write: existing?.write === true };
+    }
+    setRolePermissions(next);
+    setRoleEditorOpen(true);
+  }
+
+  function setRolePermission(module: PanelPermissionModule, access: "read" | "write", enabled: boolean) {
+    setRolePermissions((current) => {
+      const existing = current[module] ?? { read: false, write: false };
+      if (access === "write") return { ...current, [module]: { read: enabled || existing.read, write: enabled } };
+      return { ...current, [module]: { read: enabled, write: enabled && existing.write } };
+    });
+  }
+
+  async function handleSaveRole(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingRole(true);
+    setTeamError("");
+    try {
+      const response = await fetch("/api/admin/roles", {
+        method: editingRole ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ role_key: editingRole?.role_key, name: roleName, permissions: rolePermissions }),
+      });
+      const result = await response.json() as { role?: PanelRole; error?: string };
+      if (!response.ok || !result.role) throw new Error(result.error || "Não foi possível salvar o cargo.");
+      setRoles((current) => editingRole
+        ? current.map((role) => role.role_key === result.role!.role_key ? result.role! : role)
+        : [...current, result.role!].sort((a, b) => Number(b.is_system) - Number(a.is_system) || a.name.localeCompare(b.name, "pt-BR")));
+      setRoleEditorOpen(false);
+      setEditingRole(null);
+    } catch (reason) {
+      setTeamError(reason instanceof Error ? reason.message : "Erro ao salvar cargo.");
+    } finally {
+      setSavingRole(false);
+    }
+  }
+
+  async function handleDeleteRole(role: PanelRole) {
+    if (role.is_system || !window.confirm(`Excluir o cargo "${role.name}"?`)) return;
+    setTeamError("");
+    try {
+      const response = await fetch(`/api/admin/roles?role_key=${encodeURIComponent(role.role_key)}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Não foi possível excluir o cargo.");
+      setRoles((current) => current.filter((item) => item.role_key !== role.role_key));
+    } catch (reason) {
+      setTeamError(reason instanceof Error ? reason.message : "Erro ao excluir cargo.");
+    }
+  }
+
   return (
     <>
       <div className="admin-page-title">
@@ -501,7 +594,16 @@ export function AccountView({
               <Users size={13} /> Equipe ({members.length})
             </button>
           )}
-          {canManageTeam && (
+          {isOwner && (
+            <button
+              type="button"
+              className={`admin-pill ${activeTab === "cargos" ? "active" : ""}`}
+              onClick={() => setActiveTab("cargos")}
+            >
+              <ShieldCheck size={13} /> Cargos
+            </button>
+          )}
+          {canAccessAudit && (
             <button
               type="button"
               className={`admin-pill ${activeTab === "auditoria" ? "active" : ""}`}
@@ -576,7 +678,7 @@ export function AccountView({
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <AdminStatusBadge
                     status="ativo"
-                    label={roleLabels[member.role] ?? member.role}
+                    label={member.role_name ?? roleNameFor(member.role)}
                   />
                   <button
                     type="button"
@@ -648,7 +750,7 @@ export function AccountView({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <div style={{ color: "var(--admin-muted)", fontSize: 11.5 }}>Cargo atual</div>
-                  <strong>{roleLabels[member.role] ?? member.role}</strong>
+                  <strong>{member.role_name ?? roleNameFor(member.role)}</strong>
                 </div>
                 <div>
                   <div style={{ color: "var(--admin-muted)", fontSize: 11.5 }}>Status da conta</div>
@@ -940,13 +1042,13 @@ export function AccountView({
                           <select
                             className="admin-select"
                             value={m.role}
-                            disabled={busyUserId === m.user_id || member.role !== "owner"}
+                            disabled={busyUserId === m.user_id || member.role !== "owner" || (isSelf && m.role === "owner")}
                             onChange={(e) => void handleRoleChange(m, e.target.value)}
                             style={{ width: "auto", minWidth: 140 }}
                           >
-                            {roleOptions.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {roleLabels[opt] ?? opt}
+                            {availableRoles.map((opt) => (
+                              <option key={opt.role_key} value={opt.role_key}>
+                                {opt.name}
                               </option>
                             ))}
                           </select>
@@ -992,6 +1094,97 @@ export function AccountView({
         </section>
       )}
 
+      {activeTab === "cargos" && isOwner && (
+        <section className="admin-panel">
+          <div className="admin-panel-head">
+            <div>
+              <h2>Cargos e permissões ({roles.length})</h2>
+              <p style={{ margin: "5px 0 0", color: "var(--admin-muted)", fontSize: 12 }}>Defina quais áreas cada cargo pode consultar e alterar. O proprietário mantém acesso total.</p>
+            </div>
+            <button type="button" className="admin-primary" onClick={() => openRoleEditor()}>
+              <Plus size={15} /> Criar cargo
+            </button>
+          </div>
+          {teamError && <p className="admin-form-error" style={{ marginBottom: 14 }}>{teamError}</p>}
+          {roles.length === 0 ? (
+            <div className="admin-empty">
+              <strong>Não foi possível carregar os cargos</strong>
+              <p>Confira se a migração de cargos configuráveis já foi aplicada no Supabase.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              {roles.map((role) => (
+                <article key={role.role_key} className="admin-panel" style={{ margin: 0, padding: 16, display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+                    <div>
+                      <strong>{role.name}</strong>
+                      <div style={{ color: "var(--admin-muted)", fontSize: 12, marginTop: 5 }}>
+                        {role.role_key === "owner" ? "Acesso total protegido" : role.is_system ? "Cargo padrão editável" : "Cargo personalizado"}
+                      </div>
+                    </div>
+                    <ShieldCheck size={16} />
+                  </div>
+                  <div style={{ color: "var(--admin-muted)", fontSize: 12 }}>
+                    {role.role_key === "owner"
+                      ? "Acesso completo a todas as áreas."
+                      : PANEL_PERMISSION_MODULES.filter(({ key }) => role.permissions?.[key]?.read || role.permissions?.["*"]?.read).length + " áreas liberadas"}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {role.role_key !== "owner" && (
+                      <button type="button" className="admin-secondary" onClick={() => openRoleEditor(role)}>
+                        <Pencil size={13} /> Editar permissões
+                      </button>
+                    )}
+                    {!role.is_system && (
+                      <button type="button" className="admin-ghost-danger" onClick={() => void handleDeleteRole(role)}>Excluir</button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {roleEditorOpen && isOwner && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setRoleEditorOpen(false))}>
+          <div className="admin-modal" style={{ maxHeight: "88vh", overflow: "auto" }} onClick={(event) => event.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div>
+                <h2>{editingRole ? "Editar cargo" : "Criar cargo"}</h2>
+                <p>Permissões de escrita também liberam a consulta da área.</p>
+              </div>
+              <button type="button" className="admin-icon-btn" onClick={() => setRoleEditorOpen(false)} aria-label="Fechar"><X size={16} /></button>
+            </div>
+            <form onSubmit={(event) => void handleSaveRole(event)}>
+              <div className="admin-field" style={{ marginBottom: 16 }}>
+                <label>Nome do cargo</label>
+                <input className="admin-input" required minLength={2} maxLength={60} value={roleName} onChange={(event) => setRoleName(event.target.value)} />
+              </div>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead><tr><th>Área</th><th>Consultar</th><th>Alterar</th></tr></thead>
+                  <tbody>
+                    {PANEL_PERMISSION_MODULES.map(({ key, label }) => (
+                      <tr key={key}>
+                        <td>{label}</td>
+                        <td><Checkbox checked={rolePermissions[key]?.read === true} onCheckedChange={(checked) => setRolePermission(key, "read", checked === true)} /></td>
+                        <td><Checkbox checked={rolePermissions[key]?.write === true} onCheckedChange={(checked) => setRolePermission(key, "write", checked === true)} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {teamError && <p className="admin-form-error">{teamError}</p>}
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-secondary" onClick={() => setRoleEditorOpen(false)}>Cancelar</button>
+                <button type="submit" className="admin-primary" disabled={savingRole}>{savingRole ? "Salvando…" : "Salvar cargo"}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {createMemberOpen && (
         <div className="admin-modal-backdrop" {...modalBackdropProps(() => setCreateMemberOpen(false))}>
           <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
@@ -1021,7 +1214,7 @@ export function AccountView({
                 <div className="admin-field wide">
                   <label>Cargo</label>
                   <select className="admin-select" value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value)}>
-                    {roleOptions.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
+                    {availableRoles.map((role) => <option key={role.role_key} value={role.role_key}>{role.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -1034,7 +1227,7 @@ export function AccountView({
         </div>
       )}
 
-      {activeTab === "auditoria" && canManageTeam && (
+      {activeTab === "auditoria" && canAccessAudit && (
         <section className="admin-panel">
           <div className="admin-panel-head">
             <h2>Auditoria recente ({filteredAudit.length})</h2>
@@ -1130,9 +1323,9 @@ export function AccountView({
                     disabled={member.role !== "owner"}
                     onChange={(e) => setEditMemberRole(e.target.value)}
                   >
-                    {roleOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {roleLabels[opt] ?? opt}
+                    {availableRoles.map((opt) => (
+                      <option key={opt.role_key} value={opt.role_key}>
+                        {opt.name}
                       </option>
                     ))}
                   </select>

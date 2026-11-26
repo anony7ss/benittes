@@ -6,7 +6,7 @@ import { Intro } from "@/components/public/Intro";
 export const metadata: Metadata = {
   title: "Galeria",
   description:
-    "Uma seleção de fotografias editoriais sobre motores, ferramentas e trabalho de bancada.",
+    "Uma seleção de fotografias de motores, inspeções e trabalhos na oficina.",
 };
 
 export default function GaleriaPage() {
@@ -15,7 +15,7 @@ export default function GaleriaPage() {
       <Intro
         label="Galeria fotográfica"
         title="Mecânica em foco"
-        desc="Um ensaio editorial sobre peças, superfícies e trabalho manual. Fotografias de referência por Artem Podrez."
+        desc="Imagens de componentes, inspeções e serviços vistos de perto."
       />
       <GalleryClient closeIcon={<Icon name="x" />} />
     </div>

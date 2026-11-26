@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../lib/security/http";
 import { getServiceSupabase, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 
-const roles = ["owner", "manager", "advisor", "technician", "finance"];
-
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
@@ -23,7 +21,13 @@ export async function POST(request: NextRequest) {
   }
   if (!fullName || fullName.length > 120) return NextResponse.json({ error: "Informe o nome completo." }, { status: 400 });
   if (password.length < 12 || password.length > 128) return NextResponse.json({ error: "A senha inicial deve ter entre 12 e 128 caracteres." }, { status: 400 });
-  if (!roles.includes(role)) return NextResponse.json({ error: "Cargo inválido." }, { status: 400 });
+  const { data: selectedRole, error: roleError } = await staff.supabase
+    .from("panel_roles")
+    .select("role_key")
+    .eq("role_key", role)
+    .maybeSingle();
+  if (roleError) return NextResponse.json({ error: "Não foi possível validar o cargo. Aplique a migração de cargos configuráveis." }, { status: 503 });
+  if (!selectedRole) return NextResponse.json({ error: "Cargo inválido." }, { status: 400 });
 
   try {
     if (!(await enforceRateLimits([

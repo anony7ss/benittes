@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { getServiceSupabase, hasPanelPermission, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 import { clientAddress, databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
-
-function canManageBot(role: unknown): boolean {
-  return role === "owner" || role === "manager";
-}
 
 function validWhatsApp(phone: string): boolean {
   return /^55\d{10,11}$/.test(phone);
@@ -13,7 +9,7 @@ function validWhatsApp(phone: string): boolean {
 export async function GET(request: NextRequest) {
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (!canManageBot(staff.member.role)) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  if (!hasPanelPermission(staff.member, "bot", "read")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
 
   const supabase = getServiceSupabase();
   const [{ data: items, error }, { count: pending }, { count: sent }, { count: failed }] =
@@ -39,7 +35,7 @@ export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (!canManageBot(staff.member.role)) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  if (!hasPanelPermission(staff.member, "bot", "write")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
 
   const parsed = await readBoundedJson<{ phone?: unknown; message?: unknown }>(request, 8 * 1024);
   if (!parsed.ok) return parsed.response;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServiceSupabase, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { getServiceSupabase, hasPanelPermission, normalizeBrPhone, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 import { clientAddress, databaseErrorResponse, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 const HEARTBEAT_STALE_MS = 90_000;
@@ -14,8 +14,7 @@ export async function GET(request: NextRequest) {
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
 
-  const isAdmin = staff.member.role === "owner" || staff.member.role === "manager";
-  if (!isAdmin) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+  if (!hasPanelPermission(staff.member, "bot", "read")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   const supabase = getServiceSupabase();
 
   const { data, error } = await supabase
@@ -41,8 +40,23 @@ export async function GET(request: NextRequest) {
           profile_name: data.profile_name,
           ai_enabled: data.ai_enabled,
           auto_send_quotes: data.auto_send_quotes,
+          automations_enabled: data.automations_enabled,
           notify_on_human_transfer: data.notify_on_human_transfer,
           notify_on_quote_response: data.notify_on_quote_response,
+          notify_on_appointment: data.notify_on_appointment,
+          appointment_reminders_enabled: data.appointment_reminders_enabled,
+          appointment_reminder_minutes: data.appointment_reminder_minutes,
+          appointment_reminder_message: data.appointment_reminder_message,
+          quote_followups_enabled: data.quote_followups_enabled,
+          quote_followup_hours: data.quote_followup_hours,
+          quote_followup_message: data.quote_followup_message,
+          service_followups_enabled: data.service_followups_enabled,
+          service_followup_days: data.service_followup_days,
+          service_followup_message: data.service_followup_message,
+          auto_quote_message_template: data.auto_quote_message_template,
+          owner_human_alert_message: data.owner_human_alert_message,
+          owner_quote_alert_message: data.owner_quote_alert_message,
+          owner_appointment_alert_message: data.owner_appointment_alert_message,
           closed_auto_reply_enabled: data.closed_auto_reply_enabled,
           closed_auto_reply_message: data.closed_auto_reply_message,
           owner_phone: data.owner_phone,
@@ -60,7 +74,7 @@ export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (staff.member.role !== "owner" && staff.member.role !== "manager") {
+  if (!hasPanelPermission(staff.member, "bot", "write")) {
     return NextResponse.json({ error: "Apenas administradores podem alterar o bot." }, { status: 403 });
   }
 
@@ -75,7 +89,7 @@ export async function POST(request: NextRequest) {
   }
   if (!allowed) return rateLimitedResponse();
 
-  const parsed = await readBoundedJson<Record<string, unknown>>(request, 8 * 1024);
+  const parsed = await readBoundedJson<Record<string, unknown>>(request, 24 * 1024);
   if (!parsed.ok) return parsed.response;
   const body = parsed.value;
   if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
@@ -154,11 +168,43 @@ export async function POST(request: NextRequest) {
     };
     if (typeof body.ai_enabled === "boolean") patch.ai_enabled = body.ai_enabled;
     if (typeof body.auto_send_quotes === "boolean") patch.auto_send_quotes = body.auto_send_quotes;
+    if (typeof body.automations_enabled === "boolean") patch.automations_enabled = body.automations_enabled;
     if (typeof body.notify_on_human_transfer === "boolean") {
       patch.notify_on_human_transfer = body.notify_on_human_transfer;
     }
     if (typeof body.notify_on_quote_response === "boolean") {
       patch.notify_on_quote_response = body.notify_on_quote_response;
+    }
+    if (typeof body.notify_on_appointment === "boolean") patch.notify_on_appointment = body.notify_on_appointment;
+    if (typeof body.appointment_reminders_enabled === "boolean") patch.appointment_reminders_enabled = body.appointment_reminders_enabled;
+    if (typeof body.quote_followups_enabled === "boolean") patch.quote_followups_enabled = body.quote_followups_enabled;
+    if (typeof body.service_followups_enabled === "boolean") patch.service_followups_enabled = body.service_followups_enabled;
+    for (const [field, min, max] of [
+      ["appointment_reminder_minutes", 15, 10080],
+      ["quote_followup_hours", 1, 720],
+      ["service_followup_days", 1, 3650],
+    ] as const) {
+      if (body[field] === undefined) continue;
+      const value = body[field];
+      if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+        return NextResponse.json({ error: "Intervalo de lembrete inválido." }, { status: 400 });
+      }
+      patch[field] = value;
+    }
+    for (const field of [
+      "appointment_reminder_message",
+      "quote_followup_message",
+      "service_followup_message",
+      "auto_quote_message_template",
+      "owner_human_alert_message",
+      "owner_quote_alert_message",
+      "owner_appointment_alert_message",
+    ]) {
+      if (body[field] === undefined) continue;
+      if (typeof body[field] !== "string" || body[field].length > 1500) {
+        return NextResponse.json({ error: "Um dos modelos de mensagem excede 1.500 caracteres." }, { status: 400 });
+      }
+      patch[field] = body[field].trim();
     }
     if (typeof body.closed_auto_reply_enabled === "boolean") {
       patch.closed_auto_reply_enabled = body.closed_auto_reply_enabled;

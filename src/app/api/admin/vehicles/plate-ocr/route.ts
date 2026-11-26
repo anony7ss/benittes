@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePanelStaff } from "../../../../../lib/supabaseAdmin";
+import { hasPanelPermission, requirePanelStaff } from "../../../../../lib/supabaseAdmin";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
 
 const MAX_VISION_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
   const staff = await requirePanelStaff(request);
   if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
-  if (!["owner", "manager", "advisor", "technician"].includes(String(staff.member.role))) {
+  if (!hasPanelPermission(staff.member, "vehicles", "write")) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 

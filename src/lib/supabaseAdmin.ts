@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
+import { hasModulePermission, normalizePanelPermissions, type PanelPermissions } from "../admin/permissions";
 
 export function getSupabaseEnv() {
   const url = (
@@ -54,11 +55,30 @@ export async function requirePanelStaff(request: NextRequest) {
     .maybeSingle();
 
   if (!member) return null;
-  return { user: userData.user, member, supabase };
+  const { data: roleConfig } = await supabase
+    .from("panel_roles")
+    .select("name,permissions")
+    .eq("role_key", member.role)
+    .maybeSingle();
+  const permissions = normalizePanelPermissions(roleConfig?.permissions);
+  return {
+    user: userData.user,
+    member: { ...member, role_name: roleConfig?.name ?? member.role, permissions },
+    supabase,
+  };
 }
 
 export function isPanelOwnerOrManager(member: { role?: unknown } | null | undefined): boolean {
   return member?.role === "owner" || member?.role === "manager";
+}
+
+export function hasPanelPermission(
+  member: { role?: unknown; permissions?: PanelPermissions | null } | null | undefined,
+  module: string,
+  access: "read" | "write" = "read",
+): boolean {
+  if (member?.role === "owner") return true;
+  return hasModulePermission(member?.permissions, module, access);
 }
 
 export function normalizeBrPhone(raw: string): string {

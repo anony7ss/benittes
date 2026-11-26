@@ -2,6 +2,7 @@
 
 Legenda:
 - `[x]` Já implementado no projeto
+- `[~]` Implementado no código; depende de migração, configuração externa ou validação operacional
 - `[ ]` Pendente (ou com base parcial indicada abaixo)
 
 ---
@@ -29,8 +30,8 @@ Legenda:
   - Importação e conciliação de extratos bancários (`.OFX` e `.CSV`) e relatório estruturado de **DRE** (Receitas, Compras/Custos, Despesas e Lucro Líquido).
 - [x] **Controle de compras, fornecedores e comissões** (`InventoryView.tsx`, `ReportsView.tsx`)
   - Registro de compras com atualização automática de estoque/fornecedor, lançamento opcional no financeiro e cálculo de comissões por período.
-- [x] **Emissão de NF-e, NFS-e e NFC-e** (`SalesView.tsx`, `/api/admin/fiscal`)
-  - Emissão estruturada de NF-e, NFS-e e NFC-e a partir das vendas, com modo de homologação local e suporte pronto para provedor fiscal (`FISCAL_API_TOKEN`).
+- [~] **Prévia de dados fiscais** (`SalesView.tsx`, `/api/admin/fiscal`)
+  - A rota grava uma prévia local. Ela não tem validade fiscal, não é transmitida e não emite NF-e, NFS-e ou NFC-e.
 
 ---
 
@@ -38,8 +39,10 @@ Legenda:
 
 - [x] **Portal de acompanhamento para clientes** (`QuoteSheetClient.tsx` em `/orcamento/[token]`)
   - Ficha online com aprovação digital (total e parcial) e acompanhamento de status em tempo real (Orçamento → Aprovado → Na oficina → No box → Concluído).
-- [x] **Central de atendimento e notificações pelo WhatsApp** (`WhatsAppBotView.tsx`, `NotificationCenter.tsx`)
-  - Bot WhatsApp com IA, fila de envio (outbox), terminal de logs, QR Code, verificação de heartbeat online/offline e central de alertas no painel.
+- [~] **Bot WhatsApp e mensagens automáticas** (`WhatsAppBotView.tsx`, `bot-whatsapp/src/reminders.js`)
+  - O código inclui fila de envio, IA, alertas configuráveis e rotinas de lembrete de agenda, orçamento pendente e revisão. Cada rotina tem ativação, prazo e texto próprios; a chave geral pausa os envios automáticos. As novas rotinas começam desligadas. O processo do bot precisa estar conectado, e a migração `20261126130000_configurable_automations_and_roles.sql` precisa estar aplicada no Supabase.
+- [~] **Cargos e permissões por área** (`AccountView.tsx`, `/api/admin/roles`)
+  - O proprietário pode cadastrar cargos e definir leitura e escrita por módulo. O painel e RLS usam as permissões; a migração citada acima precisa ser aplicada antes de usar esse recurso.
 - [x] **Controle de funcionários e ponto eletrônico** (`TimeClockView.tsx`, `SettingsView.tsx`)
   - Registro de ponto eletrônico (entrada, início/fim de intervalo e saída), cálculo de horas trabalhadas no dia e espelho de ponto da equipe.
 - [x] **Etiquetas de manutenção com QR Code** (`VehiclesView.tsx`)

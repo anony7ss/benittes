@@ -49,6 +49,7 @@ console.error = function (...args) {
 
 import { assertRuntimeConfig } from './src/config.js';
 import { iniciarProcessadorOutbox } from './src/outbox.js';
+import { iniciarProcessadorLembretes } from './src/reminders.js';
 import { testarConexaoIA, processarMensagemComIA } from './src/ai.js';
 import { verificarOficinaFechadaAgora } from './src/tools.js';
 import { sendHumanizedMessage } from './src/queue.js';
@@ -121,7 +122,7 @@ async function startBot() {
   renderBanner();
   updateStatus('whatsapp', 'Conectando...');
   updateStatus('supabase', 'Conectado');
-  updateStatus('reminders', 'Ativo');
+  iniciarProcessadorLembretes();
   await testarConexaoIA();
   renderBanner();
   iniciarHeartbeat();

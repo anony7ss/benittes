@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DOMAIN_TABLE_BY_MODULE, fromDomainRow, toDomainPayload } from "../../../../lib/domainTables";
 import { consumeRateLimit, databaseErrorResponse, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
-import { getServiceSupabase, requirePanelStaff } from "../../../../lib/supabaseAdmin";
+import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 
 const TABLE_ALIASES: Record<string, string> = {
   contacts: "contact_messages",
@@ -45,6 +45,10 @@ function returningColumnsForTable(table: string): string {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function applyMessageTemplate(template: unknown, values: Record<string, string>): string {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "").trim();
 }
 
 async function validatePricingPayload(
@@ -306,6 +310,7 @@ export async function GET(
     }
 
     if (resource === "dashboard") {
+      if (!hasPanelPermission(staff.member, "dashboard", "read")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
       const [msgs, cli, apts, os, inv, sls] = await Promise.all([
         supabase.from("contact_messages").select("*").order("created_at", { ascending: false }).limit(20),
         supabase.from("clients").select("*").order("created_at", { ascending: false }).limit(500),
@@ -325,6 +330,7 @@ export async function GET(
     }
 
     if (resource === "alerts") {
+      if (!hasPanelPermission(staff.member, "dashboard", "read")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
       const [msgs, apts, inv, fin] = await Promise.all([
         supabase.from("contact_messages").select("*").eq("status", "new").order("created_at", { ascending: false }).limit(5),
         supabase.from("appointments").select("*").eq("status", "novo").order("created_at", { ascending: false }).limit(5),
@@ -479,11 +485,11 @@ export async function POST(
           const service = getServiceSupabase();
           const { data: botCfg } = await service
             .from("whatsapp_bot_session")
-            .select("auto_send_quotes")
+            .select("automations_enabled,auto_send_quotes,auto_quote_message_template")
             .eq("id", "default")
             .maybeSingle();
 
-          if (maySend && botCfg?.auto_send_quotes !== false) {
+          if (maySend && botCfg?.automations_enabled !== false && botCfg?.auto_send_quotes !== false) {
             const normalized =
               digits.length <= 11 && !digits.startsWith("55") ? `55${digits}` : digits;
             const moneyText = Number(created.amount ?? 0).toLocaleString("pt-BR", {
@@ -491,20 +497,16 @@ export async function POST(
               currency: "BRL",
             });
             const tipoLabel = resource === "work-orders" ? "Ordem de Serviço" : "Orçamento";
-            const msg = [
-              `Olá${created.customer_name ? `, *${created.customer_name}*` : ""}! 👋`,
-              `Aqui é da *Benittes Oficina Mecânica*.`,
-              "",
-              `Preparamos o orçamento da sua ${tipoLabel}:`,
-              created.vehicle ? `🚗 *Veículo:* ${created.vehicle}` : null,
-              `🔧 *Serviço:* ${created.title}`,
-              `💰 *Valor:* ${moneyText}`,
-              "",
-              `Você aprova a execução deste serviço?`,
-              `Responda aqui com *Sim / Aprovar* ou *Não / Recusar*.`,
-            ]
-              .filter((line) => line !== null)
-              .join("\n");
+            const msg = applyMessageTemplate(botCfg?.auto_quote_message_template, {
+              nome: created.customer_name || "cliente",
+              oficina: "Benittes Oficina Mecânica",
+              servico: `${tipoLabel} · ${created.title}`,
+              veiculo: created.vehicle || "veículo",
+              placa: created.vehicle || "",
+              valor: moneyText,
+              link: "",
+            });
+            if (!msg) return NextResponse.json({ data: mapped });
 
             await service.from("whatsapp_outbox").insert({
               phone: normalized,

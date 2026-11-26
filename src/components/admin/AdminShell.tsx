@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import { adminPages, canSeePage, routeFor, type AdminPage } from "../../admin/navigation";
+import type { PanelPermissions } from "../../admin/permissions";
 import { useProfilePhoto } from "./ProfilePhoto";
 import { NotificationCenter } from "./NotificationCenter";
 
@@ -65,6 +66,7 @@ const roleLabels: Record<string, string> = {
 export function AdminShell({
   page,
   role,
+  permissions,
   email,
   fullName,
   onSignOut,
@@ -72,6 +74,7 @@ export function AdminShell({
 }: {
   page: AdminPage;
   role: string;
+  permissions?: PanelPermissions | null;
   email: string;
   fullName?: string | null;
   onSignOut: () => void;
@@ -307,9 +310,9 @@ export function AdminShell({
   const visiblePages = useMemo(
     () =>
       adminPages.filter(
-        (item) => item.group !== "Acesso" && canSeePage(role, item),
+        (item) => item.group !== "Acesso" && canSeePage(role, item, permissions),
       ),
-    [role],
+    [role, permissions],
   );
 
   const groups = useMemo(() => {

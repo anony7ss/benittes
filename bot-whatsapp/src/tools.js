@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import config from './config.js';
 import { obterVariacoesTelefone, normalizarTelefoneBR } from './phone-utils.js';
 import { pausarIaParaContato } from './web-sync.js';
 import { logAction, logWarn } from './terminal.js';
@@ -129,21 +130,36 @@ function phoneMatchesVariations(rawPhone, variations) {
   return variations.some((v) => clean === String(v || '').replace(/\D/g, ''));
 }
 
-async function notifyOwner(message, requiredSetting = null) {
+function applyMessageTemplate(template, values) {
+  return String(template || '').replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const value = values[key];
+    return value === null || value === undefined ? '' : String(value);
+  }).trim();
+}
+
+async function notifyOwner(type, values, fallback) {
   try {
-    const columns = requiredSetting ? `owner_phone,${requiredSetting}` : 'owner_phone';
     const { data: botCfg } = await supabase
       .from('whatsapp_bot_session')
-      .select(columns)
+      .select('owner_phone,automations_enabled,notify_on_human_transfer,notify_on_quote_response,notify_on_appointment,owner_human_alert_message,owner_quote_alert_message,owner_appointment_alert_message')
       .eq('id', 'default')
       .maybeSingle();
-    if (requiredSetting && botCfg?.[requiredSetting] === false) return;
+    if (botCfg?.automations_enabled === false) return;
+    const categories = {
+      human: { enabled: 'notify_on_human_transfer', template: 'owner_human_alert_message', kind: 'owner_human' },
+      quote: { enabled: 'notify_on_quote_response', template: 'owner_quote_alert_message', kind: 'owner_quote' },
+      appointment: { enabled: 'notify_on_appointment', template: 'owner_appointment_alert_message', kind: 'owner_appointment' },
+    };
+    const category = categories[type];
+    if (!category || botCfg?.[category.enabled] === false) return;
     const ownerPhone = normalizarTelefoneBR(botCfg?.owner_phone || '');
     if (!ownerPhone) return;
+    const message = applyMessageTemplate(botCfg?.[category.template], { oficina: config.workshopName, ...values }) || fallback;
+    if (!message) return;
     await supabase.from('whatsapp_outbox').insert({
       phone: ownerPhone,
       message,
-      kind: 'owner_alert',
+      kind: category.kind,
       status: 'pending',
     });
   } catch {}
@@ -369,15 +385,21 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
     if (error || !data) return { ok: false, erro: 'Este orçamento já recebeu uma resposta.' };
 
     logAction('Orçamento OS', `${pendingOs.reference} (${pendingOs.vehicle_plate || phone}) -> ${isApproved ? 'APROVADO' : 'RECUSADO'}`);
-    await notifyOwner(
-      `🔔 *Resposta de Orçamento (OS)*\n` +
+    await notifyOwner('quote', {
+      nome: pendingOs.customer_name || phone,
+      telefone: phone,
+      placa: pendingOs.vehicle_plate || '—',
+      servico: pendingOs.reference,
+      valor: positiveAmount(pendingOs.total) ? moneyBR(pendingOs.total) : 'A definir',
+      decisao: isApproved ? 'APROVADO ✅' : 'RECUSADO ❌',
+      motivo: motivo || '',
+    }, `🔔 *Resposta de Orçamento (OS)*\n` +
       `Cliente: ${pendingOs.customer_name || phone}\n` +
       `Veículo: ${pendingOs.vehicle_plate || '—'}\n` +
       `Serviço: ${pendingOs.reference}\n` +
       `Valor: ${positiveAmount(pendingOs.total) ? moneyBR(pendingOs.total) : 'A definir'}\n` +
       `Decisão: *${isApproved ? 'APROVADO ✅' : 'RECUSADO ❌'}*` +
-      (motivo ? `\nMotivo: ${motivo}` : ''),
-    );
+      (motivo ? `\nMotivo: ${motivo}` : ''));
 
     return {
       ok: true,
@@ -428,14 +450,19 @@ export async function responderOrcamento({ decisao, placa = '', motivo = '' }, c
     if (error || !data) return { ok: false, erro: 'Este orçamento já recebeu uma resposta.' };
 
     logAction('Orçamento', `${pendingQuote.reference} (${pendingQuote.vehicle_plate || phone}) -> ${isApproved ? 'APROVADO' : 'RECUSADO'}`);
-    await notifyOwner(
-      `🔔 *Resposta de Orçamento*\n` +
+    await notifyOwner('quote', {
+      nome: pendingQuote.customer_name || phone,
+      telefone: phone,
+      placa: pendingQuote.vehicle_plate || '—',
+      servico: pendingQuote.reference,
+      valor: positiveAmount(pendingQuote.total) ? moneyBR(pendingQuote.total) : 'A definir',
+      decisao: isApproved ? 'APROVADO ✅' : 'RECUSADO ❌',
+    }, `🔔 *Resposta de Orçamento*\n` +
       `Cliente: ${pendingQuote.customer_name || phone}\n` +
       `Veículo: ${pendingQuote.vehicle_plate || '—'}\n` +
       `Serviço: ${pendingQuote.reference}\n` +
       `Valor: ${positiveAmount(pendingQuote.total) ? moneyBR(pendingQuote.total) : 'A definir'}\n` +
-      `Decisão: *${isApproved ? 'APROVADO ✅' : 'RECUSADO ❌'}*`,
-    );
+      `Decisão: *${isApproved ? 'APROVADO ✅' : 'RECUSADO ❌'}*`);
 
     return {
       ok: true,
@@ -529,13 +556,18 @@ export async function agendarVisita({ nome, servico, data, hora = '09:00', placa
   if (error) return { ok: false, erro: 'Não foi possível concluir o agendamento.' };
 
   logAction('Agendamento', `${nome} · ${servico} em ${data} ${cleanHora}`);
-  await notifyOwner(
-    `📅 *Novo Agendamento via WhatsApp*\n` +
+  await notifyOwner('appointment', {
+    nome,
+    telefone: phone,
+    servico,
+    data,
+    hora: cleanHora,
+    placa: placa ? String(placa).toUpperCase() : '—',
+  }, `📅 *Novo Agendamento via WhatsApp*\n` +
     `Cliente: ${nome} (${phone})\n` +
     `Serviço: ${servico}\n` +
     `Data: ${data} (${cleanHora})` +
-    (placa ? `\nPlaca: ${String(placa).toUpperCase()}` : ''),
-  );
+      (placa ? `\nPlaca: ${String(placa).toUpperCase()}` : ''));
 
   return { ok: true, id: created?.id, data, hora: cleanHora, servico, nome };
 }
@@ -546,12 +578,12 @@ export async function verificarOficinaFechadaAgora() {
       supabase.from('workshop_settings').select('value').eq('key', 'horarios').maybeSingle(),
       supabase
         .from('whatsapp_bot_session')
-        .select('closed_auto_reply_enabled, closed_auto_reply_message')
+        .select('automations_enabled,closed_auto_reply_enabled,closed_auto_reply_message')
         .eq('id', 'default')
         .maybeSingle(),
     ]);
 
-    if (botCfg?.closed_auto_reply_enabled === false) {
+    if (botCfg?.automations_enabled === false || botCfg?.closed_auto_reply_enabled === false) {
       return { fechada: false };
     }
 
@@ -610,13 +642,14 @@ export async function chamarAtendente({ motivo = 'Solicitação do cliente' }, c
     await pausarIaParaContato(phone, 120);
   }
   logWarn('Atendente', `Cliente ${phone || 'desconhecido'} solicitou atendimento humano: ${motivo}`);
-  await notifyOwner(
-    `🙋 *Atendimento Humano Solicitado*\n` +
+  await notifyOwner('human', {
+    nome: context.nome || phone || 'Não identificado',
+    telefone: phone || '—',
+    motivo,
+  }, `🙋 *Atendimento Humano Solicitado*\n` +
     `Cliente: ${context.nome || phone || 'Não identificado'}\n` +
     `Telefone: ${phone || '—'}\n` +
-    `Motivo: ${motivo}`,
-    'notify_on_human_transfer',
-  );
+      `Motivo: ${motivo}`);
   return { ok: true, pausado_minutos: 120 };
 }
 

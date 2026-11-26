@@ -1,5 +1,11 @@
 import { fotos } from "@/config/oficina";
 
+const photoDimensions: Record<string, { width: number; height: number }> = {
+  bloco: { width: 1536, height: 1024 },
+  bancada: { width: 1536, height: 864 },
+  cofre: { width: 1536, height: 726 },
+};
+
 export function Photo({
   id,
   priority = false,
@@ -20,15 +26,15 @@ export function Photo({
   srcWidth?: number;
 }) {
   const alt = altOverride ?? fotos.find((p) => p.id === id)?.alt ?? "";
-  const widths = srcWidths ?? [640, 1120, 1800];
-  const srcSet = widths.map((w) => `/media/${id}-${w}.jpg ${w}w`).join(", ");
-  const intrinsicWidth = width ?? 1120;
-  const intrinsicHeight = height ?? (id === "cofre" ? 630 : 1680);
+  const widths = srcWidths ?? [640, 1120, 1536];
+  const srcSet = widths.map((w) => `/media/${id}-${w}.webp ${w}w`).join(", ");
+  const intrinsicWidth = width ?? photoDimensions[id]?.width ?? 1120;
+  const intrinsicHeight = height ?? photoDimensions[id]?.height ?? 630;
 
   return (
     <picture>
       <img
-        src={`/media/${id}-${srcWidth}.jpg`}
+        src={`/media/${id}-${srcWidth}.webp`}
         srcSet={srcSet}
         sizes={sizes}
         alt={alt}

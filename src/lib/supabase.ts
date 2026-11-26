@@ -1,4 +1,5 @@
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import type { PanelPermissions } from "../admin/permissions";
 
 export type { Session } from "@supabase/supabase-js";
 
@@ -35,6 +36,8 @@ export type PanelMember = {
   email: string;
   full_name: string | null;
   role: "owner" | "manager" | "advisor" | "technician" | "finance" | string;
+  role_name?: string;
+  permissions?: PanelPermissions | null;
   active: boolean;
   created_at: string;
 };

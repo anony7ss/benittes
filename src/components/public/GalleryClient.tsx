@@ -51,7 +51,7 @@ export function GalleryClient({ closeIcon }: { closeIcon: ReactNode }) {
             Fechar {closeIcon}
           </button>
         </form>
-        {selected && <img src={`/media/${selected.id}-1800.jpg`} alt={selected.alt} />}
+        {selected && <img src={`/media/${selected.id}-1536.webp`} alt={selected.alt} />}
         <p>{selected?.caption ?? ""}</p>
       </dialog>
     </>

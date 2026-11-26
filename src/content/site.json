@@ -38,9 +38,9 @@
     }
   ],
   "fotos": [
-    { "id": "bloco", "nome": "Bloco do motor", "detalhe": "O conjunto mecânico visto de perto.", "alt": "Detalhe lateral de um motor desmontado na bancada" },
-    { "id": "bancada", "nome": "Trabalho de bancada", "detalhe": "A escala do trabalho manual.", "alt": "Mãos com luvas trabalhando no cabeçote de um motor" },
-    { "id": "cofre", "nome": "Sob o capô", "detalhe": "Uma vista do compartimento do motor.", "alt": "Capô aberto sobre o compartimento do motor na oficina" }
+    { "id": "bloco", "nome": "Correia dentada", "detalhe": "Inspeção de componentes do sistema de distribuição.", "alt": "Correia dentada e componentes do sistema de distribuição expostos durante inspeção" },
+    { "id": "bancada", "nome": "Cabeçote em inspeção", "detalhe": "Uma visão próxima dos componentes internos do motor.", "alt": "Cabeçote aberto no cofre do motor, com o eixo de comando exposto para inspeção" },
+    { "id": "cofre", "nome": "Diagnóstico no cofre", "detalhe": "Avaliação do conjunto mecânico com o veículo na oficina.", "alt": "Automóvel clássico em uma oficina com o capô aberto para avaliação mecânica" }
   ],
   "perguntas": [
     ["Quais dados do veículo devo separar?", "Placa, modelo, ano, quilometragem e histórico recente de manutenção. Se houver algum sintoma, anote quando ele começou e em quais condições aparece (frio, quente, em movimento ou parado)."],

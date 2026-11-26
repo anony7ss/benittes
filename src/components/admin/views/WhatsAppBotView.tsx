@@ -32,9 +32,24 @@ type BotSession = {
   ai_model?: string | null;
   ai_enabled?: boolean;
   auto_send_quotes?: boolean;
+  automations_enabled?: boolean;
   owner_phone?: string | null;
   notify_on_human_transfer?: boolean;
   notify_on_quote_response?: boolean;
+  notify_on_appointment?: boolean;
+  appointment_reminders_enabled?: boolean;
+  appointment_reminder_minutes?: number;
+  appointment_reminder_message?: string | null;
+  quote_followups_enabled?: boolean;
+  quote_followup_hours?: number;
+  quote_followup_message?: string | null;
+  service_followups_enabled?: boolean;
+  service_followup_days?: number;
+  service_followup_message?: string | null;
+  auto_quote_message_template?: string | null;
+  owner_human_alert_message?: string | null;
+  owner_quote_alert_message?: string | null;
+  owner_appointment_alert_message?: string | null;
   audio_mode?: "direct_request" | "mirror" | "always" | "disabled";
   audio_voice?: string | null;
   ai_paused_phones?: string[] | null;
@@ -90,9 +105,24 @@ export function WhatsAppBotView({ session }: { session: Session }) {
 
   // Settings form
   const [autoSendQuotes, setAutoSendQuotes] = useState(true);
+  const [automationsEnabled, setAutomationsEnabled] = useState(false);
   const [ownerPhone, setOwnerPhone] = useState("");
   const [notifyQuote, setNotifyQuote] = useState(true);
   const [notifyHuman, setNotifyHuman] = useState(true);
+  const [notifyAppointment, setNotifyAppointment] = useState(false);
+  const [appointmentRemindersEnabled, setAppointmentRemindersEnabled] = useState(false);
+  const [appointmentReminderMinutes, setAppointmentReminderMinutes] = useState(1440);
+  const [appointmentReminderMessage, setAppointmentReminderMessage] = useState("Olá, {{nome}}! Passando para lembrar do seu horário na {{oficina}} em {{data}} às {{hora}}. Serviço: {{servico}}. Se precisar alterar, fale com a equipe.");
+  const [quoteFollowupsEnabled, setQuoteFollowupsEnabled] = useState(false);
+  const [quoteFollowupHours, setQuoteFollowupHours] = useState(24);
+  const [quoteFollowupMessage, setQuoteFollowupMessage] = useState("Olá, {{nome}}! O orçamento {{servico}} da {{oficina}} ainda está aguardando sua resposta. Você pode consultar os detalhes por aqui: {{link}}");
+  const [serviceFollowupsEnabled, setServiceFollowupsEnabled] = useState(false);
+  const [serviceFollowupDays, setServiceFollowupDays] = useState(90);
+  const [serviceFollowupMessage, setServiceFollowupMessage] = useState("Olá, {{nome}}! Já faz um tempo desde o serviço {{servico}} do veículo {{placa}}. Se estiver na hora da próxima revisão, a equipe da {{oficina}} pode ajudar.");
+  const [autoQuoteMessageTemplate, setAutoQuoteMessageTemplate] = useState("Olá, {{nome}}! Aqui é da {{oficina}}. Preparamos o orçamento {{servico}} para {{veiculo}} no valor de {{valor}}. Você aprova a execução? Responda Aprovar ou Recusar.");
+  const [ownerHumanAlertMessage, setOwnerHumanAlertMessage] = useState("🙋 *Atendimento humano solicitado*\nCliente: {{nome}}\nTelefone: {{telefone}}\nMotivo: {{motivo}}");
+  const [ownerQuoteAlertMessage, setOwnerQuoteAlertMessage] = useState("🔔 *Resposta de orçamento*\nCliente: {{nome}}\nVeículo: {{placa}}\nServiço: {{servico}}\nValor: {{valor}}\nDecisão: {{decisao}}");
+  const [ownerAppointmentAlertMessage, setOwnerAppointmentAlertMessage] = useState("📅 *Novo agendamento via WhatsApp*\nCliente: {{nome}} ({{telefone}})\nServiço: {{servico}}\nData: {{data}} às {{hora}}\nPlaca: {{placa}}");
   const [aiModel, setAiModel] = useState("qwen3.8-flash");
   const [audioMode, setAudioMode] = useState<"direct_request" | "mirror" | "always" | "disabled">("direct_request");
   const [audioVoice, setAudioVoice] = useState("pt-BR-FranciscaNeural");
@@ -126,9 +156,24 @@ export function WhatsAppBotView({ session }: { session: Session }) {
         setBot(json.session);
         if (!settingsHydrated) {
           setAutoSendQuotes(json.session.auto_send_quotes !== false);
+          setAutomationsEnabled(json.session.automations_enabled === true);
           setOwnerPhone(json.session.owner_phone ?? "");
           setNotifyQuote(json.session.notify_on_quote_response !== false);
           setNotifyHuman(json.session.notify_on_human_transfer !== false);
+          setNotifyAppointment(json.session.notify_on_appointment === true);
+          setAppointmentRemindersEnabled(json.session.appointment_reminders_enabled === true);
+          setAppointmentReminderMinutes(json.session.appointment_reminder_minutes ?? 1440);
+          setAppointmentReminderMessage(json.session.appointment_reminder_message || "Olá, {{nome}}! Passando para lembrar do seu horário na {{oficina}} em {{data}} às {{hora}}. Serviço: {{servico}}. Se precisar alterar, fale com a equipe.");
+          setQuoteFollowupsEnabled(json.session.quote_followups_enabled === true);
+          setQuoteFollowupHours(json.session.quote_followup_hours ?? 24);
+          setQuoteFollowupMessage(json.session.quote_followup_message || "Olá, {{nome}}! O orçamento {{servico}} da {{oficina}} ainda está aguardando sua resposta. Você pode consultar os detalhes por aqui: {{link}}");
+          setServiceFollowupsEnabled(json.session.service_followups_enabled === true);
+          setServiceFollowupDays(json.session.service_followup_days ?? 90);
+          setServiceFollowupMessage(json.session.service_followup_message || "Olá, {{nome}}! Já faz um tempo desde o serviço {{servico}} do veículo {{placa}}. Se estiver na hora da próxima revisão, a equipe da {{oficina}} pode ajudar.");
+          setAutoQuoteMessageTemplate(json.session.auto_quote_message_template || "Olá, {{nome}}! Aqui é da {{oficina}}. Preparamos o orçamento {{servico}} para {{veiculo}} no valor de {{valor}}. Você aprova a execução? Responda Aprovar ou Recusar.");
+          setOwnerHumanAlertMessage(json.session.owner_human_alert_message || "🙋 *Atendimento humano solicitado*\nCliente: {{nome}}\nTelefone: {{telefone}}\nMotivo: {{motivo}}");
+          setOwnerQuoteAlertMessage(json.session.owner_quote_alert_message || "🔔 *Resposta de orçamento*\nCliente: {{nome}}\nVeículo: {{placa}}\nServiço: {{servico}}\nValor: {{valor}}\nDecisão: {{decisao}}");
+          setOwnerAppointmentAlertMessage(json.session.owner_appointment_alert_message || "📅 *Novo agendamento via WhatsApp*\nCliente: {{nome}} ({{telefone}})\nServiço: {{servico}}\nData: {{data}} às {{hora}}\nPlaca: {{placa}}");
           setAiModel(json.session.ai_model || "qwen3.8-flash");
           setAudioMode(json.session.audio_mode || "direct_request");
           setAudioVoice(json.session.audio_voice || "pt-BR-FranciscaNeural");
@@ -192,7 +237,7 @@ export function WhatsAppBotView({ session }: { session: Session }) {
     }
   }, [bot?.status, bot?.qr_code]);
 
-  async function sendAction(action: string, extra: Record<string, unknown> = {}) {
+  async function sendAction(action: string, extra: Record<string, unknown> = {}): Promise<boolean> {
     setBusyAction(true);
     setError("");
     setFeedback("");
@@ -207,8 +252,10 @@ export function WhatsAppBotView({ session }: { session: Session }) {
       if (json.session) setBot(json.session);
       setFeedback("Comando enviado para o bot.");
       void loadStatus();
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Falha na operação.");
+      return false;
     } finally {
       setBusyAction(false);
     }
@@ -216,11 +263,26 @@ export function WhatsAppBotView({ session }: { session: Session }) {
 
   async function handleSaveSettings(e: FormEvent) {
     e.preventDefault();
-    await sendAction("update_settings", {
+    const saved = await sendAction("update_settings", {
       auto_send_quotes: autoSendQuotes,
+      automations_enabled: automationsEnabled,
       owner_phone: ownerPhone,
       notify_on_quote_response: notifyQuote,
       notify_on_human_transfer: notifyHuman,
+      notify_on_appointment: notifyAppointment,
+      appointment_reminders_enabled: appointmentRemindersEnabled,
+      appointment_reminder_minutes: appointmentReminderMinutes,
+      appointment_reminder_message: appointmentReminderMessage,
+      quote_followups_enabled: quoteFollowupsEnabled,
+      quote_followup_hours: quoteFollowupHours,
+      quote_followup_message: quoteFollowupMessage,
+      service_followups_enabled: serviceFollowupsEnabled,
+      service_followup_days: serviceFollowupDays,
+      service_followup_message: serviceFollowupMessage,
+      auto_quote_message_template: autoQuoteMessageTemplate,
+      owner_human_alert_message: ownerHumanAlertMessage,
+      owner_quote_alert_message: ownerQuoteAlertMessage,
+      owner_appointment_alert_message: ownerAppointmentAlertMessage,
       ai_model: aiModel,
       audio_mode: audioMode,
       audio_voice: audioVoice,
@@ -229,7 +291,7 @@ export function WhatsAppBotView({ session }: { session: Session }) {
       closed_auto_reply_enabled: closedAutoReplyEnabled,
       closed_auto_reply_message: closedAutoReplyMessage,
     });
-    setFeedback("Configurações do bot salvas.");
+    if (saved) setFeedback("Configurações do bot salvas.");
   }
 
   async function handleClearLogs() {
@@ -519,6 +581,14 @@ export function WhatsAppBotView({ session }: { session: Session }) {
           <div className="admin-form-grid">
             <div className="admin-field wide">
               <label className="admin-check">
+                <Checkbox checked={automationsEnabled} onCheckedChange={(checked) => setAutomationsEnabled(checked === true)} />
+                <span>Automatizações de mensagens ativas</span>
+              </label>
+              <small style={{ color: "var(--admin-muted)" }}>Desative para pausar lembretes, avisos e mensagens automáticas. A IA e as mensagens enviadas manualmente continuam funcionando.</small>
+            </div>
+
+            <div className="admin-field wide">
+              <label className="admin-check">
                 <Checkbox
                   checked={autoSendQuotes}
                   onCheckedChange={(checked) => setAutoSendQuotes(checked === true)}
@@ -528,6 +598,14 @@ export function WhatsAppBotView({ session }: { session: Session }) {
                 </span>
               </label>
             </div>
+
+            {autoSendQuotes && (
+              <div className="admin-field wide">
+                <label>Mensagem ao enviar orçamento ou OS</label>
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={autoQuoteMessageTemplate} onChange={(event) => setAutoQuoteMessageTemplate(event.target.value)} />
+                <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{veiculo}}"} e {"{{valor}}"}.</small>
+              </div>
+            )}
 
             <div className="admin-field">
               <label>WhatsApp do responsável (alertas)</label>
@@ -613,6 +691,13 @@ export function WhatsAppBotView({ session }: { session: Session }) {
                 <span>Avisar responsável quando cliente aprovar/recusar</span>
               </label>
             </div>
+            {notifyQuote && (
+              <div className="admin-field wide">
+                <label>Modelo do aviso de orçamento</label>
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerQuoteAlertMessage} onChange={(event) => setOwnerQuoteAlertMessage(event.target.value)} />
+                <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{placa}}"}, {"{{servico}}"}, {"{{valor}}"} e {"{{decisao}}"}.</small>
+              </div>
+            )}
 
             <div className="admin-field">
               <label className="admin-check">
@@ -623,6 +708,90 @@ export function WhatsAppBotView({ session }: { session: Session }) {
                 <span>Avisar responsável quando cliente pedir atendente</span>
               </label>
             </div>
+            {notifyHuman && (
+              <div className="admin-field wide">
+                <label>Modelo do aviso de atendimento humano</label>
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerHumanAlertMessage} onChange={(event) => setOwnerHumanAlertMessage(event.target.value)} />
+                <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{telefone}}"} e {"{{motivo}}"}.</small>
+              </div>
+            )}
+
+            <div className="admin-field">
+              <label className="admin-check">
+                <Checkbox checked={notifyAppointment} onCheckedChange={(checked) => setNotifyAppointment(checked === true)} />
+                <span>Avisar responsável quando houver novo agendamento pelo WhatsApp</span>
+              </label>
+            </div>
+            {notifyAppointment && (
+              <div className="admin-field wide">
+                <label>Modelo do aviso de agendamento</label>
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerAppointmentAlertMessage} onChange={(event) => setOwnerAppointmentAlertMessage(event.target.value)} />
+                <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{telefone}}"}, {"{{servico}}"}, {"{{data}}"}, {"{{hora}}"} e {"{{placa}}"}.</small>
+              </div>
+            )}
+
+            <div className="admin-field wide" style={{ paddingTop: 14, borderTop: "1px solid var(--admin-line)" }}>
+              <label className="admin-check">
+                <Checkbox checked={appointmentRemindersEnabled} onCheckedChange={(checked) => setAppointmentRemindersEnabled(checked === true)} />
+                <span>Lembrete automático de agendamento</span>
+              </label>
+            </div>
+            {appointmentRemindersEnabled && (
+              <>
+                <div className="admin-field">
+                  <label>Enviar com quantos minutos de antecedência</label>
+                  <input className="admin-input" type="number" min={15} max={10080} step={15} required value={appointmentReminderMinutes} onChange={(event) => setAppointmentReminderMinutes(Number(event.target.value))} />
+                  <small style={{ color: "var(--admin-muted)" }}>De 15 minutos a 7 dias.</small>
+                </div>
+                <div className="admin-field wide">
+                  <label>Mensagem do lembrete</label>
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={appointmentReminderMessage} onChange={(event) => setAppointmentReminderMessage(event.target.value)} />
+                  <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{data}}"}, {"{{hora}}"}, {"{{servico}}"} e {"{{placa}}"}.</small>
+                </div>
+              </>
+            )}
+
+            <div className="admin-field wide" style={{ paddingTop: 14, borderTop: "1px solid var(--admin-line)" }}>
+              <label className="admin-check">
+                <Checkbox checked={quoteFollowupsEnabled} onCheckedChange={(checked) => setQuoteFollowupsEnabled(checked === true)} />
+                <span>Lembrete de orçamento que ainda aguarda resposta</span>
+              </label>
+            </div>
+            {quoteFollowupsEnabled && (
+              <>
+                <div className="admin-field">
+                  <label>Enviar após quantas horas</label>
+                  <input className="admin-input" type="number" min={1} max={720} step={1} required value={quoteFollowupHours} onChange={(event) => setQuoteFollowupHours(Number(event.target.value))} />
+                  <small style={{ color: "var(--admin-muted)" }}>De 1 hora a 30 dias.</small>
+                </div>
+                <div className="admin-field wide">
+                  <label>Mensagem de acompanhamento</label>
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={quoteFollowupMessage} onChange={(event) => setQuoteFollowupMessage(event.target.value)} />
+                  <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{placa}}"}, {"{{valor}}"} e {"{{link}}"}.</small>
+                </div>
+              </>
+            )}
+
+            <div className="admin-field wide" style={{ paddingTop: 14, borderTop: "1px solid var(--admin-line)" }}>
+              <label className="admin-check">
+                <Checkbox checked={serviceFollowupsEnabled} onCheckedChange={(checked) => setServiceFollowupsEnabled(checked === true)} />
+                <span>Lembrete de revisão após um serviço concluído</span>
+              </label>
+            </div>
+            {serviceFollowupsEnabled && (
+              <>
+                <div className="admin-field">
+                  <label>Enviar após quantos dias</label>
+                  <input className="admin-input" type="number" min={1} max={3650} step={1} required value={serviceFollowupDays} onChange={(event) => setServiceFollowupDays(Number(event.target.value))} />
+                  <small style={{ color: "var(--admin-muted)" }}>De 1 dia a 10 anos.</small>
+                </div>
+                <div className="admin-field wide">
+                  <label>Mensagem do lembrete de revisão</label>
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={serviceFollowupMessage} onChange={(event) => setServiceFollowupMessage(event.target.value)} />
+                  <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{placa}}"} e {"{{data}}"}.</small>
+                </div>
+              </>
+            )}
 
             <div className="admin-field wide" style={{ paddingTop: 10, borderTop: "1px solid var(--admin-line)" }}>
               <label className="admin-check">

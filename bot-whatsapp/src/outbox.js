@@ -11,6 +11,20 @@ let currentSocket = null;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function automaticMessageEnabled(item, settings) {
+  const kind = String(item.kind || "");
+  if (kind.startsWith("2fa_") || kind === "direct") return true;
+  if (settings?.automations_enabled === false) return false;
+  if (kind === "quote" || kind === "os_quote") return settings?.auto_send_quotes !== false;
+  if (kind === "reminder_appointment") return settings?.appointment_reminders_enabled === true;
+  if (kind === "reminder_quote") return settings?.quote_followups_enabled === true;
+  if (kind === "reminder_service") return settings?.service_followups_enabled === true;
+  if (kind === "owner_human") return settings?.notify_on_human_transfer !== false;
+  if (kind === "owner_quote") return settings?.notify_on_quote_response !== false;
+  if (kind === "owner_appointment") return settings?.notify_on_appointment !== false;
+  return true;
+}
+
 export async function processarOutboxPendente() {
   if (isProcessing || !currentSocket) return;
   isProcessing = true;
@@ -25,8 +39,29 @@ export async function processarOutboxPendente() {
 
     if (error || !pending?.length) return;
 
+    const { data: settings, error: settingsError } = await supabase
+      .from('whatsapp_bot_session')
+      .select('automations_enabled,auto_send_quotes,appointment_reminders_enabled,quote_followups_enabled,service_followups_enabled,notify_on_human_transfer,notify_on_quote_response,notify_on_appointment')
+      .eq('id', 'default')
+      .maybeSingle();
+    if (settingsError) {
+      logError('Outbox', 'Não foi possível validar os controles de automação: ' + settingsError.message);
+    }
+
     for (const item of pending) {
       if (!currentSocket) break;
+      const canSendWithoutAutomationConfig = String(item.kind || '').startsWith('2fa_') || item.kind === 'direct';
+      if (settingsError && !canSendWithoutAutomationConfig) continue;
+
+      if (!automaticMessageEnabled(item, settings)) {
+        await supabase
+          .from('whatsapp_outbox')
+          .update({ status: 'cancelled', error: 'Automação desativada nas configurações.' })
+          .eq('id', item.id)
+          .eq('status', 'pending');
+        logInfo('Outbox', 'Envio automático ' + item.kind + ' cancelado porque foi desativado nas configurações.');
+        continue;
+      }
 
       const { data: claimed, error: claimErr } = await supabase
         .from('whatsapp_outbox')

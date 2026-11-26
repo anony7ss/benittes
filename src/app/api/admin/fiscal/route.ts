@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../lib/security/http";
-import { getServiceSupabase, requirePanelStaff } from "../../../../lib/supabaseAdmin";
+import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 
 export async function POST(request: NextRequest) {
   if (!isSameOriginRequest(request)) return invalidOriginResponse();
@@ -23,11 +23,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Registro de origem inválido." }, { status: 400 });
   }
 
-  const role = staff.member.role;
-  if (sourceModule === "sales" && !["owner", "manager", "finance"].includes(role)) {
-    return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-  }
-  if (sourceModule === "work_orders" && !["owner", "manager"].includes(role)) {
+  const permissionModule = sourceModule === "sales" ? "sales" : "work-orders";
+  if (!hasPanelPermission(staff.member, permissionModule, "write")) {
     return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
   }
 

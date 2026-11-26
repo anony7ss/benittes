@@ -1,3 +1,5 @@
+import { hasModulePermission, type PanelPermissions } from "./permissions";
+
 export type AdminPage = {
   path: string;
   label: string;
@@ -40,12 +42,16 @@ export const findAdminPage = (path: string) =>
 
 export const routeFor = (path: string) => (path ? `/painel/${path}/` : "/painel/");
 
-export function canSeePage(role: string, page: AdminPage): boolean {
+export function canSeePage(role: string, page: AdminPage, permissions?: PanelPermissions | null): boolean {
   if (role === "owner") return true;
+  if (permissions) {
+    const module = page.module ?? (page.special === "dashboard" || page.special === "account" || page.special === "ponto" || page.special === "contacts" || page.special === "settings" || page.special === "bot" ? page.special : null);
+    return Boolean(module && hasModulePermission(permissions, module));
+  }
   if (role === "manager") return true;
   if (page.special === "dashboard" || page.special === "account" || page.special === "ponto") return true;
   if (page.special === "contacts") return role === "advisor";
-  if (page.special === "settings") return false;
+  if (page.special === "settings" || page.special === "bot") return false;
   const roleModules: Record<string, string[]> = {
     advisor: ["appointments", "work-orders", "quotes", "inspections", "clients", "vehicles", "services", "prices", "reports"],
     technician: ["appointments", "work-orders", "inspections", "vehicles", "inventory"],
