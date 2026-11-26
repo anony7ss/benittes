@@ -432,14 +432,27 @@ export async function fetchDashboard() {
   }>("/api/admin/dashboard", { headers });
 }
 
-export async function fetchAlerts() {
-  const headers = await authHeaders();
-  return apiRequest<{
+type AlertsResponse = {
     messages: ContactMessage[];
     appointments: PanelRecord[];
     inventory: PanelRecord[];
     finance: PanelRecord[];
-  }>("/api/admin/alerts", { headers });
+};
+
+let alertsRequest: Promise<AlertsResponse> | null = null;
+
+export function fetchAlerts() {
+  if (!alertsRequest) {
+    alertsRequest = (async () => {
+      const headers = await authHeaders();
+      return apiRequest<AlertsResponse>("/api/admin/alerts", { headers });
+    })();
+  }
+
+  const request = alertsRequest;
+  return request.finally(() => {
+    if (alertsRequest === request) alertsRequest = null;
+  });
 }
 
 export async function selectRows<T>(table: string, params: Record<string, string> = {}) {

@@ -24,6 +24,8 @@ export const PANEL_PERMISSION_MODULES = [
   { key: "warranties", label: "Garantias" },
   { key: "fleets", label: "Frotas" },
   { key: "settings", label: "Configurações do site" },
+  { key: "gallery", label: "Galeria do site" },
+  { key: "agents", label: "Assistentes de IA" },
   { key: "bot", label: "Bot WhatsApp" },
   { key: "ponto", label: "Ponto eletrônico" },
   { key: "account", label: "Conta" },

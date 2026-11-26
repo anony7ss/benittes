@@ -506,9 +506,14 @@ export function AccountView({
     setEditingRole(role ?? null);
     setRoleName(role?.name ?? "");
     const next: PanelPermissions = {};
+    const wildcard = role?.permissions?.["*"];
     for (const { key } of PANEL_PERMISSION_MODULES) {
       const existing = role?.permissions?.[key];
-      next[key] = { read: existing?.read === true || existing?.write === true, write: existing?.write === true };
+      const write = existing?.write === true || wildcard?.write === true;
+      next[key] = {
+        read: existing?.read === true || existing?.write === true || wildcard?.read === true || wildcard?.write === true,
+        write,
+      };
     }
     setRolePermissions(next);
     setRoleEditorOpen(true);
@@ -521,6 +526,40 @@ export function AccountView({
       return { ...current, [module]: { read: enabled, write: enabled && existing.write } };
     });
   }
+
+  function setAllRolePermissions(preset: "all" | "read-only" | "none") {
+    const next: PanelPermissions = {};
+    for (const { key } of PANEL_PERMISSION_MODULES) {
+      next[key] = preset === "all"
+        ? { read: true, write: true }
+        : preset === "read-only"
+          ? { read: true, write: false }
+          : { read: false, write: false };
+    }
+    setRolePermissions(next);
+  }
+
+  function setRolePermissionColumn(access: "read" | "write", enabled: boolean) {
+    setRolePermissions((current) => {
+      const next: PanelPermissions = {};
+      for (const { key } of PANEL_PERMISSION_MODULES) {
+        const existing = current[key] ?? { read: false, write: false };
+        next[key] = access === "read"
+          ? { read: enabled, write: enabled && existing.write }
+          : { read: enabled || existing.read, write: enabled };
+      }
+      return next;
+    });
+  }
+
+  const readPermissionCount = PANEL_PERMISSION_MODULES.filter(({ key }) => rolePermissions[key]?.read || rolePermissions[key]?.write).length;
+  const writePermissionCount = PANEL_PERMISSION_MODULES.filter(({ key }) => rolePermissions[key]?.write).length;
+  const readColumnChecked: boolean | "indeterminate" = readPermissionCount === 0
+    ? false
+    : readPermissionCount === PANEL_PERMISSION_MODULES.length ? true : "indeterminate";
+  const writeColumnChecked: boolean | "indeterminate" = writePermissionCount === 0
+    ? false
+    : writePermissionCount === PANEL_PERMISSION_MODULES.length ? true : "indeterminate";
 
   async function handleSaveRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1151,8 +1190,8 @@ export function AccountView({
       )}
 
       {roleEditorOpen && isOwner && (
-        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setRoleEditorOpen(false))}>
-          <div className="admin-modal" style={{ maxHeight: "88vh", overflow: "auto" }} onClick={(event) => event.stopPropagation()}>
+        <div className="admin-modal-backdrop role-editor-backdrop" {...modalBackdropProps(() => setRoleEditorOpen(false))}>
+          <div className="admin-modal role-editor-modal" onClick={(event) => event.stopPropagation()}>
             <div className="admin-modal-head">
               <div>
                 <h2>{editingRole ? "Editar cargo" : "Criar cargo"}</h2>
@@ -1165,19 +1204,63 @@ export function AccountView({
                 <label>Nome do cargo</label>
                 <input className="admin-input" required minLength={2} maxLength={60} value={roleName} onChange={(event) => setRoleName(event.target.value)} id="admin-views-accountview-1164" />
               </div>
-              <div className="admin-table-wrap">
-                <table className="admin-table">
-                  <thead><tr><th>Área</th><th>Consultar</th><th>Alterar</th></tr></thead>
+              <div className="role-permissions-toolbar">
+                <div>
+                  <strong>Permissões por área</strong>
+                  <small>Selecione tudo de uma vez ou ajuste cada coluna.</small>
+                </div>
+                <div className="role-permissions-bulk-actions">
+                  <button type="button" className="admin-secondary" onClick={() => setAllRolePermissions("all")}>Selecionar tudo</button>
+                  <button type="button" className="admin-secondary" onClick={() => setAllRolePermissions("read-only")}>Somente leitura</button>
+                  <button type="button" className="admin-secondary" onClick={() => setAllRolePermissions("none")}>Limpar todas</button>
+                </div>
+              </div>
+              <div className="admin-table-wrap role-permissions-desktop">
+                <table className="admin-table role-permissions-table">
+                  <thead>
+                    <tr>
+                      <th>Área</th>
+                      <th>
+                        <label className="role-permission-head">
+                          <span>Consultar</span>
+                          <Checkbox aria-label="Selecionar consulta em todas as áreas" checked={readColumnChecked} onCheckedChange={(checked) => setRolePermissionColumn("read", checked === true)} />
+                        </label>
+                      </th>
+                      <th>
+                        <label className="role-permission-head">
+                          <span>Alterar</span>
+                          <Checkbox aria-label="Selecionar alteração em todas as áreas" checked={writeColumnChecked} onCheckedChange={(checked) => setRolePermissionColumn("write", checked === true)} />
+                        </label>
+                      </th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {PANEL_PERMISSION_MODULES.map(({ key, label }) => (
                       <tr key={key}>
                         <td>{label}</td>
-                        <td><Checkbox checked={rolePermissions[key]?.read === true} onCheckedChange={(checked) => setRolePermission(key, "read", checked === true)} /></td>
-                        <td><Checkbox checked={rolePermissions[key]?.write === true} onCheckedChange={(checked) => setRolePermission(key, "write", checked === true)} /></td>
+                        <td><Checkbox aria-label={`Consultar: ${label}`} checked={rolePermissions[key]?.read === true} onCheckedChange={(checked) => setRolePermission(key, "read", checked === true)} /></td>
+                        <td><Checkbox aria-label={`Alterar: ${label}`} checked={rolePermissions[key]?.write === true} onCheckedChange={(checked) => setRolePermission(key, "write", checked === true)} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="role-permissions-mobile" aria-label="Permissões por área">
+                {PANEL_PERMISSION_MODULES.map(({ key, label }) => (
+                  <article className="role-permission-card" key={key}>
+                    <strong>{label}</strong>
+                    <div className="role-permission-card-options">
+                      <label className="role-permission-toggle">
+                        <span>Consultar</span>
+                        <Checkbox aria-label={`Consultar: ${label}`} checked={rolePermissions[key]?.read === true} onCheckedChange={(checked) => setRolePermission(key, "read", checked === true)} />
+                      </label>
+                      <label className="role-permission-toggle">
+                        <span>Alterar</span>
+                        <Checkbox aria-label={`Alterar: ${label}`} checked={rolePermissions[key]?.write === true} onCheckedChange={(checked) => setRolePermission(key, "write", checked === true)} />
+                      </label>
+                    </div>
+                  </article>
+                ))}
               </div>
               {teamError && <p className="admin-form-error">{teamError}</p>}
               <div className="admin-modal-actions">

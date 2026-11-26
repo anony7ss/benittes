@@ -30,6 +30,7 @@ type BotSession = {
   ai_mode?: string | null;
   ai_model?: string | null;
   ai_enabled?: boolean;
+  response_mode?: "conversational" | "quote_only";
   auto_send_quotes?: boolean;
   automations_enabled?: boolean;
   owner_phone?: string | null;
@@ -104,6 +105,7 @@ export function WhatsAppBotView() {
 
   // Settings form
   const [autoSendQuotes, setAutoSendQuotes] = useState(true);
+  const [responseMode, setResponseMode] = useState<"conversational" | "quote_only">("conversational");
   const [automationsEnabled, setAutomationsEnabled] = useState(false);
   const [ownerPhone, setOwnerPhone] = useState("");
   const [notifyQuote, setNotifyQuote] = useState(true);
@@ -150,6 +152,7 @@ export function WhatsAppBotView() {
         setBot(json.session);
         if (!settingsHydrated) {
           setAutoSendQuotes(json.session.auto_send_quotes !== false);
+          setResponseMode(json.session.response_mode === "quote_only" ? "quote_only" : "conversational");
           setAutomationsEnabled(json.session.automations_enabled === true);
           setOwnerPhone(json.session.owner_phone ?? "");
           setNotifyQuote(json.session.notify_on_quote_response !== false);
@@ -260,6 +263,7 @@ export function WhatsAppBotView() {
     e.preventDefault();
     const saved = await sendAction("update_settings", {
       auto_send_quotes: autoSendQuotes,
+      response_mode: responseMode,
       automations_enabled: automationsEnabled,
       owner_phone: ownerPhone,
       notify_on_quote_response: notifyQuote,
@@ -581,6 +585,23 @@ export function WhatsAppBotView() {
                 <span>Automatizações de mensagens ativas</span>
               </label>
               <small style={{ color: "var(--admin-muted)" }}>Desative para pausar lembretes, avisos e mensagens automáticas. A IA e as mensagens enviadas manualmente continuam funcionando.</small>
+            </div>
+
+            <div className="admin-field wide">
+              <label htmlFor="whatsapp-response-mode">Modo de resposta às mensagens</label>
+              <select
+                className="admin-select"
+                id="whatsapp-response-mode"
+                name="response_mode"
+                value={responseMode}
+                onChange={(event) => setResponseMode(event.target.value as typeof responseMode)}
+              >
+                <option value="conversational">Atendimento conversacional</option>
+                <option value="quote_only">Somente registrar resposta de orçamento</option>
+              </select>
+              <small style={{ color: "var(--admin-muted)" }}>
+                Nesse modo, o bot não conversa nem envia respostas da IA. Ele só registra uma aprovação ou recusa clara de um orçamento pendente. As automatizações configuradas continuam seguindo suas próprias regras.
+              </small>
             </div>
 
             <div className="admin-field wide">

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import config from './config.js';
-import { ferramentasSchema, executarFerramenta } from './tools.js';
+import { ferramentasSchema, executarFerramenta, responderOrcamento } from './tools.js';
 import { getHistory, addMessage } from './memory.js';
 import { sendHumanizedMessage, sendHumanizedVoice, reactToMessage } from './queue.js';
 import { verificarSegurancaEntrada, verificarSegurancaSaida } from './guardrails.js';
@@ -317,6 +317,68 @@ async function extrairConteudoMensagem(message, socket) {
   return { text: text.trim(), isAudio: false, imageDataUrl: null, mediaError: null };
 }
 
+async function extrairTextoParaDecisaoDeOrcamento(message, socket) {
+  const msg = normalizeMessageContent(message?.message) || message?.message || {};
+  const text =
+    msg.conversation ||
+    msg.extendedTextMessage?.text ||
+    msg.imageMessage?.caption ||
+    msg.documentMessage?.caption ||
+    msg.videoMessage?.caption ||
+    msg.buttonsResponseMessage?.selectedDisplayText ||
+    msg.listResponseMessage?.title ||
+    msg.templateButtonReplyMessage?.selectedDisplayText ||
+    msg.interactiveResponseMessage?.body?.text ||
+    '';
+
+  if (!msg.audioMessage && !msg.pttMessage) {
+    return { text: String(text || '').trim(), isAudio: false };
+  }
+
+  try {
+    const transcription = await transcreverAudio(message, socket);
+    if (transcription?.sucesso && transcription.texto) {
+      return { text: transcription.texto, isAudio: true };
+    }
+  } catch (error) {
+    logWarn('Áudio', `Falha ao transcrever para identificar resposta de orçamento: ${error?.message || error}`);
+  }
+  return { text: '[Áudio recebido sem transcrição]', isAudio: true };
+}
+
+function detectarDecisaoDeOrcamento(text) {
+  const normalized = String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return null;
+
+  // Hesitation and clarification requests are never converted into an approval or refusal.
+  if (/\b(talvez|duvida|nao sei|vou pensar|vou verificar|vou consultar|depois|mais tarde|ainda nao|posso confirmar)\b/.test(normalized)) {
+    return null;
+  }
+
+  const explicitRefusal =
+    /^(nao|negativo|recuso|recusado|nao quero|nao obrigado|nao obrigada)$/.test(normalized) ||
+    /\bnao (?:aprovo|aceito|autorizo|confirmo|concordo|quero (?:fazer|executar|seguir|esse servico|esse orcamento)|pode (?:fazer|executar|seguir|iniciar)|vou (?:aceitar|aprovar|autorizar|fazer|executar|seguir))\b/.test(normalized) ||
+    /\b(?:recuso|recusado|recusar|cancelo|cancele|cancela|desisto|pode cancelar|vamos cancelar|melhor nao)\b/.test(normalized) ||
+    /\b(?:deixa pra la|deixe pra la|nao precisa)\b/.test(normalized);
+  const explicitApproval =
+    /\b(?:aprovo|aprovado|aprovada|aceito|aceita|autorizo|confirmo|concordo|fechado|combinado|de acordo|pode fazer|pode executar|pode seguir|pode prosseguir|pode tocar|pode iniciar|pode comecar|manda ver)\b/.test(normalized);
+
+  if (explicitApproval && explicitRefusal) return null;
+  if (explicitRefusal) return 'recusado';
+  if (explicitApproval) return 'aprovado';
+
+  if (/^(?:sim|s|ok|okay|sim obrigado|sim obrigada|ok obrigado|ok obrigada|aceito|aceita|aprovo|aprovado|aprovada|autorizo|confirmo|fechado|combinado)(?: por favor)?$/.test(normalized)) {
+    return 'aprovado';
+  }
+  return null;
+}
+
 export async function processarMensagemComIA({ socket, message, jid, telefone, nomeCliente }) {
   if (!isSafeWhatsAppJid(jid)) return;
 
@@ -324,7 +386,7 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
     const phoneKeys = new Set(getPhoneMatchKeys(telefone || jid));
     const { data: botCfg, error: configError } = await supabase
       .from('whatsapp_bot_session')
-      .select('ai_enabled, ai_paused_phones')
+      .select('ai_enabled, ai_paused_phones, response_mode')
       .eq('id', 'default')
       .maybeSingle();
     if (configError || !botCfg) {
@@ -340,7 +402,13 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
       return;
     }
 
-    const { text, isAudio, imageDataUrl, mediaError } = await extrairConteudoMensagem(message, socket);
+    const responseMode = botCfg.response_mode === 'quote_only' ? 'quote_only' : 'conversational';
+    const extracted = responseMode === 'quote_only'
+      ? await extrairTextoParaDecisaoDeOrcamento(message, socket)
+      : await extrairConteudoMensagem(message, socket);
+    const { text, isAudio } = extracted;
+    const imageDataUrl = 'imageDataUrl' in extracted ? extracted.imageDataUrl : null;
+    const mediaError = 'mediaError' in extracted ? extracted.mediaError : null;
     if (!text && !imageDataUrl) return;
 
     const cleanText = sanitizeUntrustedText(text, 6000);
@@ -355,6 +423,26 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
 
     if (isRateLimited(telefone || jid)) {
       logWarn('Rate Limit', `Excesso de mensagens de ${telefone || jid}`);
+      return;
+    }
+
+    if (responseMode === 'quote_only') {
+      const decision = detectarDecisaoDeOrcamento(cleanText);
+      if (!decision) {
+        logInfo('IA Silenciosa', `Mensagem sem decisão clara de orçamento ignorada para ${telefone || jid}.`);
+        return;
+      }
+
+      const result = await responderOrcamento({ decisao: decision }, {
+        telefone,
+        nome: nomeCliente,
+        jid,
+      });
+      if (result?.ok) {
+        logAction('Orçamento', `Resposta ${decision} registrada sem mensagem ao cliente (${telefone || jid}).`);
+      } else {
+        logInfo('Orçamento', `Nenhuma resposta ${decision} foi registrada (${telefone || jid}).`);
+      }
       return;
     }
 

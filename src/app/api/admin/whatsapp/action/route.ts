@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
           phone_connected: data.phone_connected,
           profile_name: data.profile_name,
           ai_enabled: data.ai_enabled,
+          response_mode: data.response_mode ?? "conversational",
           auto_send_quotes: data.auto_send_quotes,
           automations_enabled: data.automations_enabled,
           notify_on_human_transfer: data.notify_on_human_transfer,
@@ -167,6 +168,12 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
     if (typeof body.ai_enabled === "boolean") patch.ai_enabled = body.ai_enabled;
+    if (body.response_mode !== undefined) {
+      if (body.response_mode !== "conversational" && body.response_mode !== "quote_only") {
+        return NextResponse.json({ error: "Modo de resposta inválido." }, { status: 400 });
+      }
+      patch.response_mode = body.response_mode;
+    }
     if (typeof body.auto_send_quotes === "boolean") patch.auto_send_quotes = body.auto_send_quotes;
     if (typeof body.automations_enabled === "boolean") patch.automations_enabled = body.automations_enabled;
     if (typeof body.notify_on_human_transfer === "boolean") {

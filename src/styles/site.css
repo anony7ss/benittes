@@ -643,6 +643,16 @@ figcaption {
   color: var(--ink);
   margin-right: 8px;
 }
+.gallery figure > .zoom > video {
+  display: block;
+  width: 100%;
+  height: clamp(145px, 15vw, 180px);
+  object-fit: cover;
+  background: #111;
+}
+.gallery figure:first-child > .zoom > video {
+  height: clamp(300px, 29vw, 390px);
+}
 .zoom {
   width: 100%;
   position: relative;
@@ -703,6 +713,12 @@ dialog form {
 dialog img {
   max-height: 65vh;
   object-fit: contain;
+}
+dialog video {
+  display: block;
+  width: 100%;
+  max-height: 65vh;
+  background: #111;
 }
 dialog p {
   color: var(--muted);
@@ -1485,6 +1501,10 @@ details[open] .expand-symbol {
   }
   .gallery-page .gallery picture,
   .gallery-page .gallery figure:first-child picture {
+    height: clamp(220px, 21vw, 340px);
+  }
+  .gallery-page .gallery figure > .zoom > video,
+  .gallery-page .gallery figure:first-child > .zoom > video {
     height: clamp(220px, 21vw, 340px);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Bell, CalendarDays, MessageSquareText, Package, AlertTriangle, X, ArrowUpRight } from "lucide-react";
 import { fetchAlerts } from "../../lib/supabase";
@@ -26,8 +26,10 @@ export function NotificationCenter({
 }) {
   const [items, setItems] = useState<AlertItem[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
+    if (!open && hasLoadedRef.current) return;
     let active = true;
     async function load() {
       try {
@@ -79,12 +81,15 @@ export function NotificationCenter({
         setItems(next);
         onTotalChange(next.length);
       } catch {
-        if (active && !hasLoaded) {
+        if (active) {
           setItems([]);
           onTotalChange(0);
         }
       } finally {
-        if (active) setHasLoaded(true);
+        if (active) {
+          hasLoadedRef.current = true;
+          setHasLoaded(true);
+        }
       }
     }
 
@@ -92,7 +97,7 @@ export function NotificationCenter({
     return () => {
       active = false;
     };
-  }, [open, onTotalChange, hasLoaded]);
+  }, [open, onTotalChange]);
 
   if (!open) return null;
 
