@@ -150,8 +150,19 @@ export function ContactsView() {
         </p>
       )}
 
-      <div className="admin-toolbar admin-contacts-toolbar">
-        <div className="admin-filter-pills">
+      <div className="admin-toolbar">
+        <div className="admin-search-wrap">
+          <Search size={15} />
+          <input
+            type="search"
+            className="admin-search"
+            placeholder="Buscar por nome, e-mail ou mensagem..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+
+        <div className="admin-filter-pills admin-toolbar-right">
           {FILTERS.map((item) => (
             <button
               key={item.id}
@@ -162,17 +173,6 @@ export function ContactsView() {
               {item.label} ({counts[item.id]})
             </button>
           ))}
-        </div>
-
-        <div className="admin-search-wrap">
-          <Search size={15} />
-          <input
-            type="search"
-            className="admin-search"
-            placeholder="Buscar por nome, e-mail ou mensagem..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
         </div>
       </div>
 

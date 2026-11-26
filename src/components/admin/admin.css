@@ -1508,10 +1508,6 @@ html.dark .admin-stat-card:hover {
   flex-wrap: wrap;
 }
 
-.admin-contacts-toolbar {
-  justify-content: flex-start;
-}
-
 .admin-toolbar-right {
   margin-left: auto;
 }
@@ -2488,6 +2484,10 @@ html.dark .admin-stat-card:hover {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.admin-inbox-actions > .admin-primary {
+  color: #fff;
 }
 
 /* ==========================================================================
