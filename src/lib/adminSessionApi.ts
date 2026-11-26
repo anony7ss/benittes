@@ -29,7 +29,7 @@ function publicSession(user: { id: string; email?: string | null }) {
 export async function getAdminSession(request: NextRequest) {
   try {
     const staff = await requirePanelStaff(request);
-    if (!staff) return privateJson({ session: null }, 401);
+    if (!staff) return privateJson({ session: null, error: "Sem sessão ativa." }, 401);
     return privateJson({ session: publicSession(staff.user) });
   } catch {
     return privateJson({ error: "Autenticação temporariamente indisponível." }, 503);
