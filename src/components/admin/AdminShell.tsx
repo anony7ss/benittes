@@ -258,6 +258,12 @@ export function AdminShell({
       }
     };
 
+    if (mobileOpen && window.matchMedia("(max-width: 768px)").matches) {
+      setDarkMode(next);
+      applyDomTheme();
+      return;
+    }
+
     const rect = event?.currentTarget?.getBoundingClientRect();
     const x = rect ? rect.left + rect.width / 2 : 36;
     const y = rect ? rect.top + rect.height / 2 : window.innerHeight - 40;
