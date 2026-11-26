@@ -158,7 +158,7 @@ export function ContactsView() {
             className="admin-search"
             placeholder="Buscar por nome, e-mail ou mensagem..."
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => setSearch(event.target.value)} id="admin-views-contactsview-156"
           />
         </div>
 

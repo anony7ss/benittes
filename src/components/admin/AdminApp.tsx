@@ -117,6 +117,7 @@ export function AdminApp({ section }: { section?: string }) {
   const [currentSection, setCurrentSection] = useState<string>(() =>
     (section ?? "").replace(/^\/+|\/+$/g, ""),
   );
+  const [hasClientNavigated, setHasClientNavigated] = useState(false);
 
   const cleanSection = currentSection.replace(/^\/+|\/+$/g, "");
   const page = findAdminPage(cleanSection);
@@ -126,6 +127,7 @@ export function AdminApp({ section }: { section?: string }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [member, setMember] = useState<PanelMember | null>(null);
+  const [avatarPhoto, setAvatarPhoto] = useState<string | null>(null);
   const [memberChecked, setMemberChecked] = useState<boolean>(false);
   const [memberError, setMemberError] = useState<string>("");
 
@@ -142,6 +144,7 @@ export function AdminApp({ section }: { section?: string }) {
     if (typeof window === "undefined") return;
     const onPopState = () => {
       if (window.location.pathname.startsWith("/painel")) {
+        setHasClientNavigated(true);
         setCurrentSection(sectionFromPathname(window.location.pathname));
       }
     };
@@ -184,6 +187,7 @@ export function AdminApp({ section }: { section?: string }) {
       const revision = authRevision;
       setSession(nextSession);
       setMember(null);
+      setAvatarPhoto(null);
       setMemberError("");
       setMemberChecked(!nextSession);
       setAuthReady(true);
@@ -195,10 +199,11 @@ export function AdminApp({ section }: { section?: string }) {
 
     const bootstrapRevision = authRevision;
     void getAdminBootstrap()
-      .then(({ session: nextSession, member: nextMember }) => {
+      .then(({ session: nextSession, member: nextMember, avatar: nextAvatar }) => {
         if (!active || authRevision !== bootstrapRevision) return;
         setSession(nextSession);
         setMember(nextMember);
+        setAvatarPhoto(nextAvatar);
         setMemberError("");
         setMemberChecked(true);
         setAuthReady(true);
@@ -207,6 +212,7 @@ export function AdminApp({ section }: { section?: string }) {
         if (!active || authRevision !== bootstrapRevision) return;
         setSession(null);
         setMember(null);
+        setAvatarPhoto(null);
         setMemberChecked(true);
         setAuthReady(true);
       });
@@ -259,6 +265,7 @@ export function AdminApp({ section }: { section?: string }) {
     event.preventDefault();
     if (nextSection !== cleanSection) {
       window.history.pushState({}, "", href);
+      setHasClientNavigated(true);
       setCurrentSection(nextSection);
       window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
     }
@@ -270,6 +277,7 @@ export function AdminApp({ section }: { section?: string }) {
     } finally {
       setSession(null);
       setMember(null);
+      setAvatarPhoto(null);
       setMemberChecked(true);
       const loginRoute = routeFor("login");
       window.history.replaceState({}, "", loginRoute);
@@ -333,8 +341,15 @@ export function AdminApp({ section }: { section?: string }) {
   const allowed = page ? canSeePage(member.role, page, member.permissions) : true;
 
   return (
-    <div className="admin-root" onClick={handleNavigationClick}>
-      <ProfilePhotoProvider key={session.user.id} session={session}>
+    <div
+      className={`admin-root${hasClientNavigated ? " admin-navigation-transition" : ""}`}
+      onClick={handleNavigationClick}
+    >
+      <ProfilePhotoProvider
+        key={session.user.id}
+        session={session}
+        initialAvatar={avatarPhoto}
+      >
         <AdminShell
           page={activePage}
           role={member.role}

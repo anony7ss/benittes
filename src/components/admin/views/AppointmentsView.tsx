@@ -260,7 +260,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
             className="admin-search"
             placeholder="Buscar por serviço, cliente ou placa..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)} id="admin-views-appointmentsview-259"
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -300,7 +300,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                   setSelectedDate(e.target.value);
                   setShowAll(false);
                 }}
-                style={{ width: "auto", minHeight: 38, height: 38, padding: "4px 10px", borderRadius: 8 }}
+                style={{ width: "auto", minHeight: 38, height: 38, padding: "4px 10px", borderRadius: 8 }} id="admin-views-appointmentsview-295"
               />
               <div className="admin-filter-pills">
                 <button
@@ -702,7 +702,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     required
                     placeholder="Ex: Alinhamento e balanceamento"
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value, service_id: "" })}
+                    onChange={(e) => setForm({ ...form, title: e.target.value, service_id: "" })} id="admin-views-appointmentsview-700"
                   />
                 </div>
 
@@ -735,7 +735,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     className="admin-input"
                     placeholder="Nome do cliente"
                     value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-appointmentsview-734"
                   />
                 </div>
 
@@ -745,7 +745,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     className="admin-input"
                     placeholder="(11) 99999-9999"
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })} id="admin-views-appointmentsview-744"
                   />
                 </div>
 
@@ -781,7 +781,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     className="admin-input"
                     placeholder="ABC1D23"
                     value={form.vehicle}
-                    onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })}
+                    onChange={(e) => setForm({ ...form, vehicle: e.target.value, marca: "", modelo: "", ano: "" })} id="admin-views-appointmentsview-780"
                   />
                 </div>
 
@@ -791,7 +791,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     type="date"
                     className="admin-input"
                     value={form.starts_at}
-                    onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
+                    onChange={(e) => setForm({ ...form, starts_at: e.target.value })} id="admin-views-appointmentsview-790"
                   />
                 </div>
 
@@ -801,7 +801,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     type="time"
                     className="admin-input"
                     value={form.horario}
-                    onChange={(e) => setForm({ ...form, horario: e.target.value })}
+                    onChange={(e) => setForm({ ...form, horario: e.target.value })} id="admin-views-appointmentsview-800"
                   />
                 </div>
 
@@ -812,7 +812,7 @@ export function AppointmentsView({ session }: { session: { user: { id: string } 
                     rows={3}
                     placeholder="Detalhes adicionais sobre o atendimento..."
                     value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-appointmentsview-810"
                   />
                 </div>
               </div>

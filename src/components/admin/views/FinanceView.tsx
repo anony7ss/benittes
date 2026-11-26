@@ -492,7 +492,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
             className="admin-search"
             placeholder="Buscar descrição, categoria ou cliente..."
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => setSearch(event.target.value)} id="admin-views-financeview-490"
           />
         </div>
       </div>
@@ -602,7 +602,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     required
                     value={form.title}
                     onChange={(event) => setForm((f) => ({ ...f, title: event.target.value }))}
-                    placeholder="Ex: Pagamento de peça, Recebimento OS #104..."
+                    placeholder="Ex: Pagamento de peça, Recebimento OS #104..." id="admin-views-financeview-600"
                   />
                 </label>
 
@@ -611,7 +611,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                   <select
                     className="admin-select"
                     value={form.tipo}
-                    onChange={(event) => setForm((f) => ({ ...f, tipo: event.target.value as FinanceTipo }))}
+                    onChange={(event) => setForm((f) => ({ ...f, tipo: event.target.value as FinanceTipo }))} id="admin-views-financeview-611"
                   >
                     <option value="receber">A receber</option>
                     <option value="pagar">A pagar</option>
@@ -628,7 +628,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     required
                     value={form.amount}
                     onChange={(event) => setForm((f) => ({ ...f, amount: event.target.value }))}
-                    placeholder="0,00"
+                    placeholder="0,00" id="admin-views-financeview-623"
                   />
                 </label>
 
@@ -638,7 +638,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     type="date"
                     value={form.vencimento}
-                    onChange={(event) => setForm((f) => ({ ...f, vencimento: event.target.value }))}
+                    onChange={(event) => setForm((f) => ({ ...f, vencimento: event.target.value }))} id="admin-views-financeview-637"
                   />
                 </label>
 
@@ -648,7 +648,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     value={form.categoria}
                     onChange={(event) => setForm((f) => ({ ...f, categoria: event.target.value }))}
-                    placeholder="Ex: Peças, Serviços, Aluguel"
+                    placeholder="Ex: Peças, Serviços, Aluguel" id="admin-views-financeview-647"
                   />
                 </label>
 
@@ -668,7 +668,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     value={form.customer_name}
                     onChange={(event) => setForm((f) => ({ ...f, customer_name: event.target.value }))}
-                    placeholder="Nome do cliente ou fornecedor"
+                    placeholder="Nome do cliente ou fornecedor" id="admin-views-financeview-667"
                   />
                 </div>
 
@@ -677,7 +677,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                   <select
                     className="admin-select"
                     value={form.status}
-                    onChange={(event) => setForm((f) => ({ ...f, status: event.target.value }))}
+                    onChange={(event) => setForm((f) => ({ ...f, status: event.target.value }))} id="admin-views-financeview-677"
                   >
                     <option value="novo">Novo</option>
                     <option value="aguardando">Aguardando</option>
@@ -692,7 +692,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                     className="admin-textarea"
                     value={form.description}
                     onChange={(event) => setForm((f) => ({ ...f, description: event.target.value }))}
-                    placeholder="Notas adicionais sobre este lançamento..."
+                    placeholder="Notas adicionais sobre este lançamento..." id="admin-views-financeview-691"
                   />
                 </label>
               </div>
@@ -729,7 +729,7 @@ export function FinanceView({ session }: { session: { user: { id: string } } }) 
                   type="file"
                   accept=".ofx,.csv,text/csv"
                   onChange={(e) => void handleBankFile(e)}
-                  style={{ display: "none" }}
+                  style={{ display: "none" }} id="admin-views-financeview-728"
                 />
               </label>
             </div>

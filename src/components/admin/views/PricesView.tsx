@@ -190,7 +190,7 @@ export function PricesView({ session }: { session: { user: { id: string } } }) {
             className="admin-search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar serviço, marca, modelo ou aplicação..."
+            placeholder="Buscar serviço, marca, modelo ou aplicação..." id="admin-views-pricesview-189"
           />
         </div>
         <span className="admin-muted">{rows.length} {rows.length === 1 ? "regra" : "regras"}</span>
@@ -288,40 +288,40 @@ export function PricesView({ session }: { session: { user: { id: string } } }) {
             <form onSubmit={(event) => void handleSubmit(event)}>
               <div className="admin-form-grid">
                 <label className="admin-field wide">Serviço
-                  <select className="admin-select" required value={form.service_id} onChange={(event) => setForm({ ...form, service_id: event.target.value })}>
+                  <select className="admin-select" required value={form.service_id} onChange={(event) => setForm({ ...form, service_id: event.target.value })} id="admin-views-pricesview-291">
                     <option value="">Selecione um serviço variável</option>
                     {services.map((service) => <option key={service.id} value={service.id}>{service.title}</option>)}
                   </select>
                 </label>
                 <label className="admin-field">Marca
-                  <input className="admin-input" maxLength={100} value={form.vehicle_make} onChange={(event) => setForm({ ...form, vehicle_make: event.target.value })} placeholder="Ex.: Hyundai" />
+                  <input className="admin-input" maxLength={100} value={form.vehicle_make} onChange={(event) => setForm({ ...form, vehicle_make: event.target.value })} placeholder="Ex.: Hyundai" id="admin-views-pricesview-297" />
                 </label>
                 <label className="admin-field">Modelo
-                  <input className="admin-input" maxLength={120} value={form.vehicle_model} onChange={(event) => setForm({ ...form, vehicle_model: event.target.value })} placeholder="Ex.: HB20 1.0" />
+                  <input className="admin-input" maxLength={120} value={form.vehicle_model} onChange={(event) => setForm({ ...form, vehicle_model: event.target.value })} placeholder="Ex.: HB20 1.0" id="admin-views-pricesview-300" />
                 </label>
                 <label className="admin-field">Ano a partir de
-                  <input className="admin-input" type="number" min={1900} max={2200} step={1} value={form.year_from} onChange={(event) => setForm({ ...form, year_from: event.target.value })} placeholder="Qualquer ano" />
+                  <input className="admin-input" type="number" min={1900} max={2200} step={1} value={form.year_from} onChange={(event) => setForm({ ...form, year_from: event.target.value })} placeholder="Qualquer ano" id="admin-views-pricesview-303" />
                 </label>
                 <label className="admin-field">Ano até
-                  <input className="admin-input" type="number" min={1900} max={2200} step={1} value={form.year_to} onChange={(event) => setForm({ ...form, year_to: event.target.value })} placeholder="Qualquer ano" />
+                  <input className="admin-input" type="number" min={1900} max={2200} step={1} value={form.year_to} onChange={(event) => setForm({ ...form, year_to: event.target.value })} placeholder="Qualquer ano" id="admin-views-pricesview-306" />
                 </label>
                 <label className="admin-field">Valor da mão de obra (R$)
-                  <input className="admin-input" type="number" min="0.01" step="0.01" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Ex.: 850,00" />
+                  <input className="admin-input" type="number" min="0.01" step="0.01" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="Ex.: 850,00" id="admin-views-pricesview-309" />
                 </label>
                 <label className="admin-field">Aplicação / versão (opcional)
-                  <input className="admin-input" maxLength={160} value={form.vehicle_application} onChange={(event) => setForm({ ...form, vehicle_application: event.target.value })} placeholder="Ex.: motor 1.0 flex, câmbio manual" />
+                  <input className="admin-input" maxLength={160} value={form.vehicle_application} onChange={(event) => setForm({ ...form, vehicle_application: event.target.value })} placeholder="Ex.: motor 1.0 flex, câmbio manual" id="admin-views-pricesview-312" />
                 </label>
                 <label className="admin-field">Válida a partir de
-                  <input className="admin-input" type="date" value={form.valid_from} onChange={(event) => setForm({ ...form, valid_from: event.target.value })} />
+                  <input className="admin-input" type="date" value={form.valid_from} onChange={(event) => setForm({ ...form, valid_from: event.target.value })} id="admin-views-pricesview-315" />
                 </label>
                 <label className="admin-field">Válida até
-                  <input className="admin-input" type="date" value={form.valid_until} onChange={(event) => setForm({ ...form, valid_until: event.target.value })} />
+                  <input className="admin-input" type="date" value={form.valid_until} onChange={(event) => setForm({ ...form, valid_until: event.target.value })} id="admin-views-pricesview-318" />
                 </label>
                 <label className="admin-field wide">Observações internas
-                  <textarea className="admin-textarea" rows={3} maxLength={4000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Condições, exceções ou notas para a equipe" />
+                  <textarea className="admin-textarea" rows={3} maxLength={4000} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Condições, exceções ou notas para a equipe" id="admin-views-pricesview-321" />
                 </label>
                 <label className="admin-field">Status
-                  <select className="admin-select" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="concluido">Ativa</option><option value="cancelado">Inativa</option></select>
+                  <select className="admin-select" value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} id="admin-views-pricesview-324"><option value="concluido">Ativa</option><option value="cancelado">Inativa</option></select>
                 </label>
               </div>
               {error && <p className="admin-form-error">{error}</p>}

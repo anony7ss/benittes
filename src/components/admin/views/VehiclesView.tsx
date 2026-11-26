@@ -398,7 +398,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     required
                     value={newBrand}
                     onChange={(e) => setNewBrand(e.target.value)}
-                    placeholder="Ex: Honda ou nova marca"
+                    placeholder="Ex: Honda ou nova marca" id="admin-views-vehiclesview-395"
                   />
                   <datalist id="catalog-brands-datalist">
                     {sortedBrands.map((b) => (
@@ -413,7 +413,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     required
                     value={newModel}
                     onChange={(e) => setNewModel(e.target.value)}
-                    placeholder="Ex: Civic Touring"
+                    placeholder="Ex: Civic Touring" id="admin-views-vehiclesview-411"
                   />
                 </div>
               </div>
@@ -434,7 +434,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                   className="admin-search"
                   placeholder="Filtrar marca ou modelo..."
                   value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  onChange={(e) => setCatalogSearch(e.target.value)} id="admin-views-vehiclesview-433"
                 />
               </div>
             </div>
@@ -521,7 +521,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
             className="admin-search"
             placeholder="Buscar por placa, modelo ou proprietário..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)} id="admin-views-vehiclesview-520"
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -750,7 +750,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                       className="admin-input"
                       value={form.vehicle}
                       onChange={(e) => setForm({ ...form, vehicle: e.target.value.toUpperCase() })}
-                      placeholder="ABC1D23"
+                      placeholder="ABC1D23" id="admin-views-vehiclesview-749"
                     />
                     <button
                       type="button"
@@ -773,7 +773,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     required
                     value={form.title}
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="Ex: Civic EXL 2.0"
+                    placeholder="Ex: Civic EXL 2.0" id="admin-views-vehiclesview-771"
                   />
                 </div>
                 <div className="admin-field">
@@ -792,7 +792,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                         setCustomModelInput(false);
                         setForm({ ...form, marca: val, modelo: "" });
                       }
-                    }}
+                    }} id="admin-views-vehiclesview-781"
                   >
                     <option value="">Selecionar marca...</option>
                     {sortedBrands.map((brand) => (
@@ -807,7 +807,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                       className="admin-input"
                       value={form.marca}
                       onChange={(e) => setForm({ ...form, marca: e.target.value })}
-                      placeholder="Digite a marca"
+                      placeholder="Digite a marca" id="admin-views-vehiclesview-806"
                     />
                   )}
                 </div>
@@ -830,7 +830,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                         setForm({ ...form, modelo: val, title: autoTitle });
                       }
                     }}
-                    disabled={!form.marca.trim() && !customBrandInput}
+                    disabled={!form.marca.trim() && !customBrandInput} id="admin-views-vehiclesview-816"
                   >
                     <option value="">
                       {form.marca.trim() ? "Selecionar modelo..." : "Escolha a marca primeiro"}
@@ -847,7 +847,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                       className="admin-input"
                       value={form.modelo}
                       onChange={(e) => setForm({ ...form, modelo: e.target.value })}
-                      placeholder="Digite o modelo"
+                      placeholder="Digite o modelo" id="admin-views-vehiclesview-846"
                     />
                   )}
                 </div>
@@ -857,7 +857,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.ano}
                     onChange={(e) => setForm({ ...form, ano: e.target.value })}
-                    placeholder="2022"
+                    placeholder="2022" id="admin-views-vehiclesview-856"
                   />
                 </div>
                 <div className="admin-field">
@@ -866,7 +866,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.km}
                     onChange={(e) => setForm({ ...form, km: e.target.value })}
-                    placeholder="45000"
+                    placeholder="45000" id="admin-views-vehiclesview-865"
                   />
                 </div>
                 <div className="admin-field">
@@ -874,7 +874,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={form.combustivel}
-                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })}
+                    onChange={(e) => setForm({ ...form, combustivel: e.target.value })} id="admin-views-vehiclesview-874"
                   >
                     <option value="Flex">Flex</option>
                     <option value="Gasolina">Gasolina</option>
@@ -892,7 +892,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.cor}
                     onChange={(e) => setForm({ ...form, cor: e.target.value })}
-                    placeholder="Prata"
+                    placeholder="Prata" id="admin-views-vehiclesview-891"
                   />
                 </div>
                 <div className="admin-field">
@@ -901,7 +901,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.chassi}
                     onChange={(e) => setForm({ ...form, chassi: e.target.value.toUpperCase() })}
-                    placeholder="9BWZZZ377VT004251"
+                    placeholder="9BWZZZ377VT004251" id="admin-views-vehiclesview-900"
                   />
                 </div>
                 <div className="admin-field">
@@ -920,7 +920,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.customer_name}
                     onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
-                    placeholder="Nome do cliente"
+                    placeholder="Nome do cliente" id="admin-views-vehiclesview-919"
                   />
                 </div>
               </div>
@@ -1011,7 +1011,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                   className="admin-input"
                   value={nextOilKm}
                   onChange={(e) => setNextOilKm(e.target.value)}
-                  placeholder="Ex: 55000"
+                  placeholder="Ex: 55000" id="admin-views-vehiclesview-1010"
                 />
               </div>
               <div className="admin-field">
@@ -1020,7 +1020,7 @@ export function VehiclesView({ session }: { session: { user: { id: string } } })
                   type="date"
                   className="admin-input"
                   value={nextOilDate}
-                  onChange={(e) => setNextOilDate(e.target.value)}
+                  onChange={(e) => setNextOilDate(e.target.value)} id="admin-views-vehiclesview-1019"
                 />
               </div>
             </div>

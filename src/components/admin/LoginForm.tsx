@@ -147,7 +147,7 @@ export function LoginForm({ recovery = false }: { recovery?: boolean }) {
                 value={code2FA}
                 onChange={(e) => setCode2FA(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 required
-                autoFocus
+                autoFocus id="admin-loginform-142"
               />
             </label>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>

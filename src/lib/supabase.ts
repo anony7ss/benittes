@@ -3,7 +3,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PanelPermissions } from "../admin/permissions";
 
 export type Session = { user: { id: string; email?: string | null } };
-export type AdminBootstrap = { session: Session | null; member: PanelMember | null };
+export type AdminBootstrap = {
+  session: Session | null;
+  member: PanelMember | null;
+  avatar: string | null;
+};
 
 export type PanelStatus = "novo" | "em_andamento" | "aguardando" | "concluido" | "cancelado";
 
@@ -225,28 +229,35 @@ async function loadServerBootstrap(): Promise<AdminBootstrap> {
   let response = await requestServerSession();
   if (response.status === 401) {
     const migratedSession = await migrateLegacySession();
-    if (!migratedSession) return { session: null, member: null };
+    if (!migratedSession) return { session: null, member: null, avatar: null };
     response = await requestServerSession();
   }
 
   const body = (await response.json().catch(() => ({}))) as {
     session?: unknown;
     member?: unknown;
+    avatar?: unknown;
     error?: string;
   };
   if (!response.ok) throw new Error(body.error || "Não foi possível verificar sua sessão.");
   const session = toSession(body);
   if (!session) {
     clearLegacySessionRemnants();
-    return { session: null, member: null };
+    return { session: null, member: null, avatar: null };
   }
 
   clearLegacySessionRemnants();
-  return { session, member: toPanelMember(body.member, session.user.id) };
+  return {
+    session,
+    member: toPanelMember(body.member, session.user.id),
+    avatar: typeof body.avatar === "string" ? body.avatar : null,
+  };
 }
 
 export async function getAdminBootstrap(): Promise<AdminBootstrap> {
-  if (!supabaseConfigured || typeof window === "undefined") return { session: null, member: null };
+  if (!supabaseConfigured || typeof window === "undefined") {
+    return { session: null, member: null, avatar: null };
+  }
   if (bootstrapRequest) return bootstrapRequest;
 
   bootstrapRequest = loadServerBootstrap()

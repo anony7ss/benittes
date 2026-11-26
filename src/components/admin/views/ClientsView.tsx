@@ -132,7 +132,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
             className="admin-search"
             placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)} id="admin-views-clientsview-131"
           />
         </div>
       </div>
@@ -233,7 +233,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                     required
                     value={form.title}
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="Ex: João da Silva"
+                    placeholder="Ex: João da Silva" id="admin-views-clientsview-231"
                   />
                 </div>
                 <div className="admin-field">
@@ -242,7 +242,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="(11) 99999-9999"
+                    placeholder="(11) 99999-9999" id="admin-views-clientsview-241"
                   />
                 </div>
                 <div className="admin-field">
@@ -252,7 +252,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     value={form.customer_email}
                     onChange={(e) => setForm({ ...form, customer_email: e.target.value })}
-                    placeholder="cliente@exemplo.com"
+                    placeholder="cliente@exemplo.com" id="admin-views-clientsview-250"
                   />
                 </div>
                 <div className="admin-field">
@@ -261,7 +261,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                     className="admin-input"
                     value={form.documento}
                     onChange={(e) => setForm({ ...form, documento: e.target.value })}
-                    placeholder="000.000.000-00"
+                    placeholder="000.000.000-00" id="admin-views-clientsview-260"
                   />
                 </div>
                 <div className="admin-field">
@@ -269,7 +269,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                   <select
                     className="admin-select"
                     value={form.contato_preferido}
-                    onChange={(e) => setForm({ ...form, contato_preferido: e.target.value })}
+                    onChange={(e) => setForm({ ...form, contato_preferido: e.target.value })} id="admin-views-clientsview-269"
                   >
                     <option value="WhatsApp">WhatsApp</option>
                     <option value="Telefone">Telefone</option>
@@ -283,7 +283,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                     rows={3}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Notas internas, preferências ou histórico..."
+                    placeholder="Notas internas, preferências ou histórico..." id="admin-views-clientsview-281"
                   />
                 </div>
               </div>

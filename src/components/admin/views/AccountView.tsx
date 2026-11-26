@@ -65,7 +65,7 @@ export function AccountView({
 
   // Perfil
   const [fullName, setFullName] = useState(member.full_name ?? "");
-  const { avatarUrl, savePhoto } = useProfilePhoto();
+  const { avatarUrl, previewPhoto, restorePhotoPreview, savePhoto } = useProfilePhoto();
   const [savingPhoto, setSavingPhoto] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -131,6 +131,7 @@ export function AccountView({
     setSavingPhoto(true);
     setProfileMsg(null);
     const url = URL.createObjectURL(file);
+    previewPhoto(url);
     try {
       const img = new Image();
       img.src = url;
@@ -141,12 +142,12 @@ export function AccountView({
       if (!ctx) throw new Error("Imagem inválida.");
       const side = Math.min(img.naturalWidth, img.naturalHeight);
       ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 160, 160);
-      await savePhoto(canvas.toDataURL("image/jpeg", 0.86));
+      await savePhoto(canvas.toDataURL("image/jpeg", 0.86), url);
       setProfileMsg({ text: "Foto de perfil salva.", type: "success" });
     } catch {
+      restorePhotoPreview();
       setProfileMsg({ text: "Não foi possível salvar a foto. Tente novamente.", type: "error" });
     } finally {
-      URL.revokeObjectURL(url);
       setSavingPhoto(false);
     }
   }
@@ -671,7 +672,7 @@ export function AccountView({
                 type="file"
                 accept="image/*"
                 style={{ display: "none" }}
-                onChange={handleAvatarUpload}
+                onChange={handleAvatarUpload} id="admin-views-accountview-669"
               />
               <div style={{ display: "grid", gap: 6 }}>
                 <strong style={{ fontSize: 15 }}>
@@ -716,13 +717,13 @@ export function AccountView({
                   className="admin-input"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Seu nome na oficina"
+                  placeholder="Seu nome na oficina" id="admin-views-accountview-715"
                 />
               </label>
 
               <label className="admin-field">
                 E-mail de acesso
-                <input className="admin-input" value={session.user.email ?? ""} readOnly />
+                <input className="admin-input" value={session.user.email ?? ""} readOnly id="admin-views-accountview-725" />
               </label>
 
               {profileMsg && (
@@ -795,7 +796,7 @@ export function AccountView({
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Mínimo de 12 caracteres"
                     minLength={12}
-                    required
+                    required id="admin-views-accountview-791"
                   />
                   <button
                     type="button"
@@ -818,7 +819,7 @@ export function AccountView({
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repita a nova senha"
                     minLength={12}
-                    required
+                    required id="admin-views-accountview-814"
                   />
                   <button
                     type="button"
@@ -903,7 +904,7 @@ export function AccountView({
                       setTwoFactorPhone(e.target.value);
                       if (twoFactorStep !== "idle") setTwoFactorStep("idle");
                     }}
-                    placeholder="5511999999999"
+                    placeholder="5511999999999" id="admin-views-accountview-899"
                   />
                 </div>
 
@@ -916,7 +917,7 @@ export function AccountView({
                     value={twoFactorPassword}
                     onChange={(e) => setTwoFactorPassword(e.target.value)}
                     placeholder="Digite sua senha atual"
-                    required={twoFactorStep === "idle"}
+                    required={twoFactorStep === "idle"} id="admin-views-accountview-912"
                   />
                 </div>
 
@@ -931,7 +932,7 @@ export function AccountView({
                       value={twoFactorCode}
                       onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                       required
-                      autoFocus
+                      autoFocus id="admin-views-accountview-926"
                     />
                   </div>
                 )}
@@ -1043,6 +1044,7 @@ export function AccountView({
                         <td>
                           <select
                             className="admin-select"
+                            id={`admin-team-role-${m.user_id}`}
                             value={m.role}
                             disabled={busyUserId === m.user_id || member.role !== "owner" || (isSelf && m.role === "owner")}
                             onChange={(e) => void handleRoleChange(m, e.target.value)}
@@ -1161,7 +1163,7 @@ export function AccountView({
             <form onSubmit={(event) => void handleSaveRole(event)}>
               <div className="admin-field" style={{ marginBottom: 16 }}>
                 <label>Nome do cargo</label>
-                <input className="admin-input" required minLength={2} maxLength={60} value={roleName} onChange={(event) => setRoleName(event.target.value)} />
+                <input className="admin-input" required minLength={2} maxLength={60} value={roleName} onChange={(event) => setRoleName(event.target.value)} id="admin-views-accountview-1164" />
               </div>
               <div className="admin-table-wrap">
                 <table className="admin-table">
@@ -1203,19 +1205,19 @@ export function AccountView({
               <div className="admin-form-grid">
                 <div className="admin-field wide">
                   <label>Nome completo</label>
-                  <input className="admin-input" required maxLength={120} value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} />
+                  <input className="admin-input" required maxLength={120} value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} id="admin-views-accountview-1206" />
                 </div>
                 <div className="admin-field wide">
                   <label>E-mail</label>
-                  <input className="admin-input" type="email" required maxLength={254} value={newMemberEmail} onChange={(event) => setNewMemberEmail(event.target.value)} />
+                  <input className="admin-input" type="email" required maxLength={254} value={newMemberEmail} onChange={(event) => setNewMemberEmail(event.target.value)} id="admin-views-accountview-1210" />
                 </div>
                 <div className="admin-field wide">
                   <label>Senha inicial (mínimo 12 caracteres)</label>
-                  <input className="admin-input" type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} />
+                  <input className="admin-input" type="password" required minLength={12} maxLength={128} autoComplete="new-password" value={newMemberPassword} onChange={(event) => setNewMemberPassword(event.target.value)} id="admin-views-accountview-1214" />
                 </div>
                 <div className="admin-field wide">
                   <label>Cargo</label>
-                  <select className="admin-select" value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value)}>
+                  <select className="admin-select" value={newMemberRole} onChange={(event) => setNewMemberRole(event.target.value)} id="admin-views-accountview-1218">
                     {availableRoles.map((role) => <option key={role.role_key} value={role.role_key}>{role.name}</option>)}
                   </select>
                 </div>
@@ -1240,7 +1242,7 @@ export function AccountView({
                 placeholder="Filtrar auditoria..."
                 value={auditSearch}
                 onChange={(e) => setAuditSearch(e.target.value)}
-                style={{ minHeight: 34 }}
+                style={{ minHeight: 34 }} id="admin-views-accountview-1238"
               />
             </div>
           </div>
@@ -1314,7 +1316,7 @@ export function AccountView({
                     className="admin-input"
                     value={editMemberName}
                     onChange={(e) => setEditMemberName(e.target.value)}
-                    placeholder="Nome do colaborador"
+                    placeholder="Nome do colaborador" id="admin-views-accountview-1313"
                   />
                 </label>
                 <label className="admin-field wide">
@@ -1323,7 +1325,7 @@ export function AccountView({
                     className="admin-select"
                     value={editMemberRole}
                     disabled={member.role !== "owner"}
-                    onChange={(e) => setEditMemberRole(e.target.value)}
+                    onChange={(e) => setEditMemberRole(e.target.value)} id="admin-views-accountview-1322"
                   >
                     {availableRoles.map((opt) => (
                       <option key={opt.role_key} value={opt.role_key}>

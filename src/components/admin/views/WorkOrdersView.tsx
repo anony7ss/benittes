@@ -360,7 +360,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
             className="admin-search"
             placeholder="Buscar por serviço, placa ou cliente..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)} id="admin-views-workordersview-359"
           />
         </div>
 
@@ -776,7 +776,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     required
                     placeholder="Ex: Revisão completa + troca de pastilhas"
                     value={form.title}
-                    onChange={(e) => setForm((prev) => workOrderServicePatch(prev, e.target.value))}
+                    onChange={(e) => setForm((prev) => workOrderServicePatch(prev, e.target.value))} id="admin-views-workordersview-774"
                   />
                 </div>
 
@@ -806,7 +806,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     className="admin-input"
                     placeholder="Nome do cliente"
                     value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-workordersview-805"
                   />
                 </div>
 
@@ -816,7 +816,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     className="admin-input"
                     placeholder="(11) 99999-9999"
                     value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })} id="admin-views-workordersview-815"
                   />
                 </div>
 
@@ -846,7 +846,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     className="admin-input"
                     placeholder="ABC1D23"
                     value={form.vehicle}
-                    onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ...workOrderVehiclePatch(prev, e.target.value) }))} id="admin-views-workordersview-845"
                   />
                 </div>
 
@@ -859,7 +859,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     min="0"
                     placeholder="0,00"
                     value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })} id="admin-views-workordersview-855"
                   />
                 </div>
 
@@ -869,7 +869,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     className="admin-input"
                     placeholder="Nome do mecânico"
                     value={form.tecnico}
-                    onChange={(e) => setForm({ ...form, tecnico: e.target.value })}
+                    onChange={(e) => setForm({ ...form, tecnico: e.target.value })} id="admin-views-workordersview-868"
                   />
                 </div>
 
@@ -879,7 +879,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     className="admin-input"
                     placeholder="Ex: Box 02"
                     value={form.box}
-                    onChange={(e) => setForm({ ...form, box: e.target.value })}
+                    onChange={(e) => setForm({ ...form, box: e.target.value })} id="admin-views-workordersview-878"
                   />
                 </div>
 
@@ -890,7 +890,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       className="admin-select"
                       style={{ flex: "1 1 220px" }}
                       value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)}
+                      onChange={(e) => setSelectedPartId(e.target.value)} id="admin-views-workordersview-889"
                     >
                       <option value="">Selecionar peça do estoque…</option>
                       {inventoryRows
@@ -907,7 +907,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       min="1"
                       style={{ width: 80 }}
                       value={selectedPartQty}
-                      onChange={(e) => setSelectedPartQty(e.target.value)}
+                      onChange={(e) => setSelectedPartQty(e.target.value)} id="admin-views-workordersview-904"
                     />
                     <button
                       type="button"
@@ -960,7 +960,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     rows={3}
                     placeholder="Sintomas relatados, diagnóstico técnico e peças previstas..."
                     value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-workordersview-958"
                   />
                 </div>
               </div>
@@ -1073,7 +1073,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       className="admin-select"
                       style={{ flex: "1 1 220px" }}
                       value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)}
+                      onChange={(e) => setSelectedPartId(e.target.value)} id="admin-views-workordersview-1072"
                     >
                       <option value="">Selecionar peça do estoque…</option>
                       {inventoryRows
@@ -1090,7 +1090,7 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                       min="1"
                       style={{ width: 80 }}
                       value={selectedPartQty}
-                      onChange={(e) => setSelectedPartQty(e.target.value)}
+                      onChange={(e) => setSelectedPartQty(e.target.value)} id="admin-views-workordersview-1087"
                     />
                     <button
                       type="button"

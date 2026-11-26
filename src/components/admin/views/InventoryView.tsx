@@ -242,7 +242,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
             className="admin-search"
             placeholder="Buscar por peça, SKU, categoria ou fornecedor..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)} id="admin-views-inventoryview-241"
           />
         </div>
         <div className="admin-filter-pills">
@@ -392,7 +392,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     required
                     value={form.title}
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="Ex: Pastilha de freio dianteira"
+                    placeholder="Ex: Pastilha de freio dianteira" id="admin-views-inventoryview-390"
                   />
                 </div>
                 <div className="admin-field">
@@ -401,7 +401,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={form.sku}
                     onChange={(e) => setForm({ ...form, sku: e.target.value.toUpperCase() })}
-                    placeholder="PF-001"
+                    placeholder="PF-001" id="admin-views-inventoryview-400"
                   />
                 </div>
                 <div className="admin-field">
@@ -410,7 +410,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={form.categoria}
                     onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                    placeholder="Freios, Óleos, Filtros..."
+                    placeholder="Freios, Óleos, Filtros..." id="admin-views-inventoryview-409"
                   />
                 </div>
                 <div className="admin-field">
@@ -420,7 +420,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     min="0"
                     className="admin-input"
                     value={form.quantity}
-                    onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                    onChange={(e) => setForm({ ...form, quantity: e.target.value })} id="admin-views-inventoryview-418"
                   />
                 </div>
                 <div className="admin-field">
@@ -430,7 +430,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     min="0"
                     className="admin-input"
                     value={form.minimum_stock}
-                    onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })}
+                    onChange={(e) => setForm({ ...form, minimum_stock: e.target.value })} id="admin-views-inventoryview-428"
                   />
                 </div>
                 <div className="admin-field">
@@ -442,7 +442,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    placeholder="89.90"
+                    placeholder="89.90" id="admin-views-inventoryview-438"
                   />
                 </div>
                 <div className="admin-field">
@@ -451,7 +451,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={form.fornecedor}
                     onChange={(e) => setForm({ ...form, fornecedor: e.target.value })}
-                    placeholder="Distribuidora Auto Peças"
+                    placeholder="Distribuidora Auto Peças" id="admin-views-inventoryview-450"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -461,7 +461,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     rows={3}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Aplicação, localização na prateleira..."
+                    placeholder="Aplicação, localização na prateleira..." id="admin-views-inventoryview-459"
                   />
                 </div>
               </div>
@@ -508,7 +508,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                       if (picked) {
                         setPurchaseSupplier(String(detail(picked, "fornecedor") ?? ""));
                       }
-                    }}
+                    }} id="admin-views-inventoryview-500"
                   >
                     {rows.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -523,7 +523,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={purchaseSupplier}
                     onChange={(e) => setPurchaseSupplier(e.target.value)}
-                    placeholder="Nome do fornecedor / distribuidora"
+                    placeholder="Nome do fornecedor / distribuidora" id="admin-views-inventoryview-522"
                   />
                 </div>
                 <div className="admin-field">
@@ -534,7 +534,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     required
                     className="admin-input"
                     value={purchaseQty}
-                    onChange={(e) => setPurchaseQty(e.target.value)}
+                    onChange={(e) => setPurchaseQty(e.target.value)} id="admin-views-inventoryview-531"
                   />
                 </div>
                 <div className="admin-field">
@@ -546,14 +546,14 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                     className="admin-input"
                     value={purchaseCost}
                     onChange={(e) => setPurchaseCost(e.target.value)}
-                    placeholder="0.00"
+                    placeholder="0.00" id="admin-views-inventoryview-542"
                   />
                 </div>
                 <label className="admin-field wide" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={purchasePayable}
-                    onChange={(e) => setPurchasePayable(e.target.checked)}
+                    onChange={(e) => setPurchasePayable(e.target.checked)} id="admin-views-inventoryview-553"
                   />
                   <span>Lançar automaticamente em Contas a Pagar (Financeiro)</span>
                 </label>

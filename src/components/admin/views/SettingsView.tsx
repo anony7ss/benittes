@@ -455,12 +455,12 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                 border: "1px solid var(--admin-line)",
                 background: "transparent",
                 cursor: "pointer",
-              }}
+              }} id="admin-views-settingsview-446"
             />
             <input
               className="admin-input"
               value={str}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => onChange(e.target.value)} id="admin-views-settingsview-460"
             />
           </div>
         </>
@@ -474,7 +474,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
             className="admin-textarea"
             rows={3}
             value={str}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value)} id="admin-views-settingsview-473"
           />
         </>
       );
@@ -488,7 +488,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
           value={str}
           onChange={(e) =>
             onChange(typeof val === "number" ? Number(e.target.value || 0) : e.target.value)
-          }
+          } id="admin-views-settingsview-485"
         />
       </>
     );
@@ -568,7 +568,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     required
                     value={estConfig.nome}
                     onChange={(e) => setEstConfig({ ...estConfig, nome: e.target.value })}
-                    placeholder="Benittes Oficina Mecânica"
+                    placeholder="Benittes Oficina Mecânica" id="admin-views-settingsview-566"
                   />
                 </div>
                 <div className="admin-field">
@@ -577,7 +577,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.razao_social}
                     onChange={(e) => setEstConfig({ ...estConfig, razao_social: e.target.value })}
-                    placeholder="Benittes Serviços Automotivos LTDA"
+                    placeholder="Benittes Serviços Automotivos LTDA" id="admin-views-settingsview-576"
                   />
                 </div>
                 <div className="admin-field">
@@ -586,7 +586,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.cnpj}
                     onChange={(e) => setEstConfig({ ...estConfig, cnpj: e.target.value })}
-                    placeholder="00.000.000/0001-00"
+                    placeholder="00.000.000/0001-00" id="admin-views-settingsview-585"
                   />
                 </div>
                 <div className="admin-field">
@@ -595,7 +595,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.slogan}
                     onChange={(e) => setEstConfig({ ...estConfig, slogan: e.target.value })}
-                    placeholder="Mecânica geral, revisão e diagnóstico"
+                    placeholder="Mecânica geral, revisão e diagnóstico" id="admin-views-settingsview-594"
                   />
                 </div>
                 <div className="admin-field">
@@ -606,7 +606,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     min="1"
                     value={estConfig.boxes}
                     onChange={(e) => setEstConfig({ ...estConfig, boxes: e.target.value })}
-                    placeholder="4"
+                    placeholder="4" id="admin-views-settingsview-603"
                   />
                 </div>
               </div>
@@ -626,7 +626,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.whatsapp}
                     onChange={(e) => setEstConfig({ ...estConfig, whatsapp: e.target.value })}
-                    placeholder="(11) 99999-9999"
+                    placeholder="(11) 99999-9999" id="admin-views-settingsview-625"
                   />
                 </div>
                 <div className="admin-field">
@@ -635,7 +635,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.telefone}
                     onChange={(e) => setEstConfig({ ...estConfig, telefone: e.target.value })}
-                    placeholder="(11) 3333-3333"
+                    placeholder="(11) 3333-3333" id="admin-views-settingsview-634"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -645,7 +645,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     type="email"
                     value={estConfig.email}
                     onChange={(e) => setEstConfig({ ...estConfig, email: e.target.value })}
-                    placeholder="contato@oficina.com.br"
+                    placeholder="contato@oficina.com.br" id="admin-views-settingsview-643"
                   />
                 </div>
                 <div className="admin-field">
@@ -654,7 +654,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.instagram}
                     onChange={(e) => setEstConfig({ ...estConfig, instagram: e.target.value })}
-                    placeholder="@benittesoficina"
+                    placeholder="@benittesoficina" id="admin-views-settingsview-653"
                   />
                 </div>
                 <div className="admin-field">
@@ -663,7 +663,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.website}
                     onChange={(e) => setEstConfig({ ...estConfig, website: e.target.value })}
-                    placeholder="https://..."
+                    placeholder="https://..." id="admin-views-settingsview-662"
                   />
                 </div>
               </div>
@@ -685,7 +685,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.cep}
                     onChange={(e) => setEstConfig({ ...estConfig, cep: e.target.value })}
-                    placeholder="00000-000"
+                    placeholder="00000-000" id="admin-views-settingsview-684"
                   />
                 </div>
                 <div className="admin-field">
@@ -694,7 +694,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.bairro}
                     onChange={(e) => setEstConfig({ ...estConfig, bairro: e.target.value })}
-                    placeholder="Centro"
+                    placeholder="Centro" id="admin-views-settingsview-693"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -703,7 +703,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.logradouro}
                     onChange={(e) => setEstConfig({ ...estConfig, logradouro: e.target.value })}
-                    placeholder="Av. Brasil"
+                    placeholder="Av. Brasil" id="admin-views-settingsview-702"
                   />
                 </div>
                 <div className="admin-field">
@@ -712,7 +712,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.numero}
                     onChange={(e) => setEstConfig({ ...estConfig, numero: e.target.value })}
-                    placeholder="1200"
+                    placeholder="1200" id="admin-views-settingsview-711"
                   />
                 </div>
                 <div className="admin-field">
@@ -721,7 +721,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.complemento}
                     onChange={(e) => setEstConfig({ ...estConfig, complemento: e.target.value })}
-                    placeholder="Galpão B"
+                    placeholder="Galpão B" id="admin-views-settingsview-720"
                   />
                 </div>
                 <div className="admin-field">
@@ -730,7 +730,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.cidade}
                     onChange={(e) => setEstConfig({ ...estConfig, cidade: e.target.value })}
-                    placeholder="São Paulo"
+                    placeholder="São Paulo" id="admin-views-settingsview-729"
                   />
                 </div>
                 <div className="admin-field">
@@ -738,7 +738,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={estConfig.uf}
-                    onChange={(e) => setEstConfig({ ...estConfig, uf: e.target.value })}
+                    onChange={(e) => setEstConfig({ ...estConfig, uf: e.target.value })} id="admin-views-settingsview-738"
                   >
                     {UF_LIST.map((uf) => (
                       <option key={uf} value={uf}>
@@ -753,7 +753,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={estConfig.maps_url}
                     onChange={(e) => setEstConfig({ ...estConfig, maps_url: e.target.value })}
-                    placeholder="https://maps.google.com/?q=..."
+                    placeholder="https://maps.google.com/?q=..." id="admin-views-settingsview-752"
                   />
                 </div>
               </div>
@@ -774,7 +774,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     type="number"
                     min="0"
                     value={estConfig.garantia_dias}
-                    onChange={(e) => setEstConfig({ ...estConfig, garantia_dias: e.target.value })}
+                    onChange={(e) => setEstConfig({ ...estConfig, garantia_dias: e.target.value })} id="admin-views-settingsview-772"
                   />
                 </div>
                 <div className="admin-field">
@@ -786,7 +786,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     value={estConfig.validade_orcamento_dias}
                     onChange={(e) =>
                       setEstConfig({ ...estConfig, validade_orcamento_dias: e.target.value })
-                    }
+                    } id="admin-views-settingsview-782"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -796,7 +796,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     rows={5}
                     value={estConfig.observacoes_os}
                     onChange={(e) => setEstConfig({ ...estConfig, observacoes_os: e.target.value })}
-                    placeholder="Texto padrão exibido em ordens de serviço e orçamentos..."
+                    placeholder="Texto padrão exibido em ordens de serviço e orçamentos..." id="admin-views-settingsview-794"
                   />
                 </div>
               </div>
@@ -868,6 +868,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                           <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>Abre</span>
                           <input
                             type="time"
+                            id={`admin-schedule-${day.key}-start`}
                             className="admin-input"
                             style={{ width: 102, minWidth: 96 }}
                             value={day.start}
@@ -876,6 +877,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                           <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>Fecha</span>
                           <input
                             type="time"
+                            id={`admin-schedule-${day.key}-end`}
                             className="admin-input"
                             style={{ width: 102, minWidth: 96 }}
                             value={day.end}
@@ -895,6 +897,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
                             <input
                               type="time"
+                              id={`admin-schedule-${day.key}-break-start`}
                               className="admin-input"
                               style={{ width: 102, minWidth: 96 }}
                               value={day.breakStart}
@@ -903,6 +906,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                             <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>até</span>
                             <input
                               type="time"
+                              id={`admin-schedule-${day.key}-break-end`}
                               className="admin-input"
                               style={{ width: 102, minWidth: 96 }}
                               value={day.breakEnd}
@@ -936,7 +940,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     type="date"
                     className="admin-input"
                     value={newHolidayDate}
-                    onChange={(e) => setNewHolidayDate(e.target.value)}
+                    onChange={(e) => setNewHolidayDate(e.target.value)} id="admin-views-settingsview-935"
                   />
                 </div>
                 <div className="admin-field">
@@ -945,7 +949,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={newHolidayReason}
                     onChange={(e) => setNewHolidayReason(e.target.value)}
-                    placeholder="Ex.: Feriado, recesso, manutenção"
+                    placeholder="Ex.: Feriado, recesso, manutenção" id="admin-views-settingsview-944"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -964,7 +968,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                           className="admin-input"
                           style={{ width: 112 }}
                           value={newHolidayStart}
-                          onChange={(e) => setNewHolidayStart(e.target.value)}
+                          onChange={(e) => setNewHolidayStart(e.target.value)} id="admin-views-settingsview-962"
                         />
                         <span style={{ fontSize: 12, color: "var(--admin-muted)" }}>até</span>
                         <input
@@ -972,7 +976,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                           className="admin-input"
                           style={{ width: 112 }}
                           value={newHolidayEnd}
-                          onChange={(e) => setNewHolidayEnd(e.target.value)}
+                          onChange={(e) => setNewHolidayEnd(e.target.value)} id="admin-views-settingsview-970"
                         />
                       </div>
                     )}
@@ -1045,7 +1049,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={schedConfig.slotDuration}
-                    onChange={(e) => setSchedConfig({ ...schedConfig, slotDuration: e.target.value })}
+                    onChange={(e) => setSchedConfig({ ...schedConfig, slotDuration: e.target.value })} id="admin-views-settingsview-1045"
                   >
                     <option value="30">30 minutos</option>
                     <option value="45">45 minutos</option>
@@ -1059,7 +1063,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={schedConfig.bufferMinutes}
-                    onChange={(e) => setSchedConfig({ ...schedConfig, bufferMinutes: e.target.value })}
+                    onChange={(e) => setSchedConfig({ ...schedConfig, bufferMinutes: e.target.value })} id="admin-views-settingsview-1059"
                   >
                     <option value="0">Sem intervalo</option>
                     <option value="10">10 minutos</option>
@@ -1074,7 +1078,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     value={schedConfig.minAdvanceHours}
                     onChange={(e) =>
                       setSchedConfig({ ...schedConfig, minAdvanceHours: e.target.value })
-                    }
+                    } id="admin-views-settingsview-1072"
                   >
                     <option value="0">Imediato</option>
                     <option value="1">1 hora</option>
@@ -1136,7 +1140,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                   className="admin-search"
                   placeholder="Buscar parâmetro ou valor..."
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => setQuery(e.target.value)} id="admin-views-settingsview-1135"
                 />
               </div>
             </div>
@@ -1322,7 +1326,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Ex.: Nome da oficina"
-                    required
+                    required id="admin-views-settingsview-1320"
                   />
                 </div>
 
@@ -1331,7 +1335,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={category}
-                    onChange={(e) => setCategory(e.target.value)}
+                    onChange={(e) => setCategory(e.target.value)} id="admin-views-settingsview-1331"
                   >
                     {CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
@@ -1349,7 +1353,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     value={valueText}
                     onChange={(e) => setValueText(e.target.value)}
                     placeholder="Informe o valor do parâmetro ou texto padrão..."
-                    required
+                    required id="admin-views-settingsview-1346"
                   />
                 </div>
               </div>
@@ -1548,6 +1552,7 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                               <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                                 <input
                                   className="admin-input"
+                                  id={`admin-site-${fieldKey}-${idx}`}
                                   value={String(item ?? "")}
                                   onChange={(e) => {
                                     const nextArr = [...fieldVal];

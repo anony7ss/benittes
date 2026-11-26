@@ -168,7 +168,7 @@ export function ClientPicker({
         const picked = clients.find((c) => c.id === e.target.value) ?? null;
         onSelectClient(picked);
       }}
-      style={{ marginBottom: 6 }}
+      style={{ marginBottom: 6 }} id="admin-quickpickers-164"
     >
       <option value="">Selecionar cliente salvo…</option>
       {clients.map((c) => {
@@ -217,7 +217,7 @@ export function VehiclePicker({
         const picked = vehicles.find((v) => v.id === e.target.value) ?? null;
         onSelectVehicle(picked);
       }}
-      style={{ marginBottom: 6 }}
+      style={{ marginBottom: 6 }} id="admin-quickpickers-213"
     >
       <option value="">Selecionar veículo salvo…</option>
       {sorted.map((v) => (
@@ -258,7 +258,7 @@ export function ServicePicker({
           const picked = services.find((s) => s.id === e.target.value) ?? null;
           onSelectService(picked, picked ? resolveServicePrice(picked, priceRules, vehicleProfile) : null);
         }}
-        style={{ marginBottom: 6 }}
+        style={{ marginBottom: 6 }} id="admin-quickpickers-254"
       >
         <option value="">Selecionar serviço salvo…</option>
         {services.map((s) => {

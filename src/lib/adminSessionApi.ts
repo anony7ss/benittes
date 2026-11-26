@@ -30,7 +30,13 @@ export async function getAdminSession(request: NextRequest) {
   try {
     const staff = await requirePanelStaff(request);
     if (!staff) return privateJson({ session: null, error: "Sem sessão ativa." }, 401);
-    return privateJson({ session: publicSession(staff.user), member: staff.member });
+    const { data: avatarRow, error: avatarError } = await getServiceSupabase()
+      .from("panel_member_avatars")
+      .select("photo")
+      .eq("user_id", staff.user.id)
+      .maybeSingle();
+    const avatar = avatarError || typeof avatarRow?.photo !== "string" ? null : avatarRow.photo;
+    return privateJson({ session: publicSession(staff.user), member: staff.member, avatar });
   } catch {
     return privateJson({ error: "Autenticação temporariamente indisponível." }, 503);
   }

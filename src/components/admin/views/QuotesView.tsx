@@ -528,7 +528,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
             className="admin-search"
             placeholder="Buscar por título, cliente ou placa..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)} id="admin-views-quotesview-527"
           />
         </div>
 
@@ -775,7 +775,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     required
                     placeholder="Ex: Troca de embreagem + retífica do volante"
                     value={form.title}
-                    onChange={(e) => setForm((prev) => serviceTitlePatch(prev, e.target.value))}
+                    onChange={(e) => setForm((prev) => serviceTitlePatch(prev, e.target.value))} id="admin-views-quotesview-773"
                   />
                 </div>
 
@@ -805,7 +805,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-input"
                     placeholder="Nome do cliente"
                     value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-quotesview-804"
                   />
                 </div>
 
@@ -835,7 +835,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-input"
                     placeholder="ABC1D23"
                     value={form.vehicle}
-                    onChange={(e) => setForm((prev) => ({ ...prev, ...vehicleFormPatch(prev, e.target.value) }))}
+                    onChange={(e) => setForm((prev) => ({ ...prev, ...vehicleFormPatch(prev, e.target.value) }))} id="admin-views-quotesview-834"
                   />
                 </div>
 
@@ -875,6 +875,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                         >
                           <select
                             className="admin-select"
+                            id={`admin-quote-item-type-${item.id}`}
                             style={{ minHeight: 36, padding: "6px 8px", fontSize: 12 }}
                             value={item.type}
                             onChange={(e) =>
@@ -906,6 +907,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                             )}
                             <input
                               className="admin-input"
+                              id={`admin-quote-item-description-${item.id}`}
                               style={{ minHeight: 36, padding: "6px 10px", fontSize: 12.5 }}
                               placeholder="Descrição do item"
                               value={item.name}
@@ -915,6 +917,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                           <input
                             type="number"
                             min={1}
+                            id={`admin-quote-item-quantity-${item.id}`}
                             className="admin-input"
                             style={{ minHeight: 36, padding: "6px 8px", fontSize: 12.5 }}
                             value={item.qty}
@@ -926,6 +929,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                             type="number"
                             min={0}
                             step="0.01"
+                            id={`admin-quote-item-price-${item.id}`}
                             className="admin-input"
                             style={{ minHeight: 36, padding: "6px 8px", fontSize: 12.5 }}
                             placeholder="R$"
@@ -960,7 +964,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                       className="admin-input"
                       placeholder="(11) 99999-9999"
                       value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                      onChange={(e) => setForm({ ...form, phone: e.target.value })} id="admin-views-quotesview-959"
                     />
                   </div>
                   <div className="admin-field">
@@ -972,7 +976,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                       min="0"
                       placeholder="0,00"
                       value={form.amount}
-                      onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                      onChange={(e) => setForm({ ...form, amount: e.target.value })} id="admin-views-quotesview-968"
                     />
                   </div>
                   <div className="admin-field">
@@ -981,7 +985,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                       type="date"
                       className="admin-input"
                       value={form.validade}
-                      onChange={(e) => setForm({ ...form, validade: e.target.value })}
+                      onChange={(e) => setForm({ ...form, validade: e.target.value })} id="admin-views-quotesview-980"
                     />
                   </div>
                 </div>
@@ -993,7 +997,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
                     rows={3}
                     placeholder="Detalhe peças, serviços inclusos e condições..."
                     value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-quotesview-991"
                   />
                 </div>
               </div>

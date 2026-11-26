@@ -80,7 +80,7 @@ export function CookieBanner({
       {customizing && (
         <div className="cookie-options">
           <label className="cookie-option is-locked">
-            <input type="checkbox" checked disabled />
+            <input id="cookie-essential" type="checkbox" checked disabled />
             <span>
               <strong>Essenciais</strong>
               <small>Necessários para segurança, navegação e funcionamento básico.</small>
@@ -88,6 +88,7 @@ export function CookieBanner({
           </label>
           <label className="cookie-option">
             <input
+              id="cookie-preferences"
               type="checkbox"
               checked={preferences}
               onChange={(e) => setPreferences(e.target.checked)}
@@ -99,6 +100,7 @@ export function CookieBanner({
           </label>
           <label className="cookie-option">
             <input
+              id="cookie-performance"
               type="checkbox"
               checked={analytics}
               onChange={(e) => setAnalytics(e.target.checked)}

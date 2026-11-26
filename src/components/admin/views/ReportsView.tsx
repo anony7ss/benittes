@@ -265,7 +265,7 @@ export function ReportsView() {
               className="admin-select"
               style={{ minWidth: 180, minHeight: 38, height: 38, padding: "0 32px 0 12px" }}
               value={selectedModule}
-              onChange={(event) => setSelectedModule(event.target.value as ReportModule)}
+              onChange={(event) => setSelectedModule(event.target.value as ReportModule)} id="admin-views-reportsview-264"
             >
               {MODULES.map((mod) => (
                 <option key={mod.id} value={mod.id}>
@@ -425,7 +425,7 @@ export function ReportsView() {
                 className="admin-input"
                 style={{ width: 84, minHeight: 34, padding: "4px 10px" }}
                 value={commissionPct}
-                onChange={(e) => setCommissionPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+                onChange={(e) => setCommissionPct(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} id="admin-views-reportsview-420"
               />
             </label>
           </div>

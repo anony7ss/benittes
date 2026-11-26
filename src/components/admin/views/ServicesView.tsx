@@ -257,7 +257,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
               placeholder="Ex: Estética Automotiva, Funilaria..."
-              required
+              required id="admin-views-servicesview-254"
             />
             <button type="submit" className="admin-primary" disabled={savingCat}>
               <Plus size={15} /> {savingCat ? "Salvando..." : "Criar categoria"}
@@ -318,7 +318,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
             className="admin-search"
             placeholder="Buscar serviço ou categoria..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)} id="admin-views-servicesview-317"
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -593,7 +593,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     required
                     value={form.title}
                     onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    placeholder="Ex: Revisão completa de freios"
+                    placeholder="Ex: Revisão completa de freios" id="admin-views-servicesview-591"
                   />
                 </div>
                 <div className="admin-field">
@@ -609,7 +609,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                         setCustomCategoryMode(false);
                         setForm({ ...form, categoria: e.target.value });
                       }
-                    }}
+                    }} id="admin-views-servicesview-601"
                   >
                     {categories.map((cat) => (
                       <option key={cat} value={cat}>
@@ -626,7 +626,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                       autoFocus
                       value={form.categoria}
                       onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-                      placeholder="Digite o nome da nova categoria"
+                      placeholder="Digite o nome da nova categoria" id="admin-views-servicesview-622"
                     />
                   )}
                 </div>
@@ -636,7 +636,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.duracao}
                     onChange={(e) => setForm({ ...form, duracao: e.target.value })}
-                    placeholder="Ex: 1h30"
+                    placeholder="Ex: 1h30" id="admin-views-servicesview-635"
                   />
                 </div>
                 <div className="admin-field wide">
@@ -644,7 +644,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                   <select
                     className="admin-select"
                     value={form.pricing_mode}
-                    onChange={(e) => setForm({ ...form, pricing_mode: e.target.value as ServiceForm["pricing_mode"] })}
+                    onChange={(e) => setForm({ ...form, pricing_mode: e.target.value as ServiceForm["pricing_mode"] })} id="admin-views-servicesview-644"
                   >
                     <option value="fixed">Preço fixo para qualquer veículo</option>
                     <option value="vehicle">Preço varia por veículo</option>
@@ -673,7 +673,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    placeholder="250.00"
+                    placeholder="250.00" id="admin-views-servicesview-669"
                   />
                 </div>
                 <div className="admin-field">
@@ -685,7 +685,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     className="admin-input"
                     value={form.preco_promo}
                     onChange={(e) => setForm({ ...form, preco_promo: e.target.value })}
-                    placeholder="199.90"
+                    placeholder="199.90" id="admin-views-servicesview-681"
                   />
                 </div>
                 <div
@@ -712,7 +712,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                         if (rate > 0) {
                           setForm((prev) => ({ ...prev, amount: (rate * hours).toFixed(2) }));
                         }
-                      }}
+                      }} id="admin-views-servicesview-702"
                     />
                     <input
                       type="number"
@@ -725,7 +725,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                         if (hrs > 0) {
                           setForm((prev) => ({ ...prev, duracao: `${hrs}h` }));
                         }
-                      }}
+                      }} id="admin-views-servicesview-717"
                     />
                   </div>
                   <small style={{ marginTop: 6 }}>
@@ -741,7 +741,7 @@ export function ServicesView({ session }: { session: { user: { id: string } } })
                     rows={3}
                     value={form.description}
                     onChange={(e) => setForm({ ...form, description: e.target.value })}
-                    placeholder="Itens inclusos no serviço e observações..."
+                    placeholder="Itens inclusos no serviço e observações..." id="admin-views-servicesview-739"
                   />
                 </div>
               </div>

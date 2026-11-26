@@ -598,7 +598,7 @@ export function WhatsAppBotView() {
             {autoSendQuotes && (
               <div className="admin-field wide">
                 <label>Mensagem ao enviar orçamento ou OS</label>
-                <textarea className="admin-textarea" rows={3} maxLength={1500} value={autoQuoteMessageTemplate} onChange={(event) => setAutoQuoteMessageTemplate(event.target.value)} />
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={autoQuoteMessageTemplate} onChange={(event) => setAutoQuoteMessageTemplate(event.target.value)} id="admin-views-whatsappbotview-601" />
                 <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{veiculo}}"} e {"{{valor}}"}.</small>
               </div>
             )}
@@ -609,7 +609,7 @@ export function WhatsAppBotView() {
                 className="admin-input"
                 value={ownerPhone}
                 onChange={(e) => setOwnerPhone(e.target.value)}
-                placeholder="(11) 99999-9999"
+                placeholder="(11) 99999-9999" id="admin-views-whatsappbotview-608"
               />
             </div>
 
@@ -619,7 +619,7 @@ export function WhatsAppBotView() {
                 className="admin-input"
                 value={aiModel}
                 onChange={(e) => setAiModel(e.target.value)}
-                placeholder="qwen3.8-flash"
+                placeholder="qwen3.8-flash" id="admin-views-whatsappbotview-618"
               />
             </div>
 
@@ -628,7 +628,7 @@ export function WhatsAppBotView() {
               <select
                 className="admin-select"
                 value={audioMode}
-                onChange={(e) => setAudioMode(e.target.value as typeof audioMode)}
+                onChange={(e) => setAudioMode(e.target.value as typeof audioMode)} id="admin-views-whatsappbotview-628"
               >
                 <option value="direct_request">Quando o cliente pedir</option>
                 <option value="mirror">Espelhar (se cliente mandar áudio)</option>
@@ -639,7 +639,7 @@ export function WhatsAppBotView() {
 
             <div className="admin-field wide">
               <label>Pausa após mensagem do atendente</label>
-              <select className="admin-select" value={humanPauseMinutes} onChange={(event) => setHumanPauseMinutes(Number(event.target.value))}>
+              <select className="admin-select" value={humanPauseMinutes} onChange={(event) => setHumanPauseMinutes(Number(event.target.value))} id="admin-views-whatsappbotview-642">
                 <option value={0}>Não pausar automaticamente</option>
                 <option value={15}>15 minutos</option>
                 <option value={30}>30 minutos</option>
@@ -659,7 +659,7 @@ export function WhatsAppBotView() {
                 rows={4}
                 value={pausedPhonesText}
                 onChange={(event) => setPausedPhonesText(event.target.value)}
-                placeholder={"+5511999999999\n+5511888888888"}
+                placeholder={"+5511999999999\n+5511888888888"} id="admin-views-whatsappbotview-657"
               />
               <small style={{ color: "var(--admin-muted)" }}>
                 Um número por linha. Também aceita vírgulas. O bot não responderá automaticamente a esses contatos até remover o número e salvar.
@@ -671,7 +671,7 @@ export function WhatsAppBotView() {
               <select
                 className="admin-select"
                 value={audioVoice}
-                onChange={(e) => setAudioVoice(e.target.value)}
+                onChange={(e) => setAudioVoice(e.target.value)} id="admin-views-whatsappbotview-671"
               >
                 <option value="pt-BR-FranciscaNeural">Francisca (Feminina)</option>
                 <option value="pt-BR-AntonioNeural">Antonio (Masculina)</option>
@@ -690,7 +690,7 @@ export function WhatsAppBotView() {
             {notifyQuote && (
               <div className="admin-field wide">
                 <label>Modelo do aviso de orçamento</label>
-                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerQuoteAlertMessage} onChange={(event) => setOwnerQuoteAlertMessage(event.target.value)} />
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerQuoteAlertMessage} onChange={(event) => setOwnerQuoteAlertMessage(event.target.value)} id="admin-views-whatsappbotview-693" />
                 <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{placa}}"}, {"{{servico}}"}, {"{{valor}}"} e {"{{decisao}}"}.</small>
               </div>
             )}
@@ -707,7 +707,7 @@ export function WhatsAppBotView() {
             {notifyHuman && (
               <div className="admin-field wide">
                 <label>Modelo do aviso de atendimento humano</label>
-                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerHumanAlertMessage} onChange={(event) => setOwnerHumanAlertMessage(event.target.value)} />
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerHumanAlertMessage} onChange={(event) => setOwnerHumanAlertMessage(event.target.value)} id="admin-views-whatsappbotview-710" />
                 <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{telefone}}"} e {"{{motivo}}"}.</small>
               </div>
             )}
@@ -721,7 +721,7 @@ export function WhatsAppBotView() {
             {notifyAppointment && (
               <div className="admin-field wide">
                 <label>Modelo do aviso de agendamento</label>
-                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerAppointmentAlertMessage} onChange={(event) => setOwnerAppointmentAlertMessage(event.target.value)} />
+                <textarea className="admin-textarea" rows={3} maxLength={1500} value={ownerAppointmentAlertMessage} onChange={(event) => setOwnerAppointmentAlertMessage(event.target.value)} id="admin-views-whatsappbotview-724" />
                 <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{telefone}}"}, {"{{servico}}"}, {"{{data}}"}, {"{{hora}}"} e {"{{placa}}"}.</small>
               </div>
             )}
@@ -736,12 +736,12 @@ export function WhatsAppBotView() {
               <>
                 <div className="admin-field">
                   <label>Enviar com quantos minutos de antecedência</label>
-                  <input className="admin-input" type="number" min={15} max={10080} step={15} required value={appointmentReminderMinutes} onChange={(event) => setAppointmentReminderMinutes(Number(event.target.value))} />
+                  <input className="admin-input" type="number" min={15} max={10080} step={15} required value={appointmentReminderMinutes} onChange={(event) => setAppointmentReminderMinutes(Number(event.target.value))} id="admin-views-whatsappbotview-739" />
                   <small style={{ color: "var(--admin-muted)" }}>De 15 minutos a 7 dias.</small>
                 </div>
                 <div className="admin-field wide">
                   <label>Mensagem do lembrete</label>
-                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={appointmentReminderMessage} onChange={(event) => setAppointmentReminderMessage(event.target.value)} />
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={appointmentReminderMessage} onChange={(event) => setAppointmentReminderMessage(event.target.value)} id="admin-views-whatsappbotview-744" />
                   <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{data}}"}, {"{{hora}}"}, {"{{servico}}"} e {"{{placa}}"}.</small>
                 </div>
               </>
@@ -757,12 +757,12 @@ export function WhatsAppBotView() {
               <>
                 <div className="admin-field">
                   <label>Enviar após quantas horas</label>
-                  <input className="admin-input" type="number" min={1} max={720} step={1} required value={quoteFollowupHours} onChange={(event) => setQuoteFollowupHours(Number(event.target.value))} />
+                  <input className="admin-input" type="number" min={1} max={720} step={1} required value={quoteFollowupHours} onChange={(event) => setQuoteFollowupHours(Number(event.target.value))} id="admin-views-whatsappbotview-760" />
                   <small style={{ color: "var(--admin-muted)" }}>De 1 hora a 30 dias.</small>
                 </div>
                 <div className="admin-field wide">
                   <label>Mensagem de acompanhamento</label>
-                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={quoteFollowupMessage} onChange={(event) => setQuoteFollowupMessage(event.target.value)} />
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={quoteFollowupMessage} onChange={(event) => setQuoteFollowupMessage(event.target.value)} id="admin-views-whatsappbotview-765" />
                   <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{placa}}"}, {"{{valor}}"} e {"{{link}}"}.</small>
                 </div>
               </>
@@ -778,12 +778,12 @@ export function WhatsAppBotView() {
               <>
                 <div className="admin-field">
                   <label>Enviar após quantos dias</label>
-                  <input className="admin-input" type="number" min={1} max={3650} step={1} required value={serviceFollowupDays} onChange={(event) => setServiceFollowupDays(Number(event.target.value))} />
+                  <input className="admin-input" type="number" min={1} max={3650} step={1} required value={serviceFollowupDays} onChange={(event) => setServiceFollowupDays(Number(event.target.value))} id="admin-views-whatsappbotview-781" />
                   <small style={{ color: "var(--admin-muted)" }}>De 1 dia a 10 anos.</small>
                 </div>
                 <div className="admin-field wide">
                   <label>Mensagem do lembrete de revisão</label>
-                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={serviceFollowupMessage} onChange={(event) => setServiceFollowupMessage(event.target.value)} />
+                  <textarea className="admin-textarea" rows={3} maxLength={1500} value={serviceFollowupMessage} onChange={(event) => setServiceFollowupMessage(event.target.value)} id="admin-views-whatsappbotview-786" />
                   <small style={{ color: "var(--admin-muted)" }}>Variáveis: {"{{nome}}"}, {"{{oficina}}"}, {"{{servico}}"}, {"{{placa}}"} e {"{{data}}"}.</small>
                 </div>
               </>
@@ -807,7 +807,7 @@ export function WhatsAppBotView() {
                   rows={3}
                   value={closedAutoReplyMessage}
                   onChange={(e) => setClosedAutoReplyMessage(e.target.value)}
-                  placeholder="Mensagem enviada automaticamente fora do horário de funcionamento..."
+                  placeholder="Mensagem enviada automaticamente fora do horário de funcionamento..." id="admin-views-whatsappbotview-805"
                 />
               </div>
             )}
@@ -838,7 +838,7 @@ export function WhatsAppBotView() {
                   required
                   value={testPhone}
                   onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
+                  placeholder="(11) 99999-9999" id="admin-views-whatsappbotview-836"
                 />
               </div>
               <div className="admin-field wide">
@@ -849,7 +849,7 @@ export function WhatsAppBotView() {
                   required
                   value={testMessage}
                   onChange={(e) => setTestMessage(e.target.value)}
-                  placeholder="Mensagem direta para o cliente..."
+                  placeholder="Mensagem direta para o cliente..." id="admin-views-whatsappbotview-846"
                 />
               </div>
               <div className="admin-field wide" style={{ display: "flex", justifyContent: "flex-end" }}>

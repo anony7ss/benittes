@@ -209,7 +209,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
             className="admin-search"
             placeholder="Buscar por laudo, placa ou cliente..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)} id="admin-views-inspectionsview-208"
           />
         </div>
         <div className="admin-filter-pills">
@@ -325,7 +325,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     required
                     placeholder="Ex: Vistoria preventiva 40.000 km"
                     value={form.title}
-                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })} id="admin-views-inspectionsview-323"
                   />
                 </div>
 
@@ -353,7 +353,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     className="admin-input"
                     placeholder="ABC1D23"
                     value={form.vehicle}
-                    onChange={(e) => setForm({ ...form, vehicle: e.target.value })}
+                    onChange={(e) => setForm({ ...form, vehicle: e.target.value })} id="admin-views-inspectionsview-352"
                   />
                 </div>
 
@@ -384,7 +384,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     className="admin-input"
                     placeholder="Nome do cliente"
                     value={form.customer_name}
-                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })}
+                    onChange={(e) => setForm({ ...form, customer_name: e.target.value })} id="admin-views-inspectionsview-383"
                   />
                 </div>
 
@@ -393,7 +393,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                   <select
                     className="admin-select"
                     value={form.resultado}
-                    onChange={(e) => setForm({ ...form, resultado: e.target.value })}
+                    onChange={(e) => setForm({ ...form, resultado: e.target.value })} id="admin-views-inspectionsview-393"
                   >
                     <option value="aprovado">Aprovado</option>
                     <option value="atencao">Atenção</option>
@@ -407,7 +407,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     className="admin-input"
                     placeholder="Ex: 42500"
                     value={form.quilometragem}
-                    onChange={(e) => setForm({ ...form, quilometragem: e.target.value })}
+                    onChange={(e) => setForm({ ...form, quilometragem: e.target.value })} id="admin-views-inspectionsview-406"
                   />
                 </div>
 
@@ -416,7 +416,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                   <select
                     className="admin-select"
                     value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}
+                    onChange={(e) => setForm({ ...form, status: e.target.value })} id="admin-views-inspectionsview-416"
                   >
                     {STATUS_OPTIONS.map((st) => (
                       <option key={st} value={st}>
@@ -433,7 +433,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                     rows={3}
                     placeholder="Itens inspecionados, apontamentos e recomendações..."
                     value={form.description}
-                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })} id="admin-views-inspectionsview-431"
                   />
                 </div>
 
@@ -448,7 +448,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                         capture="environment"
                         multiple
                         onChange={(e) => void handlePhotoUpload(e)}
-                        style={{ display: "none" }}
+                        style={{ display: "none" }} id="admin-views-inspectionsview-445"
                       />
                     </label>
                   </div>

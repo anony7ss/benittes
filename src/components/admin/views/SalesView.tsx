@@ -470,7 +470,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
             className="admin-search"
             placeholder="Buscar comanda, cliente, veículo ou pagamento..."
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => setSearch(event.target.value)} id="admin-views-salesview-468"
           />
         </div>
       </div>
@@ -591,7 +591,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     required
                     value={form.title}
                     onChange={(event) => setForm((f) => saleServicePatch(f, event.target.value))}
-                    placeholder="Ex: Comanda #42 - Troca de óleo e filtros"
+                    placeholder="Ex: Comanda #42 - Troca de óleo e filtros" id="admin-views-salesview-589"
                   />
                 </div>
 
@@ -620,7 +620,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-input"
                     value={form.customer_name}
                     onChange={(event) => setForm((f) => ({ ...f, customer_name: event.target.value }))}
-                    placeholder="Nome do cliente"
+                    placeholder="Nome do cliente" id="admin-views-salesview-619"
                   />
                 </div>
 
@@ -646,7 +646,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-input"
                     value={form.vehicle}
                     onChange={(event) => setForm((f) => ({ ...f, ...saleVehiclePatch(f, event.target.value) }))}
-                    placeholder="Modelo / Placa"
+                    placeholder="Modelo / Placa" id="admin-views-salesview-645"
                   />
                 </div>
 
@@ -660,7 +660,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     required
                     value={form.amount}
                     onChange={(event) => setForm((f) => ({ ...f, amount: event.target.value, pricing_rule_id: "" }))}
-                    placeholder="0,00"
+                    placeholder="0,00" id="admin-views-salesview-655"
                   />
                 </label>
 
@@ -669,7 +669,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                   <select
                     className="admin-select"
                     value={form.forma_pagamento}
-                    onChange={(event) => setForm((f) => ({ ...f, forma_pagamento: event.target.value }))}
+                    onChange={(event) => setForm((f) => ({ ...f, forma_pagamento: event.target.value }))} id="admin-views-salesview-669"
                   >
                     {PAYMENT_METHODS.map((method) => (
                       <option key={method} value={method}>
@@ -684,7 +684,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                   <select
                     className="admin-select"
                     value={form.status}
-                    onChange={(event) => setForm((f) => ({ ...f, status: event.target.value }))}
+                    onChange={(event) => setForm((f) => ({ ...f, status: event.target.value }))} id="admin-views-salesview-684"
                   >
                     <option value="novo">Novo</option>
                     <option value="em_andamento">Em andamento</option>
@@ -700,7 +700,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-textarea"
                     value={form.itens}
                     onChange={(event) => setForm((f) => ({ ...f, itens: event.target.value }))}
-                    placeholder="Liste produtos ou serviços incluídos..."
+                    placeholder="Liste produtos ou serviços incluídos..." id="admin-views-salesview-699"
                   />
                 </label>
 
@@ -710,7 +710,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     className="admin-textarea"
                     value={form.description}
                     onChange={(event) => setForm((f) => ({ ...f, description: event.target.value }))}
-                    placeholder="Informações adicionais..."
+                    placeholder="Informações adicionais..." id="admin-views-salesview-709"
                   />
                 </label>
               </div>
@@ -778,7 +778,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                     <select
                       className="admin-select"
                       value={fiscalDocType}
-                      onChange={(event) => setFiscalDocType(event.target.value as "nfce" | "nfse" | "nfe")}
+                      onChange={(event) => setFiscalDocType(event.target.value as "nfce" | "nfse" | "nfe")} id="admin-views-salesview-778"
                     >
                       <option value="nfce">NFC-e (Consumidor / Balcão)</option>
                       <option value="nfse">NFS-e (Prestação de Serviço)</option>
@@ -791,7 +791,7 @@ export function SalesView({ session }: { session: { user: { id: string } } }) {
                       className="admin-input"
                       value={fiscalDocCpf}
                       onChange={(event) => setFiscalDocCpf(event.target.value)}
-                      placeholder="000.000.000-00 ou 00.000.000/0001-00"
+                      placeholder="000.000.000-00 ou 00.000.000/0001-00" id="admin-views-salesview-790"
                     />
                   </label>
                 </div>

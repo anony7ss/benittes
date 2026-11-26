@@ -162,7 +162,7 @@ export function DateRangeBar({ preset, startDate, endDate, onChange }: DateRange
             aria-label="Período"
             className="admin-date-range-select"
             value={preset}
-            onChange={(e) => handlePresetChange(e.target.value as PeriodPreset)}
+            onChange={(e) => handlePresetChange(e.target.value as PeriodPreset)} id="admin-daterangebar-161"
           >
             <option value="all">Todo o período</option>
             <option value="today">Hoje</option>

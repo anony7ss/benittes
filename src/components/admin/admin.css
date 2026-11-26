@@ -1200,51 +1200,51 @@ body:has(.admin-shell) {
   padding: 32px clamp(20px, 3vw, 44px) 72px;
 }
 
-.admin-page > *:not(.admin-modal-backdrop) {
+.admin-root.admin-navigation-transition .admin-page > *:not(.admin-modal-backdrop) {
   animation: adminPageEnter 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.admin-page > *:nth-child(1) { animation-delay: 0ms; }
-.admin-page > *:nth-child(2) { animation-delay: 75ms; }
-.admin-page > *:nth-child(3) { animation-delay: 150ms; }
-.admin-page > *:nth-child(4) { animation-delay: 225ms; }
-.admin-page > *:nth-child(5) { animation-delay: 300ms; }
-.admin-page > *:nth-child(6) { animation-delay: 375ms; }
-.admin-page > *:nth-child(n + 7) { animation-delay: 430ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(1) { animation-delay: 0ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(2) { animation-delay: 75ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(3) { animation-delay: 150ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(4) { animation-delay: 225ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(5) { animation-delay: 300ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(6) { animation-delay: 375ms; }
+.admin-root.admin-navigation-transition .admin-page > *:nth-child(n + 7) { animation-delay: 430ms; }
 
-.admin-page .admin-stat-grid > * {
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > * {
   animation: adminPageEnter 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.admin-page .admin-stat-grid > *:nth-child(1) { animation-delay: 60ms; }
-.admin-page .admin-stat-grid > *:nth-child(2) { animation-delay: 130ms; }
-.admin-page .admin-stat-grid > *:nth-child(3) { animation-delay: 200ms; }
-.admin-page .admin-stat-grid > *:nth-child(4) { animation-delay: 270ms; }
-.admin-page .admin-stat-grid > *:nth-child(n + 5) { animation-delay: 330ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > *:nth-child(1) { animation-delay: 60ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > *:nth-child(2) { animation-delay: 130ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > *:nth-child(3) { animation-delay: 200ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > *:nth-child(4) { animation-delay: 270ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-stat-grid > *:nth-child(n + 5) { animation-delay: 330ms; }
 
-.admin-page .admin-two-col > *,
-.admin-page .admin-three-col > * {
+.admin-root.admin-navigation-transition .admin-page .admin-two-col > *,
+.admin-root.admin-navigation-transition .admin-page .admin-three-col > * {
   animation: adminPageEnter 0.66s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.admin-page .admin-two-col > *:nth-child(1),
-.admin-page .admin-three-col > *:nth-child(1) { animation-delay: 120ms; }
-.admin-page .admin-two-col > *:nth-child(2),
-.admin-page .admin-three-col > *:nth-child(2) { animation-delay: 200ms; }
-.admin-page .admin-three-col > *:nth-child(3) { animation-delay: 280ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-two-col > *:nth-child(1),
+.admin-root.admin-navigation-transition .admin-page .admin-three-col > *:nth-child(1) { animation-delay: 120ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-two-col > *:nth-child(2),
+.admin-root.admin-navigation-transition .admin-page .admin-three-col > *:nth-child(2) { animation-delay: 200ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-three-col > *:nth-child(3) { animation-delay: 280ms; }
 
-.admin-page .admin-table tbody tr {
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr {
   animation: adminRowEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.admin-page .admin-table tbody tr:nth-child(1) { animation-delay: 20ms; }
-.admin-page .admin-table tbody tr:nth-child(2) { animation-delay: 55ms; }
-.admin-page .admin-table tbody tr:nth-child(3) { animation-delay: 90ms; }
-.admin-page .admin-table tbody tr:nth-child(4) { animation-delay: 125ms; }
-.admin-page .admin-table tbody tr:nth-child(5) { animation-delay: 160ms; }
-.admin-page .admin-table tbody tr:nth-child(n + 6) { animation-delay: 195ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(1) { animation-delay: 20ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(2) { animation-delay: 55ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(3) { animation-delay: 90ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(4) { animation-delay: 125ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(5) { animation-delay: 160ms; }
+.admin-root.admin-navigation-transition .admin-page .admin-table tbody tr:nth-child(n + 6) { animation-delay: 195ms; }
 
-.admin-data-enter {
+.admin-root.admin-navigation-transition .admin-data-enter {
   animation: adminRowEnter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -1253,17 +1253,17 @@ body:has(.admin-shell) {
   gap: 10px;
 }
 
-.admin-dashboard-data-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
-.admin-dashboard-data-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
-.admin-dashboard-data-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
-.admin-dashboard-data-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
-.admin-dashboard-data-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
+.admin-root.admin-navigation-transition .admin-dashboard-data-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
+.admin-root.admin-navigation-transition .admin-dashboard-data-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
+.admin-root.admin-navigation-transition .admin-dashboard-data-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
+.admin-root.admin-navigation-transition .admin-dashboard-data-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
+.admin-root.admin-navigation-transition .admin-dashboard-data-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
 
-.admin-inbox-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
-.admin-inbox-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
-.admin-inbox-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
-.admin-inbox-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
-.admin-inbox-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
+.admin-root.admin-navigation-transition .admin-inbox-list > .admin-data-enter:nth-child(1) { animation-delay: 20ms; }
+.admin-root.admin-navigation-transition .admin-inbox-list > .admin-data-enter:nth-child(2) { animation-delay: 55ms; }
+.admin-root.admin-navigation-transition .admin-inbox-list > .admin-data-enter:nth-child(3) { animation-delay: 90ms; }
+.admin-root.admin-navigation-transition .admin-inbox-list > .admin-data-enter:nth-child(4) { animation-delay: 125ms; }
+.admin-root.admin-navigation-transition .admin-inbox-list > .admin-data-enter:nth-child(n + 5) { animation-delay: 160ms; }
 
 .admin-dashboard-row-skeleton {
   min-height: 48px;
@@ -2132,7 +2132,7 @@ html.dark .admin-stat-card:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .admin-data-enter,
+  .admin-root.admin-navigation-transition .admin-data-enter,
   .admin-skeleton {
     animation: none;
   }
