@@ -15,6 +15,7 @@ export function Photo({
   height,
   srcWidths,
   srcWidth = 1120,
+  format = "webp",
 }: {
   id: string;
   priority?: boolean;
@@ -24,17 +25,18 @@ export function Photo({
   height?: number;
   srcWidths?: readonly number[];
   srcWidth?: number;
+  format?: "jpg" | "webp";
 }) {
   const alt = altOverride ?? fotos.find((p) => p.id === id)?.alt ?? "";
   const widths = srcWidths ?? [640, 1120, 1536];
-  const srcSet = widths.map((w) => `/media/${id}-${w}.webp ${w}w`).join(", ");
+  const srcSet = widths.map((w) => `/media/${id}-${w}.${format} ${w}w`).join(", ");
   const intrinsicWidth = width ?? photoDimensions[id]?.width ?? 1120;
   const intrinsicHeight = height ?? photoDimensions[id]?.height ?? 630;
 
   return (
     <picture>
       <img
-        src={`/media/${id}-${srcWidth}.webp`}
+        src={`/media/${id}-${srcWidth}.${format}`}
         srcSet={srcSet}
         sizes={sizes}
         alt={alt}

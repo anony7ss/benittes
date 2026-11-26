@@ -25,6 +25,7 @@ export default function HomePage() {
             width={1272}
             height={1237}
             srcWidths={[640, 1120, 1272]}
+            format="jpg"
             priority
           />
         </div>
