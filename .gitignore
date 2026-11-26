@@ -27,6 +27,8 @@ bot-whatsapp/.env.*
 # WhatsApp session / Baileys auth credentials
 auth_info_baileys/
 *session*/
+!src/app/api/admin/session/
+!src/app/api/admin/session/route.ts
 baileys_auth_info/
 
 # Logs & OS artifacts

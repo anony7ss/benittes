@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { DOMAIN_TABLE_BY_MODULE, fromDomainRow, toDomainPayload } from "../../../../lib/domainTables";
 import { consumeRateLimit, databaseErrorResponse, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
 import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../lib/supabaseAdmin";
+import { getAdminSession, migrateAdminSession, signOutAdminSession } from "../../../../lib/adminSessionApi";
 
 const TABLE_ALIASES: Record<string, string> = {
   contacts: "contact_messages",
@@ -299,6 +300,7 @@ export async function GET(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
+  if (resource === "session") return getAdminSession(request);
 
   try {
     const staff = await requirePanelStaff(request);
@@ -428,6 +430,8 @@ export async function POST(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
+  if (resource === "session") return migrateAdminSession(request);
+
   const { domainTable, table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
@@ -629,6 +633,8 @@ export async function DELETE(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
+  if (resource === "session") return signOutAdminSession(request);
+
   const { table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
