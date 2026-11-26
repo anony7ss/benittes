@@ -74,8 +74,8 @@ export default function ComoChegarPage() {
           <iframe
             title="Mapa da Benittes Oficina Mecânica em Alvorada - RS"
             src={oficina.googleMapsEmbedUrl}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
+            loading="eager"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen
           />
         </div>

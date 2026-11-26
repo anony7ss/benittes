@@ -15,7 +15,7 @@ export const oficina = {
   whatsapp: (process.env.NEXT_PUBLIC_WHATSAPP || process.env.PUBLIC_WHATSAPP || DEFAULT_WHATSAPP).trim(),
   email: publicEmail,
   googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(DEFAULT_ADDRESS)}`,
-  googleMapsEmbedUrl: `https://maps.google.com/maps?q=${encodeURIComponent(DEFAULT_ADDRESS)}&t=&z=16&ie=UTF8&iwloc=&output=embed`,
+  googleMapsEmbedUrl: `https://www.google.com/maps?q=${encodeURIComponent(DEFAULT_ADDRESS)}&z=16&output=embed`,
   wazeUrl: `https://waze.com/ul?q=${encodeURIComponent(DEFAULT_ADDRESS)}&navigate=yes`,
 };
 

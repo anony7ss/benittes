@@ -436,14 +436,6 @@ export function SiteShell({
                 Gerenciar cookies
               </button>
             </div>
-            <a
-              data-site-channel="whatsapp"
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              WhatsApp · {oficina.telefone}
-            </a>
           </div>
         </div>
       </footer>
