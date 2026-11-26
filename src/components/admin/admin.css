@@ -2802,13 +2802,13 @@ html.dark .admin-stat-card:hover {
     grid-template-columns: 1fr;
   }
   .admin-kanban {
+    display: flex;
+    flex-flow: row nowrap;
+    gap: 14px;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    grid-template-columns: none;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, min(420px, calc(100vw - 48px)));
     overflow-x: auto;
     overflow-y: hidden;
     align-items: stretch;
@@ -2818,7 +2818,10 @@ html.dark .admin-stat-card:hover {
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
   }
-  .admin-kanban > * {
+  .admin-kanban > .admin-lane {
+    flex: 0 0 min(420px, calc(100vw - 48px));
+    width: min(420px, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
     scroll-snap-align: start;
   }
   .admin-lane {
@@ -2833,7 +2836,8 @@ html.dark .admin-stat-card:hover {
   .admin-kanban-card > div > span {
     min-width: 0;
     max-width: 100%;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
   .admin-kanban-card .admin-secondary {
     height: auto !important;
