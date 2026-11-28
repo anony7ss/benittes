@@ -20,6 +20,7 @@ export type EstablishmentConfig = {
   garantia_dias: string;
   validade_orcamento_dias: string;
   observacoes_os: string;
+  criar_os_automaticamente: boolean;
 };
 
 export type DaySchedule = {
@@ -78,6 +79,7 @@ export const defaultEstablishmentConfig = (): EstablishmentConfig => ({
   garantia_dias: "90",
   validade_orcamento_dias: "7",
   observacoes_os: "Garantia de 90 dias sobre os serviços executados.",
+  criar_os_automaticamente: true,
 });
 
 export const defaultScheduleConfig = (): ScheduleConfig => ({

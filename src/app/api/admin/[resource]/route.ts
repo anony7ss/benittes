@@ -5,6 +5,7 @@ import { pricingModeForService, resolveServicePrice, vehiclePriceProfileFromRow 
 import { consumeRateLimit, databaseErrorResponse, isSameOriginRequest, readBoundedJson } from "../../../../lib/security/http";
 import { getServiceSupabase, hasPanelPermission, requirePanelStaff } from "../../../../lib/supabaseAdmin";
 import { getAdminSession, migrateAdminSession, signOutAdminSession } from "../../../../lib/adminSessionApi";
+import { ensureWorkOrderForApprovedQuote, markQuoteWorkOrderGenerated } from "../../../../lib/quoteWorkOrderAutomation";
 
 const TABLE_ALIASES: Record<string, string> = {
   contacts: "contact_messages",
@@ -775,6 +776,45 @@ export async function PATCH(
     const mapped = domainTable
       ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
       : (data ?? []);
+
+    if (resource === "quotes" && data?.[0]) {
+      const savedQuote = data[0] as Record<string, unknown>;
+      const savedDetails = isPlainObject(savedQuote.details) ? savedQuote.details : {};
+      if (savedQuote.status === "concluido" || savedDetails.aprovacao === "aprovado") {
+        try {
+          const service = getServiceSupabase();
+          const workOrder = await ensureWorkOrderForApprovedQuote(service, {
+            id: String(savedQuote.id ?? id),
+            reference: typeof savedQuote.reference === "string" ? savedQuote.reference : null,
+            notes: typeof savedQuote.notes === "string" ? savedQuote.notes : null,
+            total: typeof savedQuote.total === "number" || typeof savedQuote.total === "string" ? savedQuote.total : null,
+            customer_name: typeof savedQuote.customer_name === "string" ? savedQuote.customer_name : null,
+            phone: typeof savedQuote.phone === "string" ? savedQuote.phone : null,
+            vehicle_plate: typeof savedQuote.vehicle_plate === "string" ? savedQuote.vehicle_plate : null,
+            client_id: typeof savedQuote.client_id === "string" ? savedQuote.client_id : null,
+            vehicle_id: typeof savedQuote.vehicle_id === "string" ? savedQuote.vehicle_id : null,
+            created_by: typeof savedQuote.created_by === "string" ? savedQuote.created_by : null,
+            details: savedDetails,
+          });
+          if (workOrder) {
+            await markQuoteWorkOrderGenerated(service, String(savedQuote.id ?? id), workOrder.id);
+            mapped[0] = {
+              ...mapped[0],
+              details: {
+                ...(mapped[0]?.details && typeof mapped[0].details === "object" ? mapped[0].details : {}),
+                os_gerada: true,
+                os_id: workOrder.id,
+              },
+            };
+          }
+        } catch {
+          return NextResponse.json(
+            { error: "Orçamento atualizado, mas não foi possível concluir a criação automática da OS. Salve novamente para tentar de novo." },
+            { status: 503 },
+          );
+        }
+      }
+    }
 
     if ((resource === "work-orders" || resource === "sales") && mapped[0]) {
       mapped[0] = (await syncFinalizedOrderOrSale(

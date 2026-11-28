@@ -109,6 +109,12 @@ const OS_STEPS = [
     icon: Wrench,
   },
   {
+    key: "aguardando_processo",
+    label: "Aguardando",
+    desc: "Peça ou liberação",
+    icon: Clock,
+  },
+  {
     key: "concluido",
     label: "Concluído",
     desc: "Pronto para retirada",
@@ -119,9 +125,10 @@ const OS_STEPS = [
 function getOsStepIndex(aprovacao: string, osStatus: string | null): number {
   if (aprovacao !== "aprovado") return 0;
   if (!osStatus) return 1;
-  if (osStatus === "novo" || osStatus === "aguardando") return 2;
+  if (osStatus === "novo") return 2;
   if (osStatus === "em_andamento") return 3;
-  if (osStatus === "concluido") return 4;
+  if (osStatus === "aguardando") return 4;
+  if (osStatus === "concluido") return 5;
   return 1;
 }
 
@@ -130,7 +137,7 @@ function osStatusLabel(status: string): string {
     case "novo":
       return "Na oficina · Na fila";
     case "aguardando":
-      return "Aguardando peças";
+      return "Aguardando · Peça ou liberação";
     case "em_andamento":
       return "No box · Em execução";
     case "concluido":

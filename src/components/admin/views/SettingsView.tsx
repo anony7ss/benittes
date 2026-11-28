@@ -799,6 +799,25 @@ export function SettingsView({ session }: { session: { user: { id: string } } })
                     placeholder="Texto padrão exibido em ordens de serviço e orçamentos..." id="admin-views-settingsview-794"
                   />
                 </div>
+                <div className="admin-field wide">
+                  <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}>
+                    <Checkbox
+                      id="settings-auto-work-order-on-quote-approval"
+                      checked={estConfig.criar_os_automaticamente}
+                      onCheckedChange={(checked) =>
+                        setEstConfig({ ...estConfig, criar_os_automaticamente: checked === true })
+                      }
+                    />
+                    <span>
+                      <strong style={{ display: "block", marginBottom: 4 }}>
+                        Criar OS automaticamente quando o orçamento for aprovado
+                      </strong>
+                      <span style={{ color: "var(--admin-muted)", fontWeight: 400 }}>
+                        A OS entra em “Entrada” e fica vinculada ao orçamento aprovado. Ativado por padrão.
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", justifyContent: "flex-end" }}>

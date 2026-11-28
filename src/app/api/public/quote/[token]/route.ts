@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { clientAddress, enforceRateLimits, invalidOriginResponse, isSameOriginRequest, readBoundedJson, rateLimitedResponse } from "../../../../../lib/security/http";
+import { ensureWorkOrderForApprovedQuote, markQuoteWorkOrderGenerated } from "../../../../../lib/quoteWorkOrderAutomation";
 
 function getAdminClient() {
   const url = (
@@ -71,7 +72,7 @@ function totalAfterQuoteDiscount(subtotal: number, fullSubtotal: number, details
 async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, token: string) {
   const { data: quote, error: quoteErr } = await supabase
     .from("quotes")
-    .select("id,reference,customer_name,vehicle_plate,total,notes,status,valid_until,details,created_at,updated_at")
+    .select("id,reference,customer_name,phone,vehicle_plate,client_id,vehicle_id,created_by,total,notes,status,valid_until,details,created_at,updated_at")
     .contains("details", { public_token: token })
     .maybeSingle();
 
@@ -239,7 +240,7 @@ export async function POST(
 
     const { data: quote, error: quoteErr } = await supabase
       .from("quotes")
-      .select("id,reference,total,status,valid_until,details,updated_at")
+      .select("id,reference,total,status,valid_until,details,updated_at,notes,customer_name,phone,vehicle_plate,client_id,vehicle_id,created_by")
       .contains("details", { public_token: cleanToken })
       .maybeSingle();
 
@@ -261,6 +262,15 @@ export async function POST(
     }
 
     if (currentApproval === "aprovado" || quote.status === "concluido") {
+      if (action === "approve") {
+        const workOrder = await ensureWorkOrderForApprovedQuote(supabase, {
+          ...quote,
+          details: existingDetails,
+        });
+        if (workOrder) await markQuoteWorkOrderGenerated(supabase, quote.id, workOrder.id);
+        const updatedPayload = await buildPublicPayload(supabase, cleanToken);
+        return NextResponse.json(updatedPayload, { headers: { "Cache-Control": "no-store" } });
+      }
       return NextResponse.json(
         { error: "Este orçamento já foi aprovado." },
         { status: 409 },
@@ -344,20 +354,21 @@ export async function POST(
         );
       }
 
+      const approvedDetails = {
+        ...existingDetails,
+        ...(rawItems.length > 0 ? { items: nextItems } : {}),
+        aprovacao: "aprovado",
+        aprovacao_parcial: isPartial,
+        aprovado_em: isoDate,
+        aprovado_via: "ficha_online",
+        ...(note ? { observacao_cliente: note } : {}),
+      };
       const { data, error: updErr } = await supabase
         .from("quotes")
         .update({
           status: "concluido",
           total: nextTotal,
-          details: {
-            ...existingDetails,
-            ...(rawItems.length > 0 ? { items: nextItems } : {}),
-            aprovacao: "aprovado",
-            aprovacao_parcial: isPartial,
-            aprovado_em: isoDate,
-            aprovado_via: "ficha_online",
-            ...(note ? { observacao_cliente: note } : {}),
-          },
+          details: approvedDetails,
         })
         .eq("id", quote.id)
         .eq("status", quote.status)
@@ -368,6 +379,13 @@ export async function POST(
       if (updErr || !data) {
         return NextResponse.json({ error: "Este orçamento recebeu outra resposta. Atualize a página." }, { status: 409 });
       }
+
+      const workOrder = await ensureWorkOrderForApprovedQuote(supabase, {
+        ...quote,
+        total: nextTotal,
+        details: approvedDetails,
+      });
+      if (workOrder) await markQuoteWorkOrderGenerated(supabase, quote.id, workOrder.id);
     } else {
       const { data, error: updErr } = await supabase
         .from("quotes")

@@ -295,9 +295,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
         aprovado_em: todayIso(),
       },
     });
-    setNotice(
-      `Orçamento "${row.title}" aprovado. Clique em "Gerar OS" quando o veículo entrar na oficina.`,
-    );
+    setNotice(`Orçamento "${row.title}" aprovado.`);
   }
 
   async function rejectQuote(row: PanelRecord) {
