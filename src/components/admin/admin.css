@@ -7999,7 +7999,7 @@ html.dark .admin-quote-partial-option input,
   margin-bottom: 12px;
   padding: 8px 9px;
   border-radius: 5px;
-  background: #fff;
+  background: var(--admin-soft);
 }
 
 .admin-vehicle-card-last-service > svg {
@@ -9051,4 +9051,48 @@ html.dark .whatsapp-chat,
 @media (prefers-reduced-motion: reduce) {
   .wa-conversation-skeleton i,.wa-conversation-skeleton b,.wa-conversation-skeleton em,.wa-conversation-skeleton small,.wa-message-skeleton i,.wa-record-dot,.wa-spin { animation: none !important; }
   .wa-message-scroll { scroll-behavior: auto; }
+}
+
+/* On phones, form and detail dialogs fill the screen; delete confirmations stay compact. */
+@media (max-width: 768px) {
+  .admin-modal-backdrop:has(.admin-modal):not(:has(.admin-confirm-modal)) {
+    align-items: stretch;
+    justify-content: stretch;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .admin-modal-backdrop:has(.admin-modal):not(:has(.admin-confirm-modal)) .admin-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none !important;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: max(18px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
+  }
+
+  .admin-modal-backdrop:has(.admin-confirm-modal) {
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .admin-modal-backdrop:has(.admin-confirm-modal) .admin-confirm-modal {
+    box-sizing: border-box;
+    flex: 0 1 auto;
+    width: min(420px, calc(100vw - 32px));
+    max-width: 420px !important;
+    height: auto;
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    overflow-y: auto;
+    border-radius: 9px;
+    padding: 18px 16px max(16px, env(safe-area-inset-bottom));
+  }
 }
