@@ -154,6 +154,12 @@ export function isSupportedMediaBuffer(buffer, mediaType) {
       (buffer.length >= 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp')
     );
   }
+  if (mediaType === 'video') {
+    return (
+      (buffer.length >= 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp') ||
+      startsWithBytes(buffer, [0x1A, 0x45, 0xDF, 0xA3])
+    );
+  }
   return false;
 }
 

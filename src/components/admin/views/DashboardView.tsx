@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -10,12 +10,12 @@ import {
   Clock,
   DollarSign,
   Package,
+  RefreshCw,
   Wallet,
   Wrench,
 } from "lucide-react";
 import {
   fetchDashboard,
-  selectRows,
   type ContactMessage,
   type PanelRecord,
 } from "../../../lib/supabase";
@@ -27,42 +27,48 @@ import { dateText, detail, money, todayIso } from "../utils";
 
 export function DashboardView() {
   const [messages, setMessages] = useState<ContactMessage[]>([]);
-  const [appointments, setAppointments] = useState<PanelRecord[]>([]);
   const [workOrders, setWorkOrders] = useState<PanelRecord[]>([]);
+  const [workOrdersForRevenue, setWorkOrdersForRevenue] = useState<PanelRecord[]>([]);
   const [inventory, setInventory] = useState<PanelRecord[]>([]);
   const [sales, setSales] = useState<PanelRecord[]>([]);
   const [finance, setFinance] = useState<PanelRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [chartPeriod, setChartPeriod] = useState<RevenuePeriod>(6);
   const [error, setError] = useState("");
+  const [counts, setCounts] = useState({ todayAppointments: 0, activeWorkOrders: 0, waitingWorkOrders: 0 });
 
-  useEffect(() => {
-    void Promise.all([
-      fetchDashboard(),
-      selectRows<PanelRecord>("panel_records", {
-        module: "eq.finance",
-        order: "created_at.desc",
-        limit: "200",
-      }).catch(() => [] as PanelRecord[]),
-    ])
-      .then(([res, financeRows]) => {
+  const loadDashboard = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetchDashboard();
         setMessages(res.messages);
-        setAppointments(res.appointments);
         setWorkOrders(res.workOrders);
+        setWorkOrdersForRevenue(res.workOrdersForRevenue);
         setInventory(res.inventory);
         setSales(res.sales);
-        setFinance(financeRows);
-      })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setLoading(false));
+        setFinance(res.finance);
+        setCounts(res.counts);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar os dados do painel.");
+      setMessages([]);
+      setWorkOrders([]);
+      setWorkOrdersForRevenue([]);
+      setInventory([]);
+      setSales([]);
+      setFinance([]);
+      setCounts({ todayAppointments: 0, activeWorkOrders: 0, waitingWorkOrders: 0 });
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
 
   const today = todayIso();
   const currentMonthKey = today.slice(0, 7);
-  const activeOs = workOrders.filter((w) => w.status === "em_andamento" || w.status === "aguardando");
-  const todayAppointments = appointments.filter(
-    (a) => String(detail(a, "starts_at") ?? "").slice(0, 10) === today && a.status !== "cancelado",
-  );
   const lowStock = inventory.filter((item) => {
     const qty = Number(detail(item, "quantity") ?? 0);
     const min = Number(detail(item, "minimum_stock") ?? 0);
@@ -70,19 +76,24 @@ export function DashboardView() {
   });
 
   const monthlyRevenue = useMemo(() => {
-    const concluded = [...workOrders, ...sales].filter(
-      (row) => row.status === "concluido" && row.created_at.slice(0, 7) === currentMonthKey,
+    const concludedOrders = workOrdersForRevenue.filter(
+      (row) => row.status === "concluido" && String(detail(row, "finalized_at") ?? row.updated_at ?? row.created_at).slice(0, 7) === currentMonthKey,
+    );
+    const linkedOrderIds = new Set(concludedOrders.map((row) => row.id));
+    const standaloneSales = sales.filter((row) => !linkedOrderIds.has(String(detail(row, "source_work_order_id") ?? "")));
+    const concluded = [...concludedOrders, ...standaloneSales].filter(
+      (row) => row.status === "concluido" && String(detail(row, "finalized_at") ?? row.updated_at ?? row.created_at).slice(0, 7) === currentMonthKey,
     );
     return {
       total: concluded.reduce((acc, row) => acc + Number(row.amount ?? 0), 0),
       count: concluded.length,
     };
-  }, [workOrders, sales, currentMonthKey]);
+  }, [workOrdersForRevenue, sales, currentMonthKey]);
 
   const receivables = useMemo(() => {
     const openFinance = finance.filter(
       (row) =>
-        String(detail(row, "tipo") ?? "entrada") === "entrada" &&
+        String(detail(row, "tipo") ?? "receber") === "receber" &&
         row.status !== "concluido" &&
         row.status !== "cancelado",
     );
@@ -107,10 +118,12 @@ export function DashboardView() {
       };
     });
 
-    [...workOrders, ...sales]
+    const concludedOrders = workOrdersForRevenue.filter((row) => row.status === "concluido");
+    const linkedOrderIds = new Set(concludedOrders.map((row) => row.id));
+    [...concludedOrders, ...sales.filter((row) => !linkedOrderIds.has(String(detail(row, "source_work_order_id") ?? "")))]
       .filter((row) => row.status === "concluido")
       .forEach((row) => {
-        const key = row.created_at.slice(0, 7);
+        const key = String(detail(row, "finalized_at") ?? row.updated_at ?? row.created_at).slice(0, 7);
         const bucket = months.find((m) => m.key === key);
         if (bucket) bucket.value += Number(row.amount ?? 0);
       });
@@ -120,7 +133,7 @@ export function DashboardView() {
       value: m.value,
       label: money(m.value),
     }));
-  }, [workOrders, sales, chartPeriod]);
+  }, [workOrdersForRevenue, sales, chartPeriod]);
 
   return (
     <>
@@ -138,7 +151,14 @@ export function DashboardView() {
         </div>
       </div>
 
-      {error && <p className="admin-form-error" style={{ marginBottom: 16 }}>{error}</p>}
+      {error && (
+        <div className="admin-form-error" role="alert" style={{ marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <span>{error}</span>
+          <button type="button" className="admin-secondary" onClick={() => void loadDashboard()} disabled={loading}>
+            <RefreshCw size={14} /> Tentar novamente
+          </button>
+        </div>
+      )}
 
       {loading ? <SkeletonStatCards count={4} /> : (
       <section className="admin-stat-grid">
@@ -180,7 +200,7 @@ export function DashboardView() {
             </div>
           </div>
           <div>
-            <div className="admin-stat-number">{activeOs.length}</div>
+            <div className="admin-stat-number">{counts.activeWorkOrders}</div>
             <p className="admin-stat-sub">Veículos em execução ou diagnóstico</p>
           </div>
         </a>
@@ -188,12 +208,12 @@ export function DashboardView() {
         <a href={routeFor("agenda")} className="admin-stat-card">
           <div className="admin-stat-card-head">
             <span className="admin-stat-label">Agenda Hoje</span>
-            <div className={`admin-stat-icon ${todayAppointments.length > 0 ? "green" : ""}`}>
+            <div className={`admin-stat-icon ${counts.todayAppointments > 0 ? "green" : ""}`}>
               <Clock size={15} />
             </div>
           </div>
           <div>
-            <div className="admin-stat-number">{todayAppointments.length}</div>
+            <div className="admin-stat-number">{counts.todayAppointments}</div>
             <p className="admin-stat-sub">Entradas previstas para hoje</p>
           </div>
         </a>
@@ -247,7 +267,7 @@ export function DashboardView() {
                   <small>Ordens de serviço</small>
                 </span>
                 <strong className="admin-dashboard-alert-value">
-                  {workOrders.filter((w) => w.status === "aguardando").length}
+                  {counts.waitingWorkOrders}
                 </strong>
               </a>
 
@@ -257,7 +277,7 @@ export function DashboardView() {
                   <strong>Entradas previstas hoje</strong>
                   <small>Agenda da oficina</small>
                 </span>
-                <strong className="admin-dashboard-alert-value">{todayAppointments.length}</strong>
+                <strong className="admin-dashboard-alert-value">{counts.todayAppointments}</strong>
               </a>
 
               <a href={routeFor("financeiro")} className="admin-data-enter admin-dashboard-alert-row">

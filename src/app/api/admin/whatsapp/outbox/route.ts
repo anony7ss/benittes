@@ -71,3 +71,30 @@ export async function POST(request: NextRequest) {
   if (error) return databaseErrorResponse(error);
   return NextResponse.json({ ok: true, item: data });
 }
+
+export async function PATCH(request: NextRequest) {
+  if (!isSameOriginRequest(request)) return invalidOriginResponse();
+  const staff = await requirePanelStaff(request);
+  if (!staff) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+  if (!hasPanelPermission(staff.member, "bot", "write")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
+
+  const parsed = await readBoundedJson<{ id?: unknown }>(request, 2 * 1024);
+  if (!parsed.ok) return parsed.response;
+  if (typeof parsed.value.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parsed.value.id)) {
+    return NextResponse.json({ error: "Envio inválido." }, { status: 400 });
+  }
+
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase
+    .from("whatsapp_outbox")
+    .update({ status: "pending", retry_count: 0, error: null, processing_at: null, next_attempt_at: new Date().toISOString() })
+    .eq("id", parsed.value.id)
+    .eq("status", "failed")
+    .not("kind", "like", "2fa_%")
+    .select("id,status")
+    .maybeSingle();
+
+  if (error) return databaseErrorResponse(error);
+  if (!data) return NextResponse.json({ error: "Envio não encontrado ou não está em falha." }, { status: 409 });
+  return NextResponse.json({ ok: true, item: data }, { headers: { "Cache-Control": "no-store, max-age=0" } });
+}

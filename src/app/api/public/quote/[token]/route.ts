@@ -86,13 +86,24 @@ async function buildPublicPayload(supabase: ReturnType<typeof getAdminClient>, t
   const quoteDetails = asObj(quote.details);
 
   // Busca OS vinculada a este orçamento (se já tiver sido aprovada/gerada)
-  const { data: workOrder } = await supabase
+  let { data: workOrder } = await supabase
     .from("work_orders")
     .select("id, reference, status, diagnosis, notes, total, details, created_at, updated_at")
-    .contains("details", { orcamento_id: quote.id })
+    .eq("quote_id", quote.id)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  // Compatibility with OS criadas antes do vínculo passar a usar quote_id.
+  if (!workOrder) {
+    const legacy = await supabase
+      .from("work_orders")
+      .select("id, reference, status, diagnosis, notes, total, details, created_at, updated_at")
+      .contains("details", { orcamento_id: quote.id })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    workOrder = legacy.data;
+  }
 
   // Enriquece dados do veículo pela placa, se existir
   let vehicleInfo: {

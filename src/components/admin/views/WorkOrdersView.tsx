@@ -1,9 +1,10 @@
 "use client";
 
 import { SkeletonKanban } from "../Skeletons";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Archive, ArchiveRestore, ArrowRight, CheckCircle2, ClipboardList, Clock3, ExternalLink, Eye, MessageCircle, MoreHorizontal, Package, Pencil, Plus, Search, Trash2, Tv, X } from "lucide-react";
 import type { PanelRecord } from "../../../lib/supabase";
+import { selectRows } from "../../../lib/supabase";
 import { mergeVehiclePriceProfile, resolveServicePrice } from "../../../lib/servicePricing";
 import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
@@ -168,11 +169,62 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [viewing, setViewing] = useState<PanelRecord | null>(null);
+  const [viewEvents, setViewEvents] = useState<Array<{ id: string; event_type: string; summary: string; from_status: string | null; to_status: string | null; total: number | null; created_at: string }>>([]);
+  const [viewInspections, setViewInspections] = useState<PanelRecord[]>([]);
+  const [viewInspectionError, setViewInspectionError] = useState("");
+  const [viewMovements, setViewMovements] = useState<Array<{ quantity_delta: number; unit_cost: number; memo: string | null; created_at: string }>>([]);
+  const [viewMovementError, setViewMovementError] = useState("");
+  const [viewHistoryLoading, setViewHistoryLoading] = useState(false);
+  const [viewHistoryError, setViewHistoryError] = useState("");
+  const viewRequestRef = useRef(0);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [customService, setCustomService] = useState(false);
   const [customClient, setCustomClient] = useState(false);
   const [customVehicle, setCustomVehicle] = useState(false);
+
+  useEffect(() => {
+    if (!viewing?.id) return;
+    const requestId = ++viewRequestRef.current;
+    setViewHistoryLoading(true);
+    setViewHistoryError("");
+    void Promise.all([
+      selectRows<{ id: string; event_type: string; summary: string; from_status: string | null; to_status: string | null; total: number | null; created_at: string }>("work-order-events", {
+        work_order_id: `eq.${viewing.id}`,
+        select: "id,event_type,summary,from_status,to_status,total,created_at",
+        order: "created_at.desc",
+        limit: "100",
+      }),
+      selectRows<PanelRecord>("inspections", { work_order_id: `eq.${viewing.id}`, order: "created_at.desc", limit: "20" })
+        .then((data) => ({ data, error: "" }))
+        .catch((reason) => ({ data: [], error: reason instanceof Error ? reason.message : "Sem acesso às vistorias." })),
+      selectRows<{ quantity_delta: number; unit_cost: number; memo: string | null; created_at: string }>("inventory-movements", {
+        work_order_id: `eq.${viewing.id}`,
+        select: "quantity_delta,unit_cost,memo,created_at",
+        order: "created_at.desc",
+        limit: "100",
+      }).then((data) => ({ data, error: "" })).catch((reason) => ({ data: [], error: reason instanceof Error ? reason.message : "Sem acesso ao livro de estoque." })),
+    ]).then(([events, inspections, movements]) => {
+      if (requestId !== viewRequestRef.current) return;
+      setViewEvents(events);
+      setViewInspections(inspections.data);
+      setViewInspectionError(inspections.error);
+      setViewMovements(movements.data);
+      setViewMovementError(movements.error);
+    }).catch((reason) => {
+      if (requestId === viewRequestRef.current) {
+        setViewEvents([]);
+        setViewInspections([]);
+        setViewInspectionError("");
+        setViewMovements([]);
+        setViewMovementError("");
+        setViewHistoryError(reason instanceof Error ? reason.message : "Não foi possível carregar o histórico da OS.");
+      }
+    }).finally(() => {
+      if (requestId === viewRequestRef.current) setViewHistoryLoading(false);
+    });
+    return () => { viewRequestRef.current += 1; };
+  }, [viewing?.id]);
 
   const serviceVehicleProfile = mergeVehiclePriceProfile(
     vehicles.find((vehicle) => vehiclePlate(vehicle) === form.vehicle.trim().toUpperCase()),
@@ -1299,6 +1351,62 @@ export function WorkOrdersView({ session }: { session: { user: { id: string } } 
                     </div>
                   </div>
                 )}
+                <div className="admin-field wide">
+                  <label>Histórico e peças utilizadas</label>
+                  {viewHistoryLoading ? (
+                    <div style={{ color: "var(--admin-muted)", fontSize: 13 }}>Carregando histórico…</div>
+                  ) : viewHistoryError ? (
+                    <div className="admin-form-error" role="alert">{viewHistoryError}</div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--admin-line)", paddingBottom: 8 }}>
+                        <strong style={{ fontSize: 13 }}>Custo das peças baixadas</strong>
+                        {viewMovementError ? (
+                          <span style={{ color: "var(--admin-muted)", fontSize: 12 }}>Livro de estoque indisponível para este perfil</span>
+                        ) : (
+                          <strong>{money(viewMovements.filter((movement) => movement.quantity_delta < 0).reduce((sum, movement) => sum + Math.abs(Number(movement.quantity_delta)) * Number(movement.unit_cost), 0))}</strong>
+                        )}
+                      </div>
+                      {viewMovements.length > 0 && (
+                        <div style={{ display: "grid", gap: 5 }}>
+                          {viewMovements.map((movement, index) => (
+                            <div key={`${movement.created_at}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, color: "var(--admin-muted)", fontSize: 12 }}>
+                              <span>{movement.memo || "Movimentação de estoque"}</span>
+                              <span>{movement.quantity_delta > 0 ? "+" : ""}{movement.quantity_delta} · {money(movement.unit_cost)}/un.</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <strong style={{ fontSize: 13 }}>Vistorias vinculadas ({viewInspections.length})</strong>
+                      {viewInspectionError ? (
+                        <span style={{ color: "var(--admin-muted)", fontSize: 12 }}>Vistorias não disponíveis para este perfil.</span>
+                      ) : viewInspections.length === 0 ? (
+                        <span style={{ color: "var(--admin-muted)", fontSize: 12 }}>Nenhuma vistoria vinculada a esta OS.</span>
+                      ) : viewInspections.map((inspection) => {
+                        const checklist = Array.isArray(detail(inspection, "checklist")) ? detail(inspection, "checklist") as Array<{ id?: string; name?: string; result?: string }> : [];
+                        const photos = Array.isArray(detail(inspection, "fotos")) ? detail(inspection, "fotos") as string[] : [];
+                        return (
+                          <div key={inspection.id} style={{ display: "grid", gap: 7, padding: 10, border: "1px solid var(--admin-line)", borderRadius: 6 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}><strong>{inspection.title}</strong><span style={{ color: "var(--admin-muted)", fontSize: 12 }}>{inspection.status}</span></div>
+                            {checklist.length > 0 && <ul style={{ margin: 0, paddingLeft: 18, color: "var(--admin-muted)", fontSize: 12 }}>{checklist.map((item, index) => <li key={item.id || index}>{item.name}: {item.result}</li>)}</ul>}
+                            {photos.length > 0 && <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>{photos.slice(0, 8).map((photo, index) => <a key={`${inspection.id}-${index}`} href={photo} target="_blank" rel="noreferrer"><img src={photo} alt={`Foto ${index + 1} de ${inspection.title}`} loading="lazy" style={{ width: 64, height: 48, objectFit: "cover", borderRadius: 4, border: "1px solid var(--admin-line)" }} /></a>)}</div>}
+                          </div>
+                        );
+                      })}
+                      <strong style={{ fontSize: 13 }}>Eventos da ordem ({viewEvents.length})</strong>
+                      {viewEvents.length === 0 ? <span style={{ color: "var(--admin-muted)", fontSize: 12 }}>Nenhuma alteração registrada ainda.</span> : (
+                        <div style={{ display: "grid", gap: 5, maxHeight: 160, overflow: "auto" }}>
+                          {viewEvents.map((event) => (
+                            <div key={event.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, borderBottom: "1px solid var(--admin-line)", padding: "5px 0", fontSize: 12 }}>
+                              <span>{event.summary}{event.from_status || event.to_status ? ` · ${event.from_status ?? "—"} → ${event.to_status ?? "—"}` : ""}</span>
+                              <time style={{ color: "var(--admin-muted)", whiteSpace: "nowrap" }}>{new Date(event.created_at).toLocaleString("pt-BR")}</time>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="admin-modal-actions" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>

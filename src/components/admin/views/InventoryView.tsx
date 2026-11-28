@@ -1,12 +1,23 @@
 "use client";
 
 import { SkeletonTable } from "../Skeletons";
-import { useMemo, useState } from "react";
-import { AlertTriangle, Minus, Package, Pencil, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
-import { insertRow, type PanelRecord } from "../../../lib/supabase";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Minus, Package, Pencil, Plus, Search, ShoppingBag, Trash2, X, RotateCw } from "lucide-react";
+import { selectRows, type PanelRecord } from "../../../lib/supabase";
 import { AdminActionMenu } from "../ActionMenu";
 import { AdminStatusBadge } from "../StatusBadge";
-import { asText, detail, money, todayIso, useModuleRecords, modalBackdropProps } from "../utils";
+import { asText, detail, money, useModuleRecords, modalBackdropProps, dateText } from "../utils";
+
+type InventoryMovement = {
+  id: string;
+  inventory_item_id: string;
+  work_order_id: string | null;
+  source_type: "purchase" | "work_order" | "adjustment";
+  quantity_delta: number;
+  unit_cost: number;
+  memo: string | null;
+  created_at: string;
+};
 
 type InventoryForm = {
   title: string;
@@ -33,7 +44,7 @@ const emptyForm: InventoryForm = {
 };
 
 export function InventoryView({ session }: { session: { user: { id: string } } }) {
-  const { rows, loading, error, setError, saveRecord, patchRecord, removeRecord } =
+  const { rows, loading, error, setError, saveRecord, patchRecord, removeRecord, load } =
     useModuleRecords("inventory", session.user.id);
   const [search, setSearch] = useState("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
@@ -48,43 +59,65 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
   const [purchaseCost, setPurchaseCost] = useState("");
   const [purchasePayable, setPurchasePayable] = useState(true);
   const [purchaseSaving, setPurchaseSaving] = useState(false);
+  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(true);
+  const [movementsError, setMovementsError] = useState("");
+  const purchaseRequestId = useRef<string | null>(null);
+
+  async function loadMovements() {
+    setMovementsLoading(true);
+    setMovementsError("");
+    try {
+      setMovements(await selectRows<InventoryMovement>("inventory-movements", {
+        select: "id,inventory_item_id,work_order_id,source_type,quantity_delta,unit_cost,memo,created_at",
+        order: "created_at.desc",
+        limit: "15",
+      }));
+    } catch (reason) {
+      setMovements([]);
+      setMovementsError(reason instanceof Error ? reason.message : "Não foi possível carregar as movimentações.");
+    } finally {
+      setMovementsLoading(false);
+    }
+  }
+
+  useEffect(() => { void loadMovements(); }, []);
 
   async function handlePurchaseSubmit(e: React.FormEvent) {
     e.preventDefault();
     const target = rows.find((r) => r.id === purchaseItemId);
-    const qtyAdd = Math.max(1, Number(purchaseQty) || 1);
-    const totalCost = Math.max(0, Number(purchaseCost.replace(",", ".")) || 0);
+    const qtyAdd = Number(purchaseQty);
+    const totalCost = Number(purchaseCost.replace(",", "."));
     if (!target) return;
+    if (!Number.isFinite(qtyAdd) || qtyAdd <= 0 || qtyAdd > 100000 || !Number.isFinite(totalCost) || totalCost < 0) {
+      setError("Informe uma quantidade e um custo válidos.");
+      return;
+    }
     setPurchaseSaving(true);
+    setError("");
     try {
-      const existingDetails =
-        target.details && typeof target.details === "object" ? target.details : {};
-      const nextQty = Number(detail(target, "quantity") ?? 0) + qtyAdd;
-      await patchRecord(target.id, {
-        details: {
-          ...existingDetails,
-          quantity: nextQty,
-          ...(purchaseSupplier.trim() ? { fornecedor: purchaseSupplier.trim() } : {}),
-        },
+      purchaseRequestId.current ??= crypto.randomUUID();
+      const response = await fetch("/api/admin/inventory/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          request_id: purchaseRequestId.current,
+          item_id: target.id,
+          quantity: qtyAdd,
+          total_cost: totalCost,
+          supplier_name: purchaseSupplier.trim(),
+          create_payable: purchasePayable,
+        }),
       });
-      if (purchasePayable && totalCost > 0) {
-        await insertRow<PanelRecord>("panel_records", {
-          module: "finance",
-          title: `Compra: ${target.title} (${qtyAdd}x)`,
-          customer_name: purchaseSupplier.trim() || String(detail(target, "fornecedor") ?? "") || null,
-          amount: totalCost,
-          status: "novo",
-          details: {
-            tipo: "pagar",
-            categoria: "Compras / Fornecedores",
-            vencimento: todayIso(),
-          },
-          created_by: session.user.id,
-        });
-      }
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error || "Não foi possível registrar a compra.");
       setPurchaseOpen(false);
+      purchaseRequestId.current = null;
       setPurchaseQty("1");
       setPurchaseCost("");
+      await Promise.all([load(), loadMovements()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível registrar a compra.");
     } finally {
       setPurchaseSaving(false);
     }
@@ -200,6 +233,8 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
             onClick={() => {
               setPurchaseItemId(rows[0]?.id ?? "");
               setPurchaseSupplier(String(detail(rows[0] ?? ({} as PanelRecord), "fornecedor") ?? ""));
+              purchaseRequestId.current = crypto.randomUUID();
+              setError("");
               setPurchaseOpen(true);
             }}
             disabled={rows.length === 0}
@@ -231,6 +266,40 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
       )}
 
       {error && <p className="admin-form-error" style={{ marginBottom: 16 }}>{error}</p>}
+
+      <section className="admin-panel" style={{ marginBottom: 16 }}>
+        <div className="admin-panel-head" style={{ justifyContent: "space-between" }}>
+          <h2>Movimentações recentes</h2>
+          <button type="button" className="admin-icon-btn" onClick={() => void loadMovements()} disabled={movementsLoading} aria-label="Atualizar movimentações">
+            <RotateCw size={15} />
+          </button>
+        </div>
+        {movementsLoading ? <SkeletonTable rows={3} /> : movementsError ? (
+          <div className="admin-form-error" role="alert">
+            <span>{movementsError}</span>{" "}
+            <button type="button" className="admin-secondary" onClick={() => void loadMovements()}>Tentar novamente</button>
+          </div>
+        ) : movements.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--admin-muted)", fontSize: 13 }}>As entradas, ajustes e peças usadas em OS aparecerão aqui.</p>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead><tr><th>Peça</th><th>Movimento</th><th>Quantidade</th><th>Custo unitário</th><th>Data</th></tr></thead>
+              <tbody>{movements.map((movement) => {
+                const item = rows.find((row) => row.id === movement.inventory_item_id);
+                const label = movement.source_type === "purchase" ? "Compra" : movement.source_type === "work_order" ? "Uso em OS" : "Ajuste";
+                return <tr key={movement.id}>
+                  <td><strong>{item?.title ?? "Item removido"}</strong><div style={{ color: "var(--admin-muted)", fontSize: 11 }}>{movement.memo ?? ""}</div></td>
+                  <td>{label}</td>
+                  <td style={{ color: movement.quantity_delta < 0 ? "var(--admin-red)" : "var(--admin-green)", fontWeight: 600 }}>{movement.quantity_delta > 0 ? "+" : ""}{movement.quantity_delta}</td>
+                  <td>{money(movement.unit_cost)}</td>
+                  <td>{dateText(movement.created_at)}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="admin-toolbar">
         <div className="admin-search-wrap">
@@ -461,7 +530,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                 <h2>Registrar Compra / Entrada</h2>
                 <p>Atualiza o estoque automaticamente e lança em Contas a Pagar.</p>
               </div>
-              <button type="button" className="admin-icon-btn" onClick={() => setPurchaseOpen(false)}>
+                <button type="button" className="admin-icon-btn" onClick={() => { setPurchaseOpen(false); purchaseRequestId.current = null; }}>
                 <X size={16} />
               </button>
             </div>
@@ -531,7 +600,7 @@ export function InventoryView({ session }: { session: { user: { id: string } } }
                 </label>
               </div>
               <div className="admin-modal-actions">
-                <button type="button" className="admin-secondary" onClick={() => setPurchaseOpen(false)}>
+                <button type="button" className="admin-secondary" onClick={() => { setPurchaseOpen(false); purchaseRequestId.current = null; }}>
                   Cancelar
                 </button>
                 <button type="submit" className="admin-primary" disabled={purchaseSaving}>

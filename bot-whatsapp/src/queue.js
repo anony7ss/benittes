@@ -12,6 +12,7 @@ const MAX_ACTIVE_JIDS = 2000;
 const MAX_TEXT_CHARS = 6000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 16 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 16 * 1024 * 1024;
 
 function criarErroRetrySeguroAntesDoEnvio(message) {
   const error = new Error(message);
@@ -201,20 +202,22 @@ export async function sendHumanizedMedia(sock, jid, mediaBuffer, options = {}) {
   }
 
   const mediaType = options.mediaType;
-  if (mediaType !== 'audio' && mediaType !== 'image') {
+  if (mediaType !== 'audio' && mediaType !== 'image' && mediaType !== 'video') {
     throw new Error('Tipo de mídia não autorizado');
   }
-  const maxBytes = mediaType === 'audio' ? MAX_AUDIO_BYTES : MAX_IMAGE_BYTES;
+  const maxBytes = mediaType === 'audio' ? MAX_AUDIO_BYTES : mediaType === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
   if (mediaBuffer.length === 0 || mediaBuffer.length > maxBytes) {
     throw new Error('Mídia excede o limite permitido');
   }
   if (!isSupportedMediaBuffer(mediaBuffer, mediaType)) {
     throw new Error('Conteúdo de mídia inválido');
   }
-  const defaultMime = mediaType === 'audio' ? 'audio/ogg; codecs=opus' : 'image/webp';
+  const defaultMime = mediaType === 'audio' ? 'audio/ogg; codecs=opus' : mediaType === 'video' ? 'video/mp4' : 'image/webp';
   const mediaMimePattern = mediaType === 'audio'
     ? /^audio\/(?:ogg|opus|mpeg|mp4|x-m4a|webm)(?:;|$)/i
-    : /^image\/(?:webp|png|jpeg|jpg|gif)(?:;|$)/i;
+    : mediaType === 'video'
+      ? /^video\/(?:mp4|webm)(?:;|$)/i
+      : /^image\/(?:webp|png|jpeg|jpg|gif)(?:;|$)/i;
   const mediaMime = typeof options.mimetype === 'string' && mediaMimePattern.test(options.mimetype)
     ? options.mimetype.slice(0, 80)
     : defaultMime;
@@ -233,7 +236,9 @@ export async function sendHumanizedMedia(sock, jid, mediaBuffer, options = {}) {
 
     const payload = mediaType === 'audio'
       ? { audio: mediaBuffer, mimetype: mediaMime, ptt: true }
-      : { image: mediaBuffer, mimetype: mediaMime, ...(caption ? { caption } : {}) };
+      : mediaType === 'video'
+        ? { video: mediaBuffer, mimetype: mediaMime, ...(caption ? { caption } : {}) }
+        : { image: mediaBuffer, mimetype: mediaMime, ...(caption ? { caption } : {}) };
     const sent = await sock.sendMessage(jid, payload);
 
     if (!options.skipChatLog) {
@@ -243,7 +248,7 @@ export async function sendHumanizedMedia(sock, jid, mediaBuffer, options = {}) {
         senderName: 'Benittes Oficina',
         fromMe: true,
         senderType: options.senderType || 'admin_manual',
-        content: caption || (mediaType === 'audio' ? '🎤 [Áudio enviado]' : '📷 [Imagem enviada]'),
+        content: caption || (mediaType === 'audio' ? '🎤 [Áudio enviado]' : mediaType === 'video' ? '🎞️ [Vídeo enviado]' : '📷 [Imagem enviada]'),
         mediaType,
         mediaUrl: options.mediaUrl || null,
       });

@@ -17,6 +17,33 @@ const TABLE_ALIASES: Record<string, string> = {
   content: "site_content",
   site_content: "site_content",
   panel_records: "panel_records",
+  "inventory-movements": "inventory_movements",
+  "work-order-events": "work_order_events",
+};
+
+const READ_ONLY_RESOURCES = new Set(["inventory-movements", "work-order-events"]);
+
+const FILTERABLE_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
+  appointments: new Set(["created_at", "updated_at", "starts_at", "status", "client_id", "vehicle_id"]),
+  quotes: new Set(["created_at", "updated_at", "status", "client_id", "vehicle_id"]),
+  work_orders: new Set(["created_at", "updated_at", "status", "quote_id", "client_id", "vehicle_id"]),
+  inspections: new Set(["created_at", "updated_at", "result", "client_id", "vehicle_id", "work_order_id"]),
+  finance_entries: new Set(["created_at", "updated_at", "status", "direction", "due_at", "paid_at", "client_id", "supplier_id"]),
+  sales: new Set(["created_at", "updated_at", "status", "sold_at", "client_id", "vehicle_id"]),
+  clients: new Set(["created_at", "updated_at", "active", "full_name"]),
+  vehicles: new Set(["created_at", "updated_at", "status", "client_id", "license_plate"]),
+  services: new Set(["created_at", "updated_at", "active", "category"]),
+  service_price_rules: new Set(["created_at", "updated_at", "active", "service_id"]),
+  inventory_items: new Set(["created_at", "updated_at", "active", "category", "sku"]),
+  crm_interactions: new Set(["created_at", "updated_at", "status", "client_id", "next_followup"]),
+  inventory_movements: new Set(["created_at", "inventory_item_id", "source_type", "source_id", "work_order_id"]),
+  work_order_events: new Set(["created_at", "work_order_id", "event_type"]),
+};
+
+const ORDERABLE_COLUMNS_BY_TABLE: Record<string, Set<string>> = {
+  crm_interactions: new Set(["created_at", "next_followup"]),
+  inventory_movements: new Set(["created_at"]),
+  work_order_events: new Set(["created_at"]),
 };
 
 function defaultOrderForTable(table: string): string | null {
@@ -471,22 +498,36 @@ export async function GET(
 
     if (resource === "dashboard") {
       if (!hasPanelPermission(staff.member, "dashboard", "read")) return NextResponse.json({ error: "Acesso negado." }, { status: 403 });
-      const [msgs, cli, apts, os, inv, sls] = await Promise.all([
-        supabase.from("contact_messages").select("*").order("created_at", { ascending: false }).limit(20),
-        supabase.from("clients").select("*").order("created_at", { ascending: false }).limit(500),
-        supabase.from("appointments").select("*").order("created_at", { ascending: false }).limit(200),
-        supabase.from("work_orders").select("*").order("created_at", { ascending: false }).limit(200),
-        supabase.from("inventory_items").select("*").order("created_at", { ascending: false }).limit(200),
-        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(200),
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+      const dayStart = new Date(`${today}T00:00:00-03:00`).toISOString();
+      const nextDayStart = new Date(Date.parse(dayStart) + 24 * 60 * 60 * 1000).toISOString();
+      const recentStart = new Date(Date.now() - 183 * 24 * 60 * 60 * 1000).toISOString();
+      const [msgs, todayAppointmentCount, os, osRevenue, activeOsCount, waitingOsCount, inv, sls, fin] = await Promise.all([
+        supabase.from("contact_messages").select("id,name,email,status,created_at").order("created_at", { ascending: false }).limit(5),
+        supabase.from("appointments").select("id", { count: "exact", head: true }).gte("starts_at", dayStart).lt("starts_at", nextDayStart).neq("status", "cancelado"),
+        supabase.from("work_orders").select("id,reference,status,total,customer_name,vehicle_plate,created_at,updated_at,details,client_id,vehicle_id").order("created_at", { ascending: false }).limit(5),
+        supabase.from("work_orders").select("id,reference,status,total,created_at,updated_at,details").eq("status", "concluido").gte("updated_at", recentStart).order("updated_at", { ascending: false }).limit(500),
+        supabase.from("work_orders").select("id", { count: "exact", head: true }).in("status", ["em_andamento", "aguardando"]),
+        supabase.from("work_orders").select("id", { count: "exact", head: true }).eq("status", "aguardando"),
+        supabase.from("inventory_items").select("id,name,sku,category,quantity,minimum_quantity,unit,active,created_at,details").eq("active", true).order("created_at", { ascending: false }).limit(500),
+        supabase.from("sales").select("id,reference,status,total,created_at,sold_at,details").gte("created_at", recentStart).order("created_at", { ascending: false }).limit(500),
+        supabase.from("finance_entries").select("id,description,direction,amount,status,created_at,details").eq("direction", "receivable").neq("status", "concluido").neq("status", "cancelado").order("created_at", { ascending: false }).limit(500),
       ]);
+      const queryError = msgs.error || todayAppointmentCount.error || os.error || osRevenue.error || activeOsCount.error || waitingOsCount.error || inv.error || sls.error || fin.error;
+      if (queryError) return databaseErrorResponse(queryError);
       return NextResponse.json({
         messages: msgs.data ?? [],
-        clients: (cli.data ?? []).map((r) => fromDomainRow("clients", r as unknown as Record<string, unknown>)),
-        appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as unknown as Record<string, unknown>)),
         workOrders: (os.data ?? []).map((r) => fromDomainRow("work-orders", r as unknown as Record<string, unknown>)),
+        workOrdersForRevenue: (osRevenue.data ?? []).map((r) => fromDomainRow("work-orders", r as unknown as Record<string, unknown>)),
         inventory: (inv.data ?? []).map((r) => fromDomainRow("inventory", r as unknown as Record<string, unknown>)),
         sales: (sls.data ?? []).map((r) => fromDomainRow("sales", r as unknown as Record<string, unknown>)),
-      });
+        finance: (fin.data ?? []).map((r) => fromDomainRow("finance", r as unknown as Record<string, unknown>)),
+        counts: {
+          todayAppointments: todayAppointmentCount.count ?? 0,
+          activeWorkOrders: activeOsCount.count ?? 0,
+          waitingWorkOrders: waitingOsCount.count ?? 0,
+        },
+      }, { headers: { "Cache-Control": "no-store, max-age=0" } });
     }
 
     if (resource === "alerts") {
@@ -497,6 +538,8 @@ export async function GET(
         supabase.from("inventory_items").select("*").order("created_at", { ascending: false }).limit(50),
         supabase.from("finance_entries").select("*").order("created_at", { ascending: false }).limit(50),
       ]);
+      const alertError = msgs.error || apts.error || inv.error || fin.error;
+      if (alertError) return databaseErrorResponse(alertError);
       return NextResponse.json({
         messages: msgs.data ?? [],
         appointments: (apts.data ?? []).map((r) => fromDomainRow("appointments", r as unknown as Record<string, unknown>)),
@@ -537,26 +580,43 @@ export async function GET(
     };
 
     let query = supabase.from(table).select(columns) as unknown as DynamicQuery;
-    if (!domainTable) {
+    if (!domainTable || FILTERABLE_COLUMNS_BY_TABLE[table]) {
       for (const [column, expression] of searchParams.entries()) {
         if (column === "select" || column === "order" || column === "limit") continue;
+        const rangeMatch = /^(.*)_(from|before)$/.exec(column);
+        const filterColumn = rangeMatch ? rangeMatch[1] : column;
         const separator = expression.indexOf(".");
-        if (separator < 1 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(column)) {
+        const operator = rangeMatch ? (rangeMatch[2] === "from" ? "gte" : "lt") : expression.slice(0, separator);
+        const value = rangeMatch ? expression : expression.slice(separator + 1);
+        if ((!rangeMatch && separator < 1) || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(filterColumn)) {
           return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
         }
-        const operator = expression.slice(0, separator);
-        const value = expression.slice(separator + 1);
+        if (domainTable && !FILTERABLE_COLUMNS_BY_TABLE[table]?.has(filterColumn)) {
+          return NextResponse.json({ error: "Filtro não permitido para este recurso." }, { status: 400 });
+        }
+        if (READ_ONLY_RESOURCES.has(resource) && !FILTERABLE_COLUMNS_BY_TABLE[table]?.has(filterColumn)) {
+          return NextResponse.json({ error: "Filtro não permitido para este recurso." }, { status: 400 });
+        }
         if (!["eq", "neq", "gt", "gte", "lt", "lte", "like", "ilike", "is", "in"].includes(operator) || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) {
           return NextResponse.json({ error: "Filtro inválido." }, { status: 400 });
         }
-        query = query.filter(column, operator as "eq", value);
+        query = query.filter(filterColumn, operator as "eq", value);
       }
     }
 
     if (requestedOrder && !/^[A-Za-z_][A-Za-z0-9_]*\.(?:asc|desc)$/i.test(requestedOrder) && requestedOrder !== "title.asc") {
       return NextResponse.json({ error: "Ordenação inválida." }, { status: 400 });
     }
-    const sqlOrder = domainTable ? defaultOrderForTable(table) : (requestedOrder ?? defaultOrderForTable(table));
+    if (domainTable && requestedOrder && requestedOrder !== "title.asc") {
+      const [column] = requestedOrder.split(".");
+      const allowed = ORDERABLE_COLUMNS_BY_TABLE[table] ?? new Set(["created_at", "updated_at"]);
+      if (!allowed.has(column)) return NextResponse.json({ error: "Ordenação não permitida para este recurso." }, { status: 400 });
+    }
+    if (READ_ONLY_RESOURCES.has(resource) && requestedOrder) {
+      const [column] = requestedOrder.split(".");
+      if (!ORDERABLE_COLUMNS_BY_TABLE[table]?.has(column)) return NextResponse.json({ error: "Ordenação não permitida para este recurso." }, { status: 400 });
+    }
+    const sqlOrder = requestedOrder === "title.asc" ? null : (requestedOrder ?? defaultOrderForTable(table));
     if (sqlOrder) {
       const [column, direction] = sqlOrder.split(".");
       query = query.order(column, { ascending: direction !== "desc" });
@@ -589,6 +649,9 @@ export async function POST(
 ) {
   const { resource } = await context.params;
   if (resource === "session") return migrateAdminSession(request);
+  if (READ_ONLY_RESOURCES.has(resource)) {
+    return NextResponse.json({ error: "Este recurso é somente leitura." }, { status: 405 });
+  }
 
   const { domainTable, table } = resolveTable(resource);
   if (!table) {
@@ -605,6 +668,10 @@ export async function POST(
     if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Dados inválidos." }, { status: 400 });
     const supabase = staff.supabase as unknown as SupabaseClient;
     const payload = domainTable ? toDomainPayload(resource, body, false) : body;
+    if (domainTable) {
+      if (table === "workshop_settings") payload.updated_by = staff.user.id;
+      else payload.created_by = staff.user.id;
+    }
     if (resource === "quotes") {
       const quoteError = await normalizeQuotePayload(supabase, payload, false);
       if (quoteError) return NextResponse.json({ error: quoteError }, { status: 400 });
@@ -623,14 +690,85 @@ export async function POST(
       });
     }
 
-    const { data, error } = await supabase.from(table).insert(payload).select(returningColumnsForTable(table));
-    if (error) return databaseErrorResponse(error);
+    const quoteId = resource === "work-orders" && typeof payload.quote_id === "string" ? payload.quote_id : null;
+    if (quoteId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(quoteId)) {
+        return NextResponse.json({ error: "O vínculo com o orçamento não é válido." }, { status: 400 });
+      }
+      const { data: sourceQuote, error: sourceQuoteError } = await getServiceSupabase()
+        .from("quotes")
+        .select("id,status,details")
+        .eq("id", quoteId)
+        .maybeSingle();
+      if (sourceQuoteError) return databaseErrorResponse(sourceQuoteError);
+      if (!sourceQuote) return NextResponse.json({ error: "Orçamento vinculado não encontrado." }, { status: 404 });
+      const sourceDetails = isPlainObject(sourceQuote.details) ? sourceQuote.details : {};
+      if (sourceQuote.status !== "concluido" && sourceDetails.aprovacao !== "aprovado") {
+        return NextResponse.json({ error: "A OS só pode ser criada a partir de um orçamento aprovado." }, { status: 409 });
+      }
+      payload.details = {
+        ...(isPlainObject(payload.details) ? payload.details : {}),
+        aprovacao: "aprovado",
+        orcamento_id: quoteId,
+      };
 
-    const mapped = domainTable
-      ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
-      : (data ?? []);
+      const { data: existingOrder, error: existingOrderError } = await supabase
+        .from("work_orders")
+        .select("*")
+        .eq("quote_id", quoteId)
+        .maybeSingle();
+      if (existingOrderError) return databaseErrorResponse(existingOrderError);
+      if (existingOrder) {
+        return NextResponse.json({ data: [fromDomainRow(resource, existingOrder)] }, { headers: { "Cache-Control": "no-store" } });
+      }
 
-    if ((resource === "work-orders" || resource === "quotes") && mapped[0]) {
+      // Older manually created orders stored only the quote ID inside details.
+      const { data: legacyOrder, error: legacyOrderError } = await supabase
+        .from("work_orders")
+        .select("*")
+        .contains("details", { orcamento_id: quoteId })
+        .limit(1)
+        .maybeSingle();
+      if (legacyOrderError) return databaseErrorResponse(legacyOrderError);
+      if (legacyOrder) {
+        return NextResponse.json({ data: [fromDomainRow(resource, legacyOrder)] }, { headers: { "Cache-Control": "no-store" } });
+      }
+    }
+
+    const finalizeOnCreate = resource === "work-orders" && payload.status === "concluido";
+    const insertPayload = finalizeOnCreate ? { ...payload, status: "novo" } : payload;
+    const { data, error } = await supabase.from(table).insert(insertPayload).select(returningColumnsForTable(table));
+    if (error) {
+      // Concurrent clicks may both pass the read above; the unique quote_id
+      // index makes the insert safe, and the losing request returns that OS.
+      if (quoteId && error.code === "23505") {
+        const { data: existingOrder } = await supabase.from("work_orders").select("*").eq("quote_id", quoteId).maybeSingle();
+        if (existingOrder) {
+          return NextResponse.json({ data: [fromDomainRow(resource, existingOrder)] }, { headers: { "Cache-Control": "no-store" } });
+        }
+      }
+      return databaseErrorResponse(error);
+    }
+
+    const insertedRows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+    let mapped: Array<Record<string, unknown>> = domainTable
+      ? insertedRows.map((r) => fromDomainRow(resource, r))
+      : insertedRows;
+
+    if (finalizeOnCreate && insertedRows[0]?.id) {
+      const { data: finalized, error: finalizeError } = await supabase.rpc("finalize_work_order", {
+        p_work_order_id: String(insertedRows[0].id),
+        p_patch: payload,
+      });
+      if (finalizeError) return databaseErrorResponse(finalizeError);
+      if (!isPlainObject(finalized)) {
+        return NextResponse.json({ error: "A ordem foi criada, mas não foi possível concluir a finalização." }, { status: 503 });
+      }
+      mapped = [fromDomainRow("work-orders", finalized)];
+    }
+
+    const isApprovedQuoteWorkOrder = resource === "work-orders" && Boolean(quoteId);
+    if ((resource === "quotes" || (resource === "work-orders" && !isApprovedQuoteWorkOrder)) && mapped[0]) {
       const created = mapped[0] as {
         id: string;
         title: string;
@@ -674,13 +812,15 @@ export async function POST(
             });
             if (!msg) return NextResponse.json({ data: mapped });
 
-            await service.from("whatsapp_outbox").insert({
+            const { error: outboxError } = await service.from("whatsapp_outbox").upsert({
               phone: normalized,
               message: msg,
               kind: resource === "work-orders" ? "os_quote" : "quote",
               related_id: created.id,
+              dedupe_key: `auto-quote:${resource}:${created.id}`,
               status: "pending",
-            });
+            }, { onConflict: "dedupe_key", ignoreDuplicates: true });
+            if (outboxError) throw outboxError;
           }
         } catch {
           // Não bloqueia a criação da OS/Orçamento se a fila outbox ainda não estiver configurada
@@ -688,7 +828,7 @@ export async function POST(
       }
     }
 
-    if ((resource === "work-orders" || resource === "sales") && mapped[0]) {
+    if (resource === "sales" && mapped[0]) {
       mapped[0] = (await syncFinalizedOrderOrSale(
         supabase,
         resource,
@@ -710,6 +850,9 @@ export async function PATCH(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
+  if (READ_ONLY_RESOURCES.has(resource)) {
+    return NextResponse.json({ error: "Este recurso é somente leitura." }, { status: 405 });
+  }
   const { domainTable, table } = resolveTable(resource);
   if (!table) {
     return NextResponse.json({ error: "Recurso não permitido." }, { status: 400 });
@@ -767,18 +910,30 @@ export async function PATCH(
       }
     }
 
+    if (resource === "work-orders" && payload.status === "concluido") {
+      const { data: finalized, error: finalizeError } = await supabase.rpc("finalize_work_order", {
+        p_work_order_id: id,
+        p_patch: payload,
+      });
+      if (finalizeError) return databaseErrorResponse(finalizeError);
+      if (!isPlainObject(finalized)) {
+        return NextResponse.json({ error: "Não foi possível concluir a ordem de serviço." }, { status: 503 });
+      }
+      return NextResponse.json({ data: [fromDomainRow("work-orders", finalized)] }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const { data, error } = await supabase
       .from(table)
       .update(payload)
       .eq(idColumn, id)
       .select(returningColumnsForTable(table));
     if (error) return databaseErrorResponse(error);
-    const mapped = domainTable
+    const mapped: Array<Record<string, unknown>> = domainTable
       ? (data ?? []).map((r) => fromDomainRow(resource, r as unknown as Record<string, unknown>))
-      : (data ?? []);
+      : (data ?? []) as unknown as Array<Record<string, unknown>>;
 
     if (resource === "quotes" && data?.[0]) {
-      const savedQuote = data[0] as Record<string, unknown>;
+      const savedQuote = data[0] as unknown as Record<string, unknown>;
       const savedDetails = isPlainObject(savedQuote.details) ? savedQuote.details : {};
       if (savedQuote.status === "concluido" || savedDetails.aprovacao === "aprovado") {
         try {
@@ -816,7 +971,7 @@ export async function PATCH(
       }
     }
 
-    if ((resource === "work-orders" || resource === "sales") && mapped[0]) {
+    if (resource === "sales" && mapped[0]) {
       mapped[0] = (await syncFinalizedOrderOrSale(
         supabase,
         resource,
@@ -838,6 +993,9 @@ export async function DELETE(
   context: { params: Promise<{ resource: string }> },
 ) {
   const { resource } = await context.params;
+  if (READ_ONLY_RESOURCES.has(resource)) {
+    return NextResponse.json({ error: "Este recurso é somente leitura." }, { status: 405 });
+  }
   if (resource === "session") return signOutAdminSession(request);
 
   const { table } = resolveTable(resource);

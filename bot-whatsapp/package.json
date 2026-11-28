@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node index.js"
+    "start": "node supervisor.js"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",

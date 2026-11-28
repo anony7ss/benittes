@@ -39,6 +39,8 @@ export function ReportsView() {
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [responsibleFilter, setResponsibleFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [rows, setRows] = useState<PanelRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,21 +51,47 @@ export function ReportsView() {
     sales: [],
     finance: [],
   });
+  const [inventoryMovements, setInventoryMovements] = useState<Array<{
+    work_order_id: string | null;
+    quantity_delta: number;
+    unit_cost: number;
+    created_at: string;
+  }>>([]);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [data, osData, salesData, finData] = await Promise.all([
+      const range = (field: string) => {
+        const result: Record<string, string> = {};
+        if (startDate) result[`${field}_from`] = new Date(`${startDate}T00:00:00-03:00`).toISOString();
+        if (endDate) {
+          const endExclusive = new Date(`${endDate}T00:00:00-03:00`);
+          endExclusive.setDate(endExclusive.getDate() + 1);
+          result[`${field}_before`] = endExclusive.toISOString();
+        }
+        return result;
+      };
+      const period = range("created_at");
+      const [data, osData, salesData, finData, movementData] = await Promise.all([
         selectRows<PanelRecord>(selectedModule, {
+          ...period,
           order: "created_at.desc",
           limit: "500",
         }),
-        selectRows<PanelRecord>("work-orders", { order: "created_at.desc", limit: "500" }).catch(() => []),
-        selectRows<PanelRecord>("sales", { order: "created_at.desc", limit: "500" }).catch(() => []),
-        selectRows<PanelRecord>("finance", { order: "created_at.desc", limit: "500" }).catch(() => []),
+        selectRows<PanelRecord>("work-orders", { ...range("updated_at"), status: "eq.concluido", order: "updated_at.desc", limit: "500" }),
+        selectRows<PanelRecord>("sales", { ...period, status: "eq.concluido", order: "created_at.desc", limit: "500" }),
+        selectRows<PanelRecord>("finance", { ...period, status: "eq.concluido", order: "created_at.desc", limit: "500" }),
+        selectRows<{ work_order_id: string | null; quantity_delta: number; unit_cost: number; created_at: string }>("inventory-movements", {
+          ...period,
+          source_type: "eq.work_order",
+          select: "work_order_id,quantity_delta,unit_cost,created_at",
+          order: "created_at.desc",
+          limit: "500",
+        }),
       ]);
       setDreRows({ os: osData, sales: salesData, finance: finData });
+      setInventoryMovements(movementData);
       if (selectedModule === "sales") {
         const saleIds = new Set(data.map((r) => r.id));
         const saleOsIds = new Set(
@@ -84,10 +112,13 @@ export function ReportsView() {
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível carregar os dados do relatório.");
+      setRows([]);
+      setDreRows({ os: [], sales: [], finance: [] });
+      setInventoryMovements([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedModule]);
+  }, [selectedModule, startDate, endDate]);
 
   useEffect(() => {
     void loadReport();
@@ -98,9 +129,46 @@ export function ReportsView() {
       const dateOnly = brDateOnly(row.created_at);
       if (startDate && dateOnly < startDate) return false;
       if (endDate && dateOnly > endDate) return false;
+      if (responsibleFilter && String(detail(row, "tecnico") ?? detail(row, "responsavel") ?? detail(row, "mecanico") ?? "") !== responsibleFilter) return false;
+      if (categoryFilter && String(detail(row, "categoria") ?? detail(row, "category") ?? "") !== categoryFilter) return false;
       return true;
     });
-  }, [rows, startDate, endDate]);
+  }, [rows, startDate, endDate, responsibleFilter, categoryFilter]);
+
+  const reportFilters = useMemo(() => {
+    const responsibles = new Set<string>();
+    const categories = new Set<string>();
+    for (const row of rows) {
+      const responsible = String(detail(row, "tecnico") ?? detail(row, "responsavel") ?? detail(row, "mecanico") ?? "").trim();
+      const category = String(detail(row, "categoria") ?? detail(row, "category") ?? "").trim();
+      if (responsible) responsibles.add(responsible);
+      if (category) categories.add(category);
+    }
+    return { responsibles: [...responsibles].sort(), categories: [...categories].sort() };
+  }, [rows]);
+
+  const osMargins = useMemo(() => {
+    const costs = new Map<string, number>();
+    for (const movement of inventoryMovements) {
+      if (!movement.work_order_id || movement.quantity_delta >= 0) continue;
+      costs.set(movement.work_order_id, (costs.get(movement.work_order_id) ?? 0) + Math.abs(Number(movement.quantity_delta)) * Number(movement.unit_cost));
+    }
+    return dreRows.os
+      .filter((row) => row.status === "concluido")
+      .filter((row) => {
+        const day = brDateOnly(String(detail(row, "finalized_at") ?? row.updated_at ?? row.created_at));
+        const responsible = String(detail(row, "tecnico") ?? detail(row, "responsavel") ?? detail(row, "mecanico") ?? "");
+        const category = String(detail(row, "categoria") ?? detail(row, "category") ?? "");
+        return (!startDate || day >= startDate) && (!endDate || day <= endDate)
+          && (!responsibleFilter || responsible === responsibleFilter)
+          && (!categoryFilter || category === categoryFilter);
+      })
+      .map((row) => {
+        const materialCost = costs.get(row.id) ?? 0;
+        const total = Number(row.amount ?? 0);
+        return { row, materialCost, resultAfterMaterials: total - materialCost };
+      });
+  }, [dreRows.os, inventoryMovements, startDate, endDate, responsibleFilter, categoryFilter]);
 
   const kpis = useMemo(() => {
     let totalAmount = 0;
@@ -138,17 +206,22 @@ export function ReportsView() {
 
   const dreSummary = useMemo(() => {
     const inPeriod = (r: PanelRecord) => {
-      const day = brDateOnly(r.created_at);
+      const day = brDateOnly(String(detail(r, "finalized_at") ?? r.updated_at ?? r.created_at));
       return (!startDate || day >= startDate) && (!endDate || day <= endDate);
     };
     const osConcluidas = dreRows.os.filter((r) => inPeriod(r) && r.status === "concluido");
-    const vendasConcluidas = dreRows.sales.filter((r) => inPeriod(r) && r.status === "concluido");
+    const osIds = new Set(osConcluidas.map((r) => r.id));
+    const vendasConcluidas = dreRows.sales.filter((r) =>
+      inPeriod(r) && r.status === "concluido" && !osIds.has(String(detail(r, "source_work_order_id") ?? "")),
+    );
     const finPeriodo = dreRows.finance.filter((r) => inPeriod(r) && r.status === "concluido");
 
     const receitaServicos = osConcluidas.reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
     const receitaVendas = vendasConcluidas.reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
     const outrasEntradas = finPeriodo
-      .filter((r) => String(detail(r, "tipo") ?? "receber") === "receber")
+      .filter((r) => String(detail(r, "tipo") ?? "receber") === "receber"
+        && !osIds.has(String(detail(r, "source_work_order_id") ?? ""))
+        && !vendasConcluidas.some((sale) => sale.id === String(detail(r, "source_sale_id") ?? "")))
       .reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
     const receitaBruta = receitaServicos + receitaVendas + outrasEntradas;
 
@@ -168,7 +241,11 @@ export function ReportsView() {
       )
       .reduce((acc, r) => acc + Number(r.amount ?? 0), 0);
 
-    const lucroLiquido = receitaBruta - comprasPecas - despesasOperacionais;
+    const custoPecasOs = inventoryMovements
+      .filter((movement) => movement.work_order_id && osIds.has(movement.work_order_id) && movement.quantity_delta < 0)
+      .reduce((sum, movement) => sum + Math.abs(Number(movement.quantity_delta)) * Number(movement.unit_cost), 0);
+    // Compra adiciona valor ao estoque; o custo vira despesa quando a peça é usada numa OS.
+    const lucroLiquido = receitaBruta - despesasOperacionais - custoPecasOs;
     const margem = receitaBruta > 0 ? (lucroLiquido / receitaBruta) * 100 : 0;
 
     return {
@@ -177,6 +254,7 @@ export function ReportsView() {
       outrasEntradas,
       receitaBruta,
       comprasPecas,
+      custoPecasOs,
       despesasOperacionais,
       lucroLiquido,
       margem,
@@ -184,7 +262,7 @@ export function ReportsView() {
       osCount: osConcluidas.length,
       salesCount: vendasConcluidas.length,
     };
-  }, [dreRows, startDate, endDate, commissionPct]);
+  }, [dreRows, inventoryMovements, startDate, endDate, commissionPct]);
 
   function handleExportCsv() {
     const headers = ["ID", "Módulo", "Título", "Status", "Cliente", "E-mail", "Telefone", "Veículo", "Valor", "Criado em", "Descrição"];
@@ -284,6 +362,20 @@ export function ReportsView() {
               setEndDate(next.endDate);
             }}
           />
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>Responsável</span>
+            <select className="admin-select" style={{ minWidth: 150, minHeight: 38, height: 38, padding: "0 30px 0 10px" }} value={responsibleFilter} onChange={(event) => setResponsibleFilter(event.target.value)}>
+              <option value="">Todos</option>
+              {reportFilters.responsibles.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--admin-muted)" }}>Categoria</span>
+            <select className="admin-select" style={{ minWidth: 150, minHeight: 38, height: 38, padding: "0 30px 0 10px" }} value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="">Todas</option>
+              {reportFilters.categories.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>
         </div>
       </section>
 
@@ -392,8 +484,12 @@ export function ReportsView() {
               <strong>{money(dreSummary.receitaBruta)}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--admin-line)" }}>
-              <span>(-) Compras de Peças / Fornecedores</span>
-              <strong style={{ color: "var(--admin-red)" }}>-{money(dreSummary.comprasPecas)}</strong>
+              <span>Compras de estoque pagas (informativo)</span>
+              <strong>{money(dreSummary.comprasPecas)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--admin-line)" }}>
+              <span>(-) Custo real de peças usadas nas OS</span>
+              <strong style={{ color: "var(--admin-red)" }}>-{money(dreSummary.custoPecasOs)}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--admin-line)" }}>
               <span>(-) Despesas Operacionais</span>
@@ -406,6 +502,34 @@ export function ReportsView() {
               </strong>
             </div>
           </div>
+          )}
+        </section>
+      )}
+
+      {reportTab === "dre" && (
+        <section className="admin-panel" style={{ marginBottom: 18 }}>
+          <div className="admin-panel-head">
+            <h2>Resultado por ordem de serviço</h2>
+            <span style={{ color: "var(--admin-muted)", fontSize: 12 }}>Após custo de peças registradas</span>
+          </div>
+          {loading ? <SkeletonTable rows={4} /> : osMargins.length === 0 ? (
+            <div className="admin-empty"><p>Nenhuma OS concluída nesse período e filtro.</p></div>
+          ) : (
+            <div className="admin-table-wrap">
+              <table className="admin-table">
+                <thead><tr><th>Serviço / OS</th><th>Responsável</th><th>Receita</th><th>Custo de peças</th><th>Após peças</th></tr></thead>
+                <tbody>{osMargins.map(({ row, materialCost, resultAfterMaterials }) => (
+                  <tr key={row.id}>
+                    <td><strong>{row.title}</strong><div style={{ color: "var(--admin-muted)", fontSize: 11 }}>{row.customer_name || ""} · {row.vehicle || "Sem placa"}</div></td>
+                    <td>{String(detail(row, "tecnico") ?? detail(row, "responsavel") ?? "—")}</td>
+                    <td>{money(row.amount)}</td>
+                    <td>{money(materialCost)}</td>
+                    <td><strong style={{ color: resultAfterMaterials >= 0 ? "var(--admin-green)" : "var(--admin-red)" }}>{money(resultAfterMaterials)}</strong></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+              <p style={{ color: "var(--admin-muted)", fontSize: 11, margin: "8px 0 0" }}>Esse valor ainda não desconta mão de obra nem despesas gerais. Só considera peças vinculadas às OS no livro de estoque.</p>
+            </div>
           )}
         </section>
       )}

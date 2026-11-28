@@ -21,6 +21,7 @@ import { LoginForm } from "./LoginForm";
 const AccountView = dynamic(() => import("./views/AccountView").then((module) => module.AccountView));
 const AppointmentsView = dynamic(() => import("./views/AppointmentsView").then((module) => module.AppointmentsView));
 const ClientsView = dynamic(() => import("./views/ClientsView").then((module) => module.ClientsView));
+const WhatsAppChatView = dynamic(() => import("./views/WhatsAppChatView").then((module) => module.WhatsAppChatView));
 const ContactsView = dynamic(() => import("./views/ContactsView").then((module) => module.ContactsView));
 const DashboardView = dynamic(() => import("./views/DashboardView").then((module) => module.DashboardView));
 const FinanceView = dynamic(() => import("./views/FinanceView").then((module) => module.FinanceView));
@@ -37,6 +38,7 @@ const TimeClockView = dynamic(() => import("./views/TimeClockView").then((module
 const VehiclesView = dynamic(() => import("./views/VehiclesView").then((module) => module.VehiclesView));
 const WhatsAppBotView = dynamic(() => import("./views/WhatsAppBotView").then((module) => module.WhatsAppBotView));
 const WorkOrdersView = dynamic(() => import("./views/WorkOrdersView").then((module) => module.WorkOrdersView));
+const UpdatesView = dynamic(() => import("./views/UpdatesView").then((module) => module.UpdatesView));
 
 function clearLegacyMemberCaches() {
   if (typeof window === "undefined") return;
@@ -75,9 +77,13 @@ function renderPageView(
       return <AccountView session={session} member={member} onMemberUpdate={onMemberUpdate} />;
     case "ponto":
       return <TimeClockView session={session} member={member} />;
+    case "updates":
+      return <UpdatesView />;
   }
 
   switch (page.module) {
+    case "chat":
+      return <WhatsAppChatView member={member} />;
     case "work-orders":
       return <WorkOrdersView session={session} />;
     case "appointments":
@@ -264,7 +270,7 @@ export function AdminApp({ section }: { section?: string }) {
     if (!href || !href.startsWith("/painel")) return;
     if (href.startsWith("/painel/login") || href.startsWith("/painel/recuperar-senha")) return;
 
-    const nextSection = sectionFromPathname(href);
+    const nextSection = sectionFromPathname(new URL(href, window.location.origin).pathname);
     event.preventDefault();
     if (nextSection !== cleanSection) {
       window.history.pushState({}, "", href);

@@ -424,11 +424,16 @@ export async function fetchDashboard() {
   const headers = await authHeaders();
   return apiRequest<{
     messages: ContactMessage[];
-    clients: PanelRecord[];
-    appointments: PanelRecord[];
     workOrders: PanelRecord[];
+    workOrdersForRevenue: PanelRecord[];
     inventory: PanelRecord[];
     sales: PanelRecord[];
+    finance: PanelRecord[];
+    counts: {
+      todayAppointments: number;
+      activeWorkOrders: number;
+      waitingWorkOrders: number;
+    };
   }>("/api/admin/dashboard", { headers });
 }
 

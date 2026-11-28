@@ -17,6 +17,7 @@ export const PANEL_PERMISSION_MODULES = [
   { key: "sales", label: "Vendas" },
   { key: "reports", label: "Relatórios" },
   { key: "contacts", label: "Mensagens do site" },
+  { key: "chat", label: "Chat WhatsApp" },
   { key: "crm", label: "Relacionamento" },
   { key: "documents", label: "Documentos" },
   { key: "notifications", label: "Notificações" },

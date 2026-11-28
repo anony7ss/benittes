@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   Cpu,
   LogOut,
+  Play,
   Power,
   QrCode,
   RefreshCw,
@@ -15,15 +16,17 @@ import {
   Send,
   Settings2,
   Smartphone,
+  Square,
   Terminal as TerminalIcon,
   Trash2,
+  RotateCw as RetryIcon,
 } from "lucide-react";
 import { AdminStatusBadge } from "../StatusBadge";
 import { dateText } from "../utils";
 
 type BotSession = {
   id: string;
-  status: "connected" | "qr_ready" | "connecting" | "disconnected";
+  status: "connected" | "qr_ready" | "connecting" | "disconnected" | "qr_pending" | "stopped";
   qr_code?: string | null;
   phone_connected?: string | null;
   profile_name?: string | null;
@@ -59,6 +62,8 @@ type BotSession = {
   last_heartbeat?: string | null;
   updated_at?: string | null;
   is_online?: boolean;
+  bot_enabled?: boolean;
+  qr_requested?: boolean;
 };
 
 type BotLog = {
@@ -77,6 +82,7 @@ type OutboxRow = {
   status: string;
   error?: string | null;
   created_at: string;
+  retry_count?: number;
 };
 
 type BotTab = "conexao" | "terminal" | "config" | "outbox";
@@ -102,6 +108,7 @@ export function WhatsAppBotView() {
   const [busyAction, setBusyAction] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+  const [retryingOutboxId, setRetryingOutboxId] = useState<string | null>(null);
 
   // Settings form
   const [autoSendQuotes, setAutoSendQuotes] = useState(true);
@@ -212,6 +219,29 @@ export function WhatsAppBotView() {
     if (json.stats) setOutboxStats(json.stats);
   }, []);
 
+  async function retryOutboxItem(id: string) {
+    setRetryingOutboxId(id);
+    setError("");
+    setFeedback("");
+    try {
+      const res = await fetch("/api/admin/whatsapp/outbox", {
+        method: "PATCH",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json().catch(() => null) as { error?: string } | null;
+      if (!res.ok) throw new Error(json?.error || "Não foi possível recolocar o envio na fila.");
+      setFeedback("Envio recolocado na fila.");
+      await loadOutbox();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível recolocar o envio na fila.");
+    } finally {
+      setRetryingOutboxId(null);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
     void loadLogs();
@@ -245,10 +275,28 @@ export function WhatsAppBotView() {
         credentials: "same-origin",
         body: JSON.stringify({ action, ...extra }),
       });
-      const json = (await res.json()) as { ok?: boolean; error?: string; session?: BotSession };
+      const json = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        session?: BotSession;
+        queued?: boolean;
+        alreadyRunning?: boolean;
+        alreadyStopped?: boolean;
+      };
       if (!res.ok) throw new Error(json.error || "Erro ao executar ação.");
       if (json.session) setBot(json.session);
-      setFeedback("Comando enviado para o bot.");
+      const messages: Record<string, string> = {
+        start_bot: "Bot ligado. Se a conta ainda não estiver vinculada, gere o QR Code quando quiser.",
+        stop_bot: "Bot desligado. A conta do WhatsApp continua vinculada.",
+        generate_qr: "Solicitação de QR Code enviada.",
+      };
+      setFeedback(json.alreadyRunning
+        ? "O bot já está ligado e conectado."
+        : json.alreadyStopped
+          ? "O bot já está desligado; a conta continua vinculada."
+          : json.queued
+        ? "Pedido salvo. O serviço do bot está offline e vai processá-lo quando voltar."
+        : messages[action] || "Comando enviado para o bot.");
       void loadStatus();
       return true;
     } catch (reason) {
@@ -329,13 +377,20 @@ export function WhatsAppBotView() {
           bot?.last_heartbeat &&
             Date.now() - new Date(bot.last_heartbeat).getTime() <= 90_000,
         );
+  const hasLinkedSession = Boolean(bot?.phone_connected);
 
   const statusBadge = !isOnline
-    ? { status: "cancelado", label: "Offline" }
+    ? bot?.bot_enabled === false
+      ? { status: "cancelado", label: "Desligado" }
+      : { status: "cancelado", label: "Offline" }
+    : bot?.bot_enabled === false || bot?.status === "stopped"
+      ? { status: "cancelado", label: "Desligado" }
     : bot?.status === "connected"
       ? { status: "concluido", label: "Conectado" }
       : bot?.status === "qr_ready"
         ? { status: "aguardando", label: "Aguardando QR Code" }
+        : bot?.status === "qr_pending"
+          ? { status: "aguardando", label: "QR Code não solicitado" }
         : bot?.status === "connecting"
           ? { status: "em_andamento", label: "Conectando" }
           : { status: "cancelado", label: "Desconectado" };
@@ -465,10 +520,51 @@ export function WhatsAppBotView() {
                 </div>
 
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6 }}>
+                  {bot?.bot_enabled === false ? (
+                    <button
+                      type="button"
+                      className="admin-primary"
+                      disabled={busyAction}
+                      onClick={() => void sendAction("start_bot")}
+                    >
+                      <Play size={14} /> Ligar bot
+                    </button>
+                  ) : (
+                    <>
+                      {bot?.status !== "connected" && !hasLinkedSession && (
+                        <button
+                          type="button"
+                          className="admin-primary"
+                          disabled={busyAction || (bot?.qr_requested === true && isOnline)}
+                          onClick={() => void sendAction("generate_qr")}
+                        >
+                          <QrCode size={14} /> {bot?.qr_requested ? "Gerando QR Code…" : "Gerar QR Code"}
+                        </button>
+                      )}
+                      {bot?.status !== "connected" && hasLinkedSession && (
+                        <button
+                          type="button"
+                          className="admin-primary"
+                          disabled={busyAction || (isOnline && bot?.status === "connecting")}
+                          onClick={() => void sendAction("start_bot")}
+                        >
+                          <Play size={14} /> {isOnline && bot?.status === "connecting" ? "Conectando…" : "Reconectar conta"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="admin-secondary"
+                        disabled={busyAction}
+                        onClick={() => void sendAction("stop_bot")}
+                      >
+                        <Square size={14} /> Desligar bot
+                      </button>
+                    </>
+                  )}
                   <button
                     type="button"
                     className="admin-secondary"
-                    disabled={busyAction}
+                    disabled={busyAction || !isOnline || bot?.bot_enabled === false}
                     onClick={() => void sendAction("restart")}
                   >
                     <RefreshCw size={14} /> Reiniciar
@@ -476,7 +572,7 @@ export function WhatsAppBotView() {
                   <button
                     type="button"
                     className="admin-secondary"
-                    disabled={busyAction}
+                    disabled={busyAction || !isOnline}
                     onClick={() => void sendAction("clear_session")}
                   >
                     <Trash2 size={14} /> Limpar sessão
@@ -484,18 +580,33 @@ export function WhatsAppBotView() {
                   <button
                     type="button"
                     className="admin-ghost-danger"
-                    disabled={busyAction}
-                    onClick={() => void sendAction("disconnect")}
+                    disabled={busyAction || !isOnline}
+                    onClick={() => {
+                      if (window.confirm("Desvincular esta conta apagará a sessão salva e exigirá um novo QR Code. Quer continuar?")) {
+                        void sendAction("disconnect");
+                      }
+                    }}
                   >
-                    <LogOut size={14} /> Desconectar
+                    <LogOut size={14} /> Desvincular conta
                   </button>
                 </div>
+                <p style={{ color: "var(--admin-muted)", fontSize: 12.5, margin: "0 0 2px" }}>
+                  Desligar o bot pausa o serviço e mantém a conta vinculada. O QR só é iniciado pelo botão acima.
+                </p>
               </div>
             )}
           </div>
 
           <div className="admin-panel" style={{ display: "grid", placeItems: "center", textAlign: "center" }}>
-            {bot?.status === "connected" ? (
+            {bot?.bot_enabled === false || bot?.status === "stopped" ? (
+              <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
+                <Bot size={40} style={{ color: "var(--admin-muted)" }} />
+                <strong>Bot desligado</strong>
+                <p style={{ fontSize: 13, color: "var(--admin-muted)", margin: 0 }}>
+                  A sessão do WhatsApp foi mantida. Use “Ligar bot” para retomar.
+                </p>
+              </div>
+            ) : bot?.status === "connected" ? (
               <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
                 <CheckCircle2 size={44} style={{ color: "var(--admin-green)" }} />
                 <strong>WhatsApp conectado</strong>
@@ -514,12 +625,40 @@ export function WhatsAppBotView() {
                   Abra o WhatsApp &rarr; Aparelhos conectados &rarr; Conectar aparelho
                 </span>
               </div>
+            ) : bot?.status === "qr_pending" ? (
+              <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
+                <QrCode size={40} style={{ color: "var(--admin-muted)" }} />
+                <strong>QR Code aguardando sua solicitação</strong>
+                <p style={{ fontSize: 12.5, color: "var(--admin-muted)", margin: 0 }}>
+                  O bot está ativo, mas não iniciou o pareamento. Clique em “Gerar QR Code” quando estiver pronto.
+                </p>
+              </div>
+            ) : hasLinkedSession ? (
+              <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
+                <Smartphone size={40} style={{ color: "var(--admin-muted)" }} />
+                <strong>Conta vinculada</strong>
+                <p style={{ fontSize: 12.5, color: "var(--admin-muted)", margin: 0 }}>
+                  A sessão foi preservada. Use “Reconectar conta” ou “Reiniciar” para tentar a conexão novamente.
+                </p>
+              </div>
+            ) : bot?.status === "connecting" && bot?.qr_requested !== true ? (
+              <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
+                <RefreshCw size={36} style={{ color: "var(--admin-blue)" }} />
+                <strong>Conectando ao WhatsApp</strong>
+                <p style={{ fontSize: 12.5, color: "var(--admin-muted)", margin: 0 }}>
+                  O serviço está tentando retomar a sessão salva.
+                </p>
+              </div>
             ) : (
               <div style={{ display: "grid", gap: 10, placeItems: "center", padding: 16 }}>
                 <Bot size={40} style={{ color: "var(--admin-muted)" }} />
-                <strong>Aguardando processo do bot</strong>
+                <strong>{bot?.qr_requested ? isOnline ? "Gerando QR Code" : "QR Code aguardando o serviço" : "Aguardando processo do bot"}</strong>
                 <p style={{ fontSize: 12.5, color: "var(--admin-muted)", margin: 0 }}>
-                  Inicie o serviço com <code>cd bot-whatsapp &amp;&amp; npm start</code> para gerar o QR Code.
+                  {bot?.qr_requested
+                    ? isOnline
+                      ? "Assim que o WhatsApp emitir o QR, ele aparecerá aqui. O pareamento pode demorar; não precisa recarregar."
+                      : "O serviço vai processar o pedido e gerar o QR Code quando voltar."
+                    : <>Inicie o serviço com <code>cd bot-whatsapp &amp;&amp; npm start</code>. O QR não aparece até você solicitá-lo.</>}
                 </p>
               </div>
             )}
@@ -884,6 +1023,11 @@ export function WhatsAppBotView() {
             <div className="admin-panel-head" style={{ flexWrap: "wrap", gap: 8 }}>
               <h2>Últimos envios ({outbox.length})</h2>
             </div>
+            {outboxStats.failed > 0 && (
+              <p style={{ margin: "0 0 12px", color: "var(--admin-amber)", fontSize: 12.5 }}>
+                {outboxStats.failed} envio(s) falharam. Confira o erro e use “Tentar novamente” depois de verificar a conexão.
+              </p>
+            )}
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -893,6 +1037,7 @@ export function WhatsAppBotView() {
                     <th>Mensagem</th>
                     <th>Status</th>
                     <th>Data</th>
+                    <th>Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -910,6 +1055,13 @@ export function WhatsAppBotView() {
                         />
                       </td>
                       <td>{dateText(item.created_at)}</td>
+                      <td>
+                        {item.status === "failed" && (
+                          <button type="button" className="admin-secondary" onClick={() => void retryOutboxItem(item.id)} disabled={retryingOutboxId === item.id}>
+                            <RetryIcon size={13} /> {retryingOutboxId === item.id ? "Reenfileirando…" : "Tentar novamente"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

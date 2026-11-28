@@ -8,6 +8,8 @@ import baileysPkg, {
   isJidBroadcast,
   isJidStatusBroadcast,
   isJidNewsletter,
+  normalizeMessageContent,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
@@ -20,9 +22,9 @@ const __dirname = path.dirname(__filename);
 const authPath = path.resolve(__dirname, '../auth_info_baileys');
 
 import { logInfo, logSuccess, logWarn, logError, startSpinner, stopSpinner } from './terminal.js';
-import { publicarStatusBot } from './web-sync.js';
-import { isLid, registrarMapeamentoLid, resolverLidParaTelefone } from './phone-utils.js';
-import { isSafeWhatsAppJid } from './security-utils.js';
+import { publicarStatusBot, registrarMensagemChat, salvarMidiaChat } from './web-sync.js';
+import { isLid, registrarMapeamentoLid, resolverLidParaTelefone, resolverLidParaTelefoneAsync } from './phone-utils.js';
+import { isSafeWhatsAppJid, isSupportedMediaBuffer, readAsyncIterableWithLimit, sanitizeUntrustedText } from './security-utils.js';
 import { supabase } from './supabase.js';
 
 const makeWASocket = typeof baileysPkg === 'function' ? baileysPkg : (baileysPkg?.default || baileysPkg);
@@ -36,6 +38,63 @@ let reconnectTimer = null;
 const messageStore = new Map();
 const MAX_MESSAGE_STORE = 5000;
 const MAX_MESSAGE_STORE_ITEM_CHARS = 128 * 1024;
+const MAX_CHAT_MEDIA_BYTES = 16 * 1024 * 1024;
+
+async function registrarMensagemRecebidaNoChat(sock, msg, jid) {
+  try {
+    const content = normalizeMessageContent(msg.message) || msg.message || {};
+    const text = String(
+      content.conversation ||
+      content.extendedTextMessage?.text ||
+      content.imageMessage?.caption ||
+      content.videoMessage?.caption ||
+      content.documentMessage?.caption ||
+      content.buttonsResponseMessage?.selectedDisplayText ||
+      content.listResponseMessage?.title ||
+      '',
+    ).trim();
+    const image = content.imageMessage || content.stickerMessage ||
+      (String(content.documentMessage?.mimetype || '').startsWith('image/') ? content.documentMessage : null);
+    const audio = content.audioMessage || content.pttMessage;
+    const video = content.videoMessage;
+    const mediaType = image ? 'image' : audio ? 'audio' : video ? 'video' : null;
+    let phone = jid.split('@', 1)[0].replace(/\D/g, '');
+    if (isLid(jid)) phone = String(await resolverLidParaTelefoneAsync(jid, msg.pushName) || phone).replace(/\D/g, '');
+    if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
+    if (!/^55\d{10,11}$/.test(phone)) return;
+
+    let mediaUrl = null;
+    if (mediaType) {
+      try {
+        const declaredLength = Number(image?.fileLength || audio?.fileLength || video?.fileLength || 0);
+        if (declaredLength <= MAX_CHAT_MEDIA_BYTES) {
+          const stream = await downloadMediaMessage(msg, 'stream', {}, { reuploadRequest: sock.updateMediaMessage });
+          const buffer = await readAsyncIterableWithLimit(stream, MAX_CHAT_MEDIA_BYTES);
+          if (isSupportedMediaBuffer(buffer, mediaType)) {
+            const mime = String(image?.mimetype || audio?.mimetype || video?.mimetype || '');
+            mediaUrl = await salvarMidiaChat(phone, buffer, mediaType, mime);
+          }
+        }
+      } catch (error) {
+        console.warn(`[whatsapp] Não foi possível guardar mídia recebida (${mediaType}):`, error?.message || error);
+      }
+    }
+
+    const body = sanitizeUntrustedText(text, 4000) || (mediaType === 'image' ? '[Imagem recebida]' : mediaType === 'audio' ? '[Áudio recebido]' : mediaType === 'video' ? '[Vídeo recebido]' : '[Mensagem recebida]');
+    await registrarMensagemChat({
+      phone,
+      direction: 'incoming',
+      senderName: sanitizeUntrustedText(String(msg.pushName || ''), 80) || null,
+      body,
+      mediaType,
+      mediaUrl,
+      messageKey: msg.key?.id || null,
+      status: 'received',
+    });
+  } catch (error) {
+    console.warn('[whatsapp] Não foi possível registrar mensagem recebida no chat:', error?.message || error);
+  }
+}
 
 function saveToMessageStore(id, message, remoteJid = null) {
   if (!id || !message) return;
@@ -129,14 +188,14 @@ export function limparSessaoGeral(motivo = 'Sessão corrompida') {
   });
 }
 
-function agendarReconexao(sock, onMessageReceived, onConnectionUpdate, delay) {
+function agendarReconexao(sock, onMessageReceived, onConnectionUpdate, delay, options) {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     if (activeSocket !== sock) return;
-    initWhatsApp(onMessageReceived, onConnectionUpdate).catch((err) => {
+    initWhatsApp(onMessageReceived, onConnectionUpdate, options).catch((err) => {
       logError('WhatsApp', `Falha ao iniciar reconexão: ${err?.message || err}`);
-      agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 5000);
+      agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 5000, options);
     });
   }, delay);
   if (reconnectTimer.unref) reconnectTimer.unref();
@@ -148,7 +207,7 @@ function agendarReconexao(sock, onMessageReceived, onConnectionUpdate, delay) {
  * @param {Function} [onConnectionUpdate] Callback executado em mudanças de conexão: (sock, update) => void
  * @returns {Promise<{ sock: any }>}
  */
-export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
+export async function initWhatsApp(onMessageReceived, onConnectionUpdate, { allowQr = false } = {}) {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -182,6 +241,25 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
     throw errAuth;
   }
 
+  const savedAccount = state?.creds?.registered ? state.creds.me : null;
+  const savedPhone = savedAccount?.id
+    ? String(savedAccount.id).split(':')[0].split('@')[0].replace(/\D/g, '') || null
+    : null;
+  const savedProfile = savedAccount?.name || null;
+
+  // Baileys creates a QR immediately when credentials are not linked. Keep an
+  // unpaired worker idle until an authorized panel action explicitly requests it.
+  if (!state?.creds?.registered && !allowQr) {
+    await publicarStatusBot({
+      status: 'qr_pending',
+      qr_code: null,
+      phone_connected: null,
+      profile_name: null,
+    });
+    logInfo('WhatsApp', 'Conta ainda não vinculada. Gere o QR Code pelo painel quando estiver pronto.');
+    return { sock: null, waitingForQr: true };
+  }
+
   let version;
   try {
     const fetched = await fetchLatestBaileysVersion();
@@ -206,7 +284,7 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
     msgRetryCounterCache,
     markOnlineOnConnect: true,
     keepAliveIntervalMs: 30000,
-    connectTimeoutMs: 60000,
+    connectTimeoutMs: 180000,
     defaultQueryTimeoutMs: 60000,
     retryRequestDelayMs: 2000,
     getMessage: async (key) => {
@@ -238,8 +316,8 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
   // Notifica início da conexão (limpando qualquer número pendente)
   publicarStatusBot({
     status: 'connecting',
-    phone_connected: null,
-    profile_name: null,
+    phone_connected: savedPhone,
+    profile_name: savedProfile,
   });
 
   // Salva credenciais sempre que atualizadas
@@ -303,6 +381,8 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
         qr_code: null,
         phone_connected: phoneRaw,
         profile_name: profileName,
+        bot_enabled: true,
+        qr_requested: false,
       });
     }
 
@@ -333,7 +413,7 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
 
       if (isRestartRequired) {
         logInfo('WhatsApp', 'WhatsApp solicitou reinicialização de stream (restart required). Reconectando mantendo credenciais...');
-        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 1000);
+        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 1000, { allowQr });
         return;
       }
 
@@ -354,7 +434,7 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
       if (isLoggedOut) {
         limparSessaoGeral('Desconectado pelo WhatsApp (401)');
         consecutiveDisconnectCount = 0;
-        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 1500);
+        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, 1500, { allowQr });
       } else {
         publicarStatusBot({
           status: 'connecting',
@@ -362,7 +442,7 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
         });
         logWarn('WhatsApp', `Reconectando automaticamente (código: ${statusCode || 'rede'}, tentativa ${consecutiveDisconnectCount})...`);
         const retryDelay = Math.min(2500 * 2 ** Math.min(consecutiveDisconnectCount - 1, 5), 60000);
-        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, retryDelay);
+        agendarReconexao(sock, onMessageReceived, onConnectionUpdate, retryDelay, { allowQr });
       }
     }
   });
@@ -427,6 +507,8 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
           .then(() => {}, () => {});
       }
 
+      await registrarMensagemRecebidaNoChat(sock, msg, jid);
+
       // Repassa mensagem filtrada para o callback de negócio
       if (typeof onMessageReceived === 'function') {
         try {
@@ -471,6 +553,26 @@ export async function initWhatsApp(onMessageReceived, onConnectionUpdate) {
   });
 
   return { sock };
+}
+
+export async function stopWhatsAppSocket() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (preKeyInterval) {
+    clearInterval(preKeyInterval);
+    preKeyInterval = null;
+  }
+
+  const socket = activeSocket;
+  activeSocket = null;
+  if (!socket) return;
+
+  // Ending the transport preserves auth_info_baileys; deliberately do not call logout().
+  try { socket.ev?.removeAllListeners(); } catch {}
+  try { socket.end?.(new Error('Bot pausado pelo painel')); } catch {}
+  try { socket.ws?.close?.(); } catch {}
 }
 
 export default initWhatsApp;

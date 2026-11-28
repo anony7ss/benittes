@@ -8,6 +8,7 @@ import {
   Archive,
   ArchiveRestore,
   CarFront,
+  CheckCircle2,
   CreditCard,
   History,
   Mail,
@@ -71,11 +72,15 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
   const [saving, setSaving] = useState(false);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState<{ top: number; left: number; placement: "above" | "below" } | null>(null);
-  const [clientPanel, setClientPanel] = useState<{ client: PanelRecord; section: "profile" | "vehicles" | "history" | "debts" } | null>(null);
+  const [clientPanel, setClientPanel] = useState<{ client: PanelRecord; section: "profile" | "vehicles" | "history" | "debts" | "followups" } | null>(null);
   const [relatedRows, setRelatedRows] = useState<PanelRecord[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
   const [relatedError, setRelatedError] = useState("");
   const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [followupModalOpen, setFollowupModalOpen] = useState(false);
+  const [followupForm, setFollowupForm] = useState({ title: "", nextFollowup: "", channel: "whatsapp", notes: "" });
+  const [followupSaving, setFollowupSaving] = useState(false);
+  const [followupSavingId, setFollowupSavingId] = useState<string | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const relatedRequestRef = useRef(0);
 
@@ -153,7 +158,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
     setOpenActionMenuId(row.id);
   }
 
-  async function openClientPanel(client: PanelRecord, section: "profile" | "vehicles" | "history" | "debts") {
+  async function openClientPanel(client: PanelRecord, section: "profile" | "vehicles" | "history" | "debts" | "followups") {
     setOpenActionMenuId(null);
     setActionMenuPosition(null);
     setClientPanel({ client, section });
@@ -164,7 +169,30 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
     if (section === "profile") return;
     setRelatedLoading(true);
     try {
-      const resource = section === "vehicles" ? "vehicles" : section === "history" ? "work-orders" : "finance";
+      if (section === "followups") {
+        const records = await selectRows<PanelRecord>("crm", { client_id: `eq.${client.id}`, order: "next_followup.asc", limit: "100" });
+        if (requestId !== relatedRequestRef.current) return;
+        setRelatedRows(records);
+        return;
+      }
+      if (section === "history") {
+        const resources = ["work-orders", "quotes", "appointments", "inspections", "crm"] as const;
+        const results = await Promise.allSettled(resources.map((resource) =>
+          selectRows<PanelRecord>(resource, { order: "created_at.desc", limit: "100" }),
+        ));
+        if (requestId !== relatedRequestRef.current) return;
+        const clientName = String(client.customer_name || client.title || "").trim().toLocaleLowerCase("pt-BR");
+        const available = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+        const matched = available.filter((record) => {
+          if (String(detail(record, "client_id") ?? "") === client.id) return true;
+          return clientName && String(record.customer_name || "").trim().toLocaleLowerCase("pt-BR") === clientName;
+        }).sort((a, b) => b.created_at.localeCompare(a.created_at));
+        setRelatedRows(matched);
+        const failedSources = results.filter((result) => result.status === "rejected").length;
+        setRelatedError(failedSources ? `Histórico parcial: ${failedSources} fonte(s) não disponível(is) para este perfil.` : "");
+        return;
+      }
+      const resource = section === "vehicles" ? "vehicles" : "finance";
       const records = await selectRows<PanelRecord>(resource, { order: "created_at.desc", limit: "500" });
       if (requestId !== relatedRequestRef.current) return;
       const clientName = String(client.customer_name || client.title || "").trim().toLocaleLowerCase("pt-BR");
@@ -181,6 +209,56 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
       }
     } finally {
       if (requestId === relatedRequestRef.current) setRelatedLoading(false);
+    }
+  }
+
+  function openFollowupCreate() {
+    const when = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    when.setMinutes(0, 0, 0);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const localDateTime = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}T${pad(when.getHours())}:${pad(when.getMinutes())}`;
+    setFollowupForm({ title: "", nextFollowup: localDateTime, channel: "whatsapp", notes: "" });
+    setError("");
+    setFollowupModalOpen(true);
+  }
+
+  async function saveFollowup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const client = clientPanel?.client;
+    if (!client || !followupForm.title.trim() || !followupForm.nextFollowup) return;
+    setFollowupSaving(true);
+    setError("");
+    try {
+      await insertRow<PanelRecord>("crm", {
+        title: followupForm.title.trim(),
+        status: "open",
+        description: followupForm.notes.trim() || null,
+        details: {
+          client_id: client.id,
+          channel: followupForm.channel,
+          occurred_at: new Date().toISOString(),
+          next_followup: new Date(followupForm.nextFollowup).toISOString(),
+        },
+        created_by: session.user.id,
+      });
+      setFollowupModalOpen(false);
+      await openClientPanel(client, "followups");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível salvar o acompanhamento.");
+    } finally {
+      setFollowupSaving(false);
+    }
+  }
+
+  async function completeFollowup(record: PanelRecord) {
+    setFollowupSavingId(record.id);
+    try {
+      await updateRow<PanelRecord>("crm", record.id, { status: "concluido" });
+      if (clientPanel) await openClientPanel(clientPanel.client, "followups");
+    } catch (reason) {
+      setRelatedError(reason instanceof Error ? reason.message : "Não foi possível concluir o acompanhamento.");
+    } finally {
+      setFollowupSavingId(null);
     }
   }
 
@@ -531,6 +609,7 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                 ["vehicles", "Veículos"],
                 ["history", "Serviços"],
                 ["debts", "Débitos"],
+                ["followups", "Retornos"],
               ] as const).map(([section, label]) => (
                 <button
                   key={section}
@@ -547,18 +626,48 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
 
             <div className="admin-client-profile-content" role="tabpanel" aria-busy={relatedLoading}>
               {clientPanel.section === "profile" ? (
-                <dl className="admin-client-profile-details">
-                  <div><dt>Telefone</dt><dd>{asText(clientPanel.client.phone)}</dd></div>
-                  <div><dt>E-mail</dt><dd>{asText(clientPanel.client.customer_email)}</dd></div>
-                  <div><dt>CPF/CNPJ</dt><dd>{asText(detail(clientPanel.client, "documento"))}</dd></div>
-                  <div><dt>Contato preferido</dt><dd>{asText(detail(clientPanel.client, "contato_preferido"))}</dd></div>
-                  <div><dt>Cadastro</dt><dd>{dateText(clientPanel.client.created_at)}</dd></div>
-                  {clientPanel.client.description && <div className="wide"><dt>Observações</dt><dd>{clientPanel.client.description}</dd></div>}
-                </dl>
+                <div>
+                  <dl className="admin-client-profile-details">
+                    <div><dt>Telefone</dt><dd>{asText(clientPanel.client.phone)}</dd></div>
+                    <div><dt>E-mail</dt><dd>{asText(clientPanel.client.customer_email)}</dd></div>
+                    <div><dt>CPF/CNPJ</dt><dd>{asText(detail(clientPanel.client, "documento"))}</dd></div>
+                    <div><dt>Contato preferido</dt><dd>{asText(detail(clientPanel.client, "contato_preferido"))}</dd></div>
+                    <div><dt>Cadastro</dt><dd>{dateText(clientPanel.client.created_at)}</dd></div>
+                    {clientPanel.client.description && <div className="wide"><dt>Observações</dt><dd>{clientPanel.client.description}</dd></div>}
+                  </dl>
+                  <button type="button" className="admin-secondary" style={{ marginTop: 12 }} onClick={() => void openClientPanel(clientPanel.client, "followups")}>
+                    <History size={14} /> Ver retornos e lembretes
+                  </button>
+                </div>
               ) : relatedLoading ? (
                 <div className="admin-client-related-loading" role="status">Carregando informações…</div>
-              ) : relatedError ? (
+              ) : relatedError && relatedRows.length === 0 ? (
                 <div className="admin-form-error" role="alert">{relatedError}</div>
+              ) : clientPanel.section === "followups" ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button type="button" className="admin-primary" onClick={openFollowupCreate}><Plus size={14} /> Novo retorno</button>
+                  </div>
+                  {relatedRows.length === 0 ? (
+                    <div className="admin-empty admin-client-related-empty">Nenhum retorno combinado com este cliente.</div>
+                  ) : relatedRows.map((record) => {
+                    const followupAt = String(detail(record, "next_followup") ?? "");
+                    const overdue = Boolean(followupAt && new Date(followupAt).getTime() < Date.now() && record.status !== "concluido");
+                    return (
+                      <article className="admin-client-related-row" key={record.id}>
+                        <div className="admin-client-related-copy">
+                          <strong>{record.title}</strong>
+                          <span>{followupAt ? `${overdue ? "Atrasado · " : "Retorno · "}${dateText(followupAt)}` : "Sem data de retorno"}{detail(record, "channel") ? ` · ${String(detail(record, "channel"))}` : ""}</span>
+                          {record.description && <span>{record.description}</span>}
+                        </div>
+                        <div className="admin-client-related-meta">
+                          <AdminStatusBadge status={record.status} />
+                          {record.status !== "concluido" && <button type="button" className="admin-secondary" onClick={() => void completeFollowup(record)} disabled={followupSavingId === record.id}><CheckCircle2 size={13} />{followupSavingId === record.id ? "Salvando…" : "Concluir"}</button>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               ) : relatedRows.length === 0 ? (
                 <div className="admin-empty admin-client-related-empty">
                   {clientPanel.section === "vehicles" && "Nenhum veículo vinculado a este cliente."}
@@ -567,14 +676,16 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                 </div>
               ) : (
                 <div className="admin-client-related-list">
+                  {relatedError && <div className="admin-form-error" role="status">{relatedError}</div>}
                   {relatedRows.map((record) => (
                     <article className="admin-client-related-row" key={record.id}>
                       <div className="admin-client-related-copy">
                         <strong>
                           {clientPanel.section === "vehicles"
                             ? record.vehicle || record.title || "Veículo"
-                            : record.title || (clientPanel.section === "history" ? "Serviço" : "Lançamento")}
+                            : record.title || (clientPanel.section === "history" ? "Registro" : "Lançamento")}
                         </strong>
+                        {clientPanel.section === "history" && <span style={{ color: "var(--admin-blue)", fontSize: 11, fontWeight: 600 }}>{({ "work-orders": "Ordem de serviço", quotes: "Orçamento", appointments: "Agendamento", inspections: "Vistoria", crm: "Acompanhamento" } as Record<string, string>)[record.module] ?? record.module}</span>}
                         <span>
                           {clientPanel.section === "vehicles"
                             ? [detail(record, "marca"), detail(record, "modelo"), detail(record, "ano")].filter(Boolean).join(" · ") || "Dados do veículo"
@@ -813,6 +924,44 @@ export function ClientsView({ session }: { session: { user: { id: string } } }) 
                 <button type="submit" className="admin-primary" disabled={saving}>
                   {saving ? "Salvando..." : editing ? "Salvar alterações" : "Cadastrar cliente"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {followupModalOpen && clientPanel && (
+        <div className="admin-modal-backdrop" {...modalBackdropProps(() => setFollowupModalOpen(false))}>
+          <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="admin-modal-head">
+              <div><h2>Novo retorno</h2><p>{clientPanel.client.title || clientPanel.client.customer_name}</p></div>
+              <button type="button" className="admin-icon-btn" aria-label="Fechar" onClick={() => setFollowupModalOpen(false)}><X size={16} /></button>
+            </div>
+            <form onSubmit={(event) => void saveFollowup(event)}>
+              <div className="admin-form-grid">
+                <div className="admin-field wide">
+                  <label htmlFor="client-followup-title">Assunto *</label>
+                  <input id="client-followup-title" className="admin-input" required maxLength={180} value={followupForm.title} onChange={(event) => setFollowupForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex.: Revisar troca de óleo" />
+                </div>
+                <div className="admin-field">
+                  <label htmlFor="client-followup-date">Data do retorno *</label>
+                  <input id="client-followup-date" className="admin-input" type="datetime-local" required value={followupForm.nextFollowup} onChange={(event) => setFollowupForm((current) => ({ ...current, nextFollowup: event.target.value }))} />
+                </div>
+                <div className="admin-field">
+                  <label htmlFor="client-followup-channel">Canal</label>
+                  <select id="client-followup-channel" className="admin-select" value={followupForm.channel} onChange={(event) => setFollowupForm((current) => ({ ...current, channel: event.target.value }))}>
+                    <option value="whatsapp">WhatsApp</option><option value="telefone">Telefone</option><option value="presencial">Presencial</option><option value="outro">Outro</option>
+                  </select>
+                </div>
+                <div className="admin-field wide">
+                  <label htmlFor="client-followup-notes">Observações</label>
+                  <textarea id="client-followup-notes" className="admin-textarea" rows={3} maxLength={2000} value={followupForm.notes} onChange={(event) => setFollowupForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Contexto para a equipe..." />
+                </div>
+              </div>
+              {error && <p className="admin-form-error" role="alert">{error}</p>}
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-secondary" onClick={() => setFollowupModalOpen(false)} disabled={followupSaving}>Cancelar</button>
+                <button type="submit" className="admin-primary" disabled={followupSaving}>{followupSaving ? "Salvando…" : "Salvar retorno"}</button>
               </div>
             </form>
           </div>

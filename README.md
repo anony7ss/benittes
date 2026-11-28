@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-O painel fica em `/painel/`. Para iniciar o bot, configure as variáveis dele e rode `npm start` dentro de `bot-whatsapp/`.
+O painel fica em `/painel/`. Para iniciar o bot, configure as variáveis dele e rode `npm start` dentro de `bot-whatsapp/`. O serviço mantém a sessão vinculada ao ser desligado e o QR só é iniciado ao solicitar “Gerar QR Code” no painel. O comando `npm start` também supervisiona o processo e tenta reiniciá-lo com intervalo progressivo se ele encerrar inesperadamente.
 
 ## Configuração
 

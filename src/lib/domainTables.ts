@@ -12,6 +12,7 @@ export const DOMAIN_TABLE_BY_MODULE: Record<string, string> = {
   finance: "finance_entries",
   inventory: "inventory_items",
   sales: "sales",
+  crm: "crm_interactions",
   settings: "workshop_settings",
 };
 
@@ -185,6 +186,8 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
           ...(resolvedDate ? { starts_at: resolvedDate } : {}),
           ...(resolvedTime ? { horario: resolvedTime } : {}),
           ...(row.service_type ? { servico: row.service_type } : {}),
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.vehicle_id ? { vehicle_id: asStr(row.vehicle_id) } : {}),
         },
         created_by: asStr(row.created_by),
         created_at,
@@ -207,6 +210,8 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         details: {
           ...details,
           ...(row.valid_until ? { validade: row.valid_until } : {}),
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.vehicle_id ? { vehicle_id: asStr(row.vehicle_id) } : {}),
         },
         created_by: asStr(row.created_by),
         created_at,
@@ -225,7 +230,13 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         customer_email: null,
         phone: asStr(row.phone),
         vehicle: asStr(row.vehicle_plate),
-        details,
+        details: {
+          ...details,
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.vehicle_id ? { vehicle_id: asStr(row.vehicle_id) } : {}),
+          ...(row.quote_id ? { quote_id: asStr(row.quote_id) } : {}),
+          ...(row.appointment_id ? { appointment_id: asStr(row.appointment_id) } : {}),
+        },
         created_by: asStr(row.created_by),
         created_at,
         updated_at,
@@ -243,7 +254,12 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         customer_email: null,
         phone: asStr(row.phone),
         vehicle: asStr(row.vehicle_plate),
-        details,
+        details: {
+          ...details,
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.vehicle_id ? { vehicle_id: asStr(row.vehicle_id) } : {}),
+          ...(row.work_order_id ? { work_order_id: asStr(row.work_order_id) } : {}),
+        },
         created_by: asStr(row.created_by),
         created_at,
         updated_at,
@@ -266,6 +282,8 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
           tipo: row.direction === "payable" ? "pagar" : "receber",
           ...(row.category ? { categoria: row.category } : {}),
           ...(row.due_at ? { vencimento: row.due_at } : {}),
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.supplier_id ? { supplier_id: asStr(row.supplier_id) } : {}),
         },
         created_by: asStr(row.created_by),
         created_at,
@@ -286,8 +304,12 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         vehicle: null,
         details: {
           ...details,
+          sku: asStr(row.sku) ?? asStr(details.sku) ?? asStr(details.codigo),
           ...(row.sku ? { codigo: row.sku } : {}),
           ...(row.category ? { categoria: row.category } : {}),
+          quantity: Number(row.quantity ?? 0),
+          minimum_stock: Number(row.minimum_quantity ?? 0),
+          unit_cost: Number(row.unit_cost ?? 0),
           quantidade: Number(row.quantity ?? 0),
           minimo: Number(row.minimum_quantity ?? 0),
           unidade: String(row.unit ?? "un"),
@@ -312,6 +334,31 @@ export function fromDomainRow(module: string, row: RawRow): PanelRecord {
         details: {
           ...details,
           ...(row.payment_method ? { forma_pagamento: row.payment_method } : {}),
+          ...(row.client_id ? { client_id: asStr(row.client_id) } : {}),
+          ...(row.vehicle_id ? { vehicle_id: asStr(row.vehicle_id) } : {}),
+        },
+        created_by: asStr(row.created_by),
+        created_at,
+        updated_at,
+      };
+
+    case "crm":
+      return {
+        id,
+        module,
+        title: String(row.subject ?? ""),
+        status: String(row.status ?? "open"),
+        description: asStr(row.notes),
+        amount: null,
+        customer_name: null,
+        customer_email: null,
+        phone: null,
+        vehicle: null,
+        details: {
+          client_id: asStr(row.client_id),
+          channel: asStr(row.channel),
+          occurred_at: asStr(row.occurred_at),
+          next_followup: asStr(row.next_followup),
         },
         created_by: asStr(row.created_by),
         created_at,
@@ -491,7 +538,13 @@ export function toDomainPayload(
       if (!isUpdate || has("amount")) out.total = asNonNegNum(input.amount, 0);
       if (!isUpdate || has("description")) out.notes = asStr(input.description);
       if (!isUpdate || has("status")) out.status = asStr(input.status) ?? "novo";
-      if (!isUpdate || has("details")) out.details = details;
+      if (!isUpdate || has("details")) {
+        out.details = details;
+        if (!isUpdate) {
+          const quoteId = asStr(details.quote_id) ?? asStr(details.orcamento_id);
+          if (quoteId) out.quote_id = quoteId;
+        }
+      }
       if (!isUpdate && input.created_by) out.created_by = input.created_by;
       return out;
     }
@@ -504,7 +557,10 @@ export function toDomainPayload(
       if (!isUpdate || has("vehicle")) out.vehicle_plate = asStr(input.vehicle);
       if (!isUpdate || has("description")) out.notes = asStr(input.description);
       if (!isUpdate || has("status")) out.result = asStr(input.status) ?? "novo";
-      if (!isUpdate || has("details")) out.details = details;
+      if (!isUpdate || has("details")) {
+        out.details = details;
+        out.work_order_id = asStr(details.work_order_id);
+      }
       if (!isUpdate && input.created_by) out.created_by = input.created_by;
       return out;
     }
@@ -535,10 +591,10 @@ export function toDomainPayload(
       if (!isUpdate || has("description")) out.notes = asStr(input.description);
       if (!isUpdate || has("status")) out.active = input.status !== "cancelado";
       if (!isUpdate || has("details")) {
-        out.sku = asStr(details.codigo);
+        out.sku = asStr(details.sku) ?? asStr(details.codigo);
         out.category = asStr(details.categoria);
-        out.quantity = asNonNegNum(details.quantidade, 0);
-        out.minimum_quantity = asNonNegNum(details.minimo, 0);
+        out.quantity = asNonNegNum(details.quantity ?? details.quantidade, 0);
+        out.minimum_quantity = asNonNegNum(details.minimum_stock ?? details.minimo, 0);
         out.unit = asStr(details.unidade) ?? "un";
         out.details = details;
       }
@@ -558,6 +614,21 @@ export function toDomainPayload(
       if (!isUpdate || has("details")) {
         out.payment_method = asStr(details.forma_pagamento);
         out.details = details;
+      }
+      if (!isUpdate && input.created_by) out.created_by = input.created_by;
+      return out;
+    }
+
+    case "crm": {
+      const out: Record<string, unknown> = {};
+      if (!isUpdate || has("title")) out.subject = (asStr(input.title) ?? "Acompanhamento").slice(0, 180);
+      if (!isUpdate || has("status")) out.status = asStr(input.status) ?? "open";
+      if (!isUpdate || has("description")) out.notes = asStr(input.description);
+      if (!isUpdate || has("details")) {
+        out.client_id = asStr(details.client_id);
+        out.channel = asStr(details.channel);
+        out.occurred_at = asStr(details.occurred_at);
+        out.next_followup = asStr(details.next_followup);
       }
       if (!isUpdate && input.created_by) out.created_by = input.created_by;
       return out;

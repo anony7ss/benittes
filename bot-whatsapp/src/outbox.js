@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js';
-import { sendHumanizedMessage } from './queue.js';
+import { sendHumanizedMedia, sendHumanizedMessage } from './queue.js';
 import { logAction, logError, logInfo } from './terminal.js';
 import { resolverJidWhatsApp } from './phone-utils.js';
 import { registrarMensagemChat, pausarIaParaContato } from './web-sync.js';
@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function automaticMessageEnabled(item, settings) {
   const kind = String(item.kind || "");
-  if (kind.startsWith("2fa_") || kind === "direct") return true;
+  if (kind.startsWith("2fa_") || kind === "direct" || kind === "chat_manual") return true;
   if (settings?.automations_enabled === false) return false;
   if (kind === "quote" || kind === "os_quote") return settings?.auto_send_quotes !== false;
   if (kind === "reminder_appointment") return settings?.appointment_reminders_enabled === true;
@@ -30,10 +30,26 @@ export async function processarOutboxPendente() {
   isProcessing = true;
 
   try {
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const staleBefore = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+    const { data: recovered, error: recoveryError } = await supabase
+      .from('whatsapp_outbox')
+      .update({ status: 'pending', processing_at: null, next_attempt_at: nowIso, error: 'Envio retomado após interrupção do processador.' })
+      .eq('status', 'processing')
+      .or(`processing_at.is.null,processing_at.lt.${staleBefore}`)
+      .select('id');
+    if (recoveryError) {
+      logError('Outbox', 'Não foi possível recuperar envios interrompidos: ' + recoveryError.message);
+      return;
+    }
+    if (recovered?.length) logInfo('Outbox', `${recovered.length} envio(s) interrompido(s) retornaram à fila.`);
+
     const { data: pending, error } = await supabase
       .from('whatsapp_outbox')
       .select('*')
       .eq('status', 'pending')
+      .lte('next_attempt_at', nowIso)
       .order('created_at', { ascending: true })
       .limit(20);
 
@@ -50,7 +66,7 @@ export async function processarOutboxPendente() {
 
     for (const item of pending) {
       if (!currentSocket) break;
-      const canSendWithoutAutomationConfig = String(item.kind || '').startsWith('2fa_') || item.kind === 'direct';
+      const canSendWithoutAutomationConfig = String(item.kind || '').startsWith('2fa_') || item.kind === 'direct' || item.kind === 'chat_manual';
       if (settingsError && !canSendWithoutAutomationConfig) continue;
 
       if (!automaticMessageEnabled(item, settings)) {
@@ -65,12 +81,17 @@ export async function processarOutboxPendente() {
 
       const { data: claimed, error: claimErr } = await supabase
         .from('whatsapp_outbox')
-        .update({ status: 'processing' })
+        .update({ status: 'processing', processing_at: new Date().toISOString(), last_attempt_at: new Date().toISOString() })
         .eq('id', item.id)
         .eq('status', 'pending')
+        .lte('next_attempt_at', new Date().toISOString())
         .select('id');
 
-      if (claimErr || !claimed?.length) continue;
+      if (claimErr) {
+        logError('Outbox', `Não foi possível reservar o envio ${item.id}: ${claimErr.message}`);
+        continue;
+      }
+      if (!claimed?.length) continue;
 
       try {
         const isTwoFactorMessage = String(item.kind || '').startsWith('2fa_');
@@ -91,13 +112,54 @@ export async function processarOutboxPendente() {
           await currentSocket.presenceSubscribe(jid).catch(() => {});
         }
 
-        await sendHumanizedMessage(currentSocket, jid, item.message);
+        let sentMessage;
+        let messageBody = String(item.message || '');
+        let mediaPath = null;
+        const mediaType = ['image', 'audio', 'video'].includes(String(item.media_type)) ? String(item.media_type) : null;
+        if (mediaType && typeof item.media_url === 'string' && item.media_url.startsWith('storage://')) {
+          mediaPath = item.media_url.slice('storage://'.length);
+          if (!new RegExp(`^${normalized}/[0-9a-f-]{36}\\.(jpg|png|webp|gif|ogg|opus|mp3|m4a|webm|mp4)$`, 'i').test(mediaPath)) {
+            throw new Error('O caminho do anexo não corresponde à conversa.');
+          }
+          const { data: file, error: mediaError } = await supabase.storage.from('whatsapp-chat-media').download(mediaPath);
+          if (mediaError || !file) throw new Error('Não foi possível carregar o anexo para envio.');
+          const mediaBuffer = Buffer.from(await file.arrayBuffer());
+          const ext = mediaPath.split('.').at(-1)?.toLowerCase();
+          const mediaMime = mediaType === 'image'
+            ? ({ jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' })[ext] || 'image/jpeg'
+            : mediaType === 'video'
+              ? (ext === 'webm' ? 'video/webm' : 'video/mp4')
+              : ({ ogg: 'audio/ogg; codecs=opus', opus: 'audio/opus', mp3: 'audio/mpeg', m4a: 'audio/mp4', webm: 'audio/webm' })[ext] || 'audio/ogg; codecs=opus';
+          sentMessage = await sendHumanizedMedia(currentSocket, jid, mediaBuffer, {
+            mediaType,
+            mimetype: mediaMime,
+            caption: item.message || '',
+            senderType: 'admin_manual',
+            immediate: true,
+            skipChatLog: true,
+          });
+          if (!messageBody) messageBody = mediaType === 'image' ? '[Imagem enviada]' : mediaType === 'audio' ? '🎤 Áudio enviado' : '[Vídeo enviado]';
+        } else {
+          sentMessage = await sendHumanizedMessage(currentSocket, jid, item.message, { senderType: 'admin_manual', skipChatLog: true });
+        }
         await registrarMensagemChat({
           phone: normalized,
           direction: 'outgoing',
-          senderName: 'Sistema (Direto)',
-          body: isTwoFactorMessage ? '[código de verificação oculto]' : item.message,
+          senderName: isTwoFactorMessage ? 'Sistema' : 'Equipe',
+          body: isTwoFactorMessage ? '[código de verificação oculto]' : messageBody,
+          mediaType,
+          mediaUrl: mediaPath,
+          status: 'sent',
+          messageKey: sentMessage?.key?.id || null,
+          outboxId: item.id,
         });
+
+        if (!isTwoFactorMessage && item.kind === 'chat_manual') {
+          const pauseMinutes = Number.isInteger(Number(item.ai_pause_minutes)) ? Number(item.ai_pause_minutes) : 30;
+          const paused = await pausarIaParaContato(normalized, pauseMinutes);
+          if (paused === false) logError('IA', `A mensagem foi enviada, mas a pausa do bot não confirmou para ${normalized}.`);
+          else logInfo('IA', `Pausa automática por ${pauseMinutes || 'tempo indeterminado'} após atendimento manual para ${normalized}.`);
+        }
 
         if (!isTwoFactorMessage && item.kind === 'direct') {
           const { data: settings } = await supabase
@@ -112,29 +174,45 @@ export async function processarOutboxPendente() {
           }
         }
 
-        await supabase
+        const { error: sentUpdateError } = await supabase
           .from('whatsapp_outbox')
           .update({
             status: 'sent',
             sent_at: new Date().toISOString(),
+            processing_at: null,
             error: null,
             ...(isTwoFactorMessage ? { message: '[mensagem de verificação removida]' } : {}),
           })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .eq('status', 'processing');
+
+        if (sentUpdateError) {
+          logError('Outbox', `Mensagem enviada, mas não foi possível registrar o estado de ${item.id}: ${sentUpdateError.message}`);
+        }
 
         logAction('Outbox', `Enviado (${item.kind || 'direct'}) para ${normalized}`);
       } catch (err) {
         const retryCount = Number(item.retry_count || 0) + 1;
-        await supabase
+        const retryStatus = retryCount >= 6 ? 'failed' : 'pending';
+        const delaySeconds = Math.min(60 * 60, 15 * (2 ** Math.min(retryCount - 1, 8)));
+        const nextAttemptAt = new Date(Date.now() + delaySeconds * 1000).toISOString();
+        const { error: retryUpdateError } = await supabase
           .from('whatsapp_outbox')
           .update({
-            status: retryCount >= 3 ? 'failed' : 'pending',
+            status: retryStatus,
             retry_count: retryCount,
-            error: err instanceof Error ? err.message : String(err),
+            processing_at: null,
+            next_attempt_at: nextAttemptAt,
+            error: String(err instanceof Error ? err.message : err).slice(0, 1000),
           })
-          .eq('id', item.id);
+          .eq('id', item.id)
+          .eq('status', 'processing');
 
         logError('Outbox', `Falha ao enviar para ${item.phone}: ${err instanceof Error ? err.message : err}`);
+        if (retryUpdateError) logError('Outbox', `Não foi possível registrar a tentativa de ${item.id}: ${retryUpdateError.message}`);
+        if (retryStatus === 'failed') {
+          await supabase.from('whatsapp_messages').update({ status: 'failed' }).eq('outbox_id', item.id);
+        }
       }
 
       await sleep(900);
@@ -146,6 +224,18 @@ export async function processarOutboxPendente() {
 
 export function iniciarProcessadorOutbox(socket) {
   currentSocket = socket;
+
+  if (!socket) {
+    if (realtimeSubscription) {
+      try { supabase.removeChannel(realtimeSubscription); } catch {}
+      realtimeSubscription = null;
+    }
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+    return;
+  }
 
   if (realtimeSubscription) {
     try { supabase.removeChannel(realtimeSubscription); } catch {}

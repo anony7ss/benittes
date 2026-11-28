@@ -15,10 +15,12 @@ import {
   ContactRound,
   DollarSign,
   ExternalLink,
+  History,
   Images,
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   MessageSquareText,
   Moon,
   Package,
@@ -49,6 +51,7 @@ const iconMap: Record<string, typeof LayoutDashboard> = {
   prices: Tags,
   inventory: Package,
   contacts: MessageSquareText,
+  chat: MessageCircle,
   finance: DollarSign,
   sales: ShoppingBag,
   reports: BarChart3,
@@ -56,6 +59,7 @@ const iconMap: Record<string, typeof LayoutDashboard> = {
   bot: Bot,
   settings: Settings,
   account: UserCog,
+  updates: History,
 };
 
 const roleLabels: Record<string, string> = {
@@ -380,7 +384,7 @@ export function AdminShell({
     return navigationGroupOrder
       .map((group) => ({
         group,
-        items: visiblePages.filter((item) => item.group === group),
+        items: visiblePages.filter((item) => item.group === group && !item.footer),
       }))
       .filter((entry) => entry.items.length > 0);
   }, [visiblePages]);
@@ -507,6 +511,24 @@ export function AdminShell({
             <ExternalLink size={17} />
             <span className="admin-nav-label-text">Abrir o site</span>
           </a>
+          {visiblePages.filter((item) => item.footer).map((item) => {
+            const Icon = iconMap[item.icon] ?? History;
+            const active = item.path === page.path;
+            return (
+              <a
+                key={item.path}
+                href={routeFor(item.path)}
+                className={`admin-nav-item ${active ? "active" : ""}`}
+                onClick={() => setMobileOpen(false)}
+                aria-current={active ? "page" : undefined}
+                title={item.label}
+              >
+                {active && <span className="admin-active-bar" aria-hidden="true" />}
+                <Icon size={17} />
+                <span className="admin-nav-label-text">{item.label}</span>
+              </a>
+            );
+          })}
         </nav>
 
         <div className="admin-sidebar-footer">

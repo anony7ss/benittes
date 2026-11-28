@@ -56,6 +56,7 @@ type FormState = {
   quilometragem: string;
   tecnico: string;
   status: string;
+  work_order_id: string;
   description: string;
   fotos: string[];
   checklist: InspectionChecklistItem[];
@@ -75,6 +76,7 @@ const emptyForm = (): FormState => ({
   quilometragem: "",
   tecnico: "",
   status: "em_andamento",
+  work_order_id: "",
   description: "",
   fotos: [],
   checklist: [],
@@ -127,6 +129,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
     "inspections",
     session.user.id,
   );
+  const { rows: workOrders } = useModuleRecords("work-orders", session.user.id);
   const { clients, vehicles, reload: reloadCatalog } = useClientVehicleCatalog();
   const [query, setQuery] = useState("");
   const [resultFilter, setResultFilter] = useState<string>("todos");
@@ -185,6 +188,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
       quilometragem: String(detail(row, "quilometragem") ?? ""),
       tecnico: String(detail(row, "tecnico") ?? ""),
       status: row.status ?? "em_andamento",
+      work_order_id: String(detail(row, "work_order_id") ?? ""),
       description: row.description ?? "",
       fotos: Array.isArray(rawFotos) ? rawFotos.map(String) : [],
       checklist: normalizeChecklist(detail(row, "checklist")),
@@ -252,6 +256,7 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
           resultado: form.resultado,
           quilometragem: form.quilometragem.trim() || null,
           tecnico: form.tecnico.trim() || null,
+          work_order_id: form.work_order_id || null,
           fotos: form.fotos,
           checklist: form.checklist,
         },
@@ -539,6 +544,23 @@ export function InspectionsView({ session }: { session: { user: { id: string } }
                         <option key={name} value={name} />
                       ))}
                     </datalist>
+                  </div>
+                  <div className="admin-field wide">
+                    <label htmlFor="inspection-work-order">Vincular à ordem de serviço</label>
+                    <select
+                      id="inspection-work-order"
+                      className="admin-select"
+                      value={form.work_order_id}
+                      onChange={(event) => setForm((prev) => ({ ...prev, work_order_id: event.target.value }))}
+                    >
+                      <option value="">Sem vínculo</option>
+                      {workOrders.filter((order) => order.status !== "cancelado").map((order) => (
+                        <option key={order.id} value={order.id}>
+                          {order.title} · {order.customer_name || "Sem cliente"} · {order.vehicle || "Sem placa"}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: "var(--admin-muted)" }}>A vistoria, o checklist e as fotos aparecerão no histórico da OS.</small>
                   </div>
                 </div>
               </section>

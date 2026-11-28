@@ -28,7 +28,7 @@ console.warn = function (...args) {
   _origWarn.apply(console, args);
 };
 
-import { initWhatsApp, limparSessaoDesincronizada } from './src/whatsapp.js';
+import { initWhatsApp, limparSessaoDesincronizada, stopWhatsAppSocket } from './src/whatsapp.js';
 
 console.error = function (...args) {
   const msg = typeof args[0] === 'string' ? args[0] : '';
@@ -57,6 +57,7 @@ import {
   iniciarHeartbeat,
   escutarAcoesAdmin,
   publicarStatusBot,
+  getBotControlState,
   isAiEnabled,
   isChatAiPaused,
   registrarMensagemChat,
@@ -90,6 +91,9 @@ try {
 
 process.on('uncaughtException', (error) => {
   logError('Sistema', `Exceção não tratada: ${error?.message || error}`);
+  // The package supervisor restarts this process. Exiting avoids keeping a
+  // partially corrupted Baileys socket alive; the saved auth files are kept.
+  process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
@@ -97,6 +101,13 @@ process.on('unhandledRejection', (reason) => {
 });
 
 let isShuttingDown = false;
+let botEnabled = true;
+let qrRequested = false;
+let socketStartPromise = null;
+let startRetryTimer = null;
+let startRetryCount = 0;
+let runtimeGeneration = 0;
+let currentSocket = null;
 const closedReplyCooldown = new Map();
 const CLOSED_REPLY_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 async function gracefulShutdown(signal) {
@@ -105,10 +116,9 @@ async function gracefulShutdown(signal) {
   stopSpinner();
   console.log(`\n🛑 [Sistema] Encerrando com segurança (${signal})...`);
   try {
+    await stopWhatsAppSocket();
     await publicarStatusBot({
       status: 'disconnected',
-      phone_connected: null,
-      profile_name: null,
       qr_code: null,
     });
   } catch {}
@@ -127,8 +137,54 @@ async function startBot() {
   renderBanner();
   iniciarHeartbeat();
 
-  const startSocket = async () => {
-    await initWhatsApp(
+  const scheduleStartRetry = () => {
+    if (startRetryTimer || !botEnabled || isShuttingDown) return;
+    startRetryCount += 1;
+    const delayMs = Math.min(1500 * 2 ** Math.min(startRetryCount - 1, 5), 45_000);
+    logWarn('WhatsApp', `Nova tentativa de inicialização em ${Math.ceil(delayMs / 1000)}s.`);
+    startRetryTimer = setTimeout(() => {
+      startRetryTimer = null;
+      startSocket().catch(() => {});
+    }, delayMs);
+    if (startRetryTimer.unref) startRetryTimer.unref();
+  };
+
+  const startSocket = async ({ requestQr = false } = {}) => {
+    if (isShuttingDown) return;
+    if (requestQr) {
+      botEnabled = true;
+      qrRequested = true;
+    }
+    if (socketStartPromise) {
+      if (requestQr) {
+        qrRequested = true;
+        await socketStartPromise.catch(() => {});
+        return startSocket({ requestQr: true });
+      }
+      return socketStartPromise;
+    }
+
+    const generation = runtimeGeneration;
+    socketStartPromise = (async () => {
+      try {
+        const state = await getBotControlState();
+        botEnabled = requestQr ? true : state.botEnabled;
+        qrRequested = requestQr || state.qrRequested;
+      } catch (error) {
+        // Keep reconnecting an existing linked session if Supabase has a brief
+        // outage, but never infer consent to create a QR from a database error.
+        logWarn('Supabase', `Não foi possível ler os controles do bot: ${error?.message || error}`);
+        if (!requestQr) qrRequested = false;
+      }
+
+      if (!botEnabled) {
+        currentSocket = null;
+        await stopWhatsAppSocket();
+        await publicarStatusBot({ status: 'stopped', qr_code: null });
+        return;
+      }
+
+      const result = await initWhatsApp(
       async (socket, message) => {
         const jid = message?.key?.remoteJid;
         if (!jid || message.key.fromMe || !isSafeWhatsAppJid(jid)) return;
@@ -182,23 +238,106 @@ async function startBot() {
       },
       async (socket, update) => {
         if (update?.connection === 'open') {
+          currentSocket = socket;
+          botEnabled = true;
+          qrRequested = false;
+          startRetryCount = 0;
+          if (startRetryTimer) {
+            clearTimeout(startRetryTimer);
+            startRetryTimer = null;
+          }
           const me = socket.user;
           const phone = me?.id ? String(me.id).split(':')[0].split('@')[0] : null;
           updateStatus('whatsapp', `Conectado (${phone || 'OK'})`);
           renderBanner();
           logSuccess('WhatsApp', `Conectado (${phone || 'OK'})`);
-          escutarAcoesAdmin(socket, () => startSocket());
           iniciarProcessadorOutbox(socket);
         } else if (update?.connection === 'close') {
           updateStatus('whatsapp', 'Desconectado');
         }
       },
-    );
+      { allowQr: qrRequested },
+      );
+
+      if (generation !== runtimeGeneration || !botEnabled) {
+        await stopWhatsAppSocket();
+        currentSocket = null;
+        return;
+      }
+      currentSocket = result?.sock || null;
+      startRetryCount = 0;
+    })();
+
+    try {
+      await socketStartPromise;
+    } catch (error) {
+      logError('WhatsApp', `Falha ao inicializar: ${error?.message || error}`);
+      scheduleStartRetry();
+    } finally {
+      socketStartPromise = null;
+    }
   };
 
-  await startSocket();
+  const stopBot = async () => {
+    runtimeGeneration += 1;
+    botEnabled = false;
+    qrRequested = false;
+    if (startRetryTimer) {
+      clearTimeout(startRetryTimer);
+      startRetryTimer = null;
+    }
+    currentSocket = null;
+    await stopWhatsAppSocket();
+    iniciarProcessadorOutbox(null);
+    await publicarStatusBot({
+      status: 'stopped',
+      qr_code: null,
+      bot_enabled: false,
+      qr_requested: false,
+    });
+    updateStatus('whatsapp', 'Desligado');
+    logInfo('WhatsApp', 'Bot desligado pelo painel. A conta continua vinculada e salva.');
+  };
+
+  const restartBot = async () => {
+    runtimeGeneration += 1;
+    if (startRetryTimer) {
+      clearTimeout(startRetryTimer);
+      startRetryTimer = null;
+    }
+    if (socketStartPromise) await socketStartPromise.catch(() => {});
+    currentSocket = null;
+    await stopWhatsAppSocket();
+    if (botEnabled) await startSocket({ requestQr: qrRequested });
+  };
+
+  escutarAcoesAdmin({
+    getSocket: () => currentSocket,
+    onStart: () => startSocket(),
+    onStop: stopBot,
+    onGenerateQr: () => startSocket({ requestQr: true }),
+    onRestart: restartBot,
+  });
+
+  try {
+    const state = await getBotControlState();
+    botEnabled = state.botEnabled;
+    qrRequested = state.qrRequested;
+  } catch (error) {
+    logWarn('Supabase', `Não foi possível ler o estado inicial do bot; QR ficará aguardando solicitação manual: ${error?.message || error}`);
+    botEnabled = true;
+    qrRequested = false;
+  }
+
+  if (botEnabled) {
+    await startSocket({ requestQr: qrRequested });
+  } else {
+    await publicarStatusBot({ status: 'stopped', qr_code: null });
+    updateStatus('whatsapp', 'Desligado');
+  }
 }
 
 startBot().catch((err) => {
   logError('Sistema', err?.message || String(err));
+  process.exit(1);
 });

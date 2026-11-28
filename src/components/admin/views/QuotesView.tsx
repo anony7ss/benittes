@@ -151,6 +151,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
   const [editing, setEditing] = useState<PanelRecord | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [convertingQuoteId, setConvertingQuoteId] = useState<string | null>(null);
   const [customClient, setCustomClient] = useState(false);
   const [customVehicle, setCustomVehicle] = useState(false);
   const [notice, setNotice] = useState("");
@@ -312,33 +313,43 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
   }
 
   async function convertQuoteToOs(row: PanelRecord) {
+    if (convertingQuoteId) return;
+    setConvertingQuoteId(row.id);
     const existingDetails =
       row.details && typeof row.details === "object" ? row.details : {};
-    await insertRow<PanelRecord>("panel_records", {
-      module: "work-orders",
-      title: row.title,
-      customer_name: row.customer_name,
-      phone: row.phone,
-      vehicle: row.vehicle,
-      amount: row.amount,
-      status: "novo",
-      description: row.description,
-      details: {
-        aprovacao: "aprovado",
-        aprovado_em: todayIso(),
-        orcamento_id: row.id,
-      },
-      created_by: session.user.id,
-    });
-    await patchRecord(row.id, {
-      status: "concluido",
-      details: {
-        ...existingDetails,
-        aprovacao: "aprovado",
-        os_gerada: true,
-      },
-    });
-    setNotice(`OS criada a partir do orçamento "${row.title}".`);
+    try {
+      const createdOrders = await insertRow<PanelRecord>("panel_records", {
+        module: "work-orders",
+        title: row.title,
+        customer_name: row.customer_name,
+        phone: row.phone,
+        vehicle: row.vehicle,
+        amount: row.amount,
+        status: "novo",
+        description: row.description,
+        details: {
+          aprovacao: "aprovado",
+          aprovado_em: todayIso(),
+          orcamento_id: row.id,
+        },
+        created_by: session.user.id,
+      });
+      const workOrderId = createdOrders[0]?.id;
+      await patchRecord(row.id, {
+        status: "concluido",
+        details: {
+          ...existingDetails,
+          aprovacao: "aprovado",
+          os_gerada: true,
+          ...(workOrderId ? { os_id: workOrderId } : {}),
+        },
+      });
+      setNotice(`OS criada a partir do orçamento "${row.title}".`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível criar a OS.");
+    } finally {
+      setConvertingQuoteId(null);
+    }
   }
 
   function generatePublicToken(): string {
@@ -806,7 +817,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
           <button
             type="button"
             className="admin-workorder-advance admin-quote-primary-action"
-            disabled={isApproved && !isPartial && hasGeneratedOrder}
+            disabled={(isApproved && !isPartial && hasGeneratedOrder) || convertingQuoteId !== null}
             onClick={() => {
               if (isExpired) void renewQuoteValidity(row);
               else if (isRejected) reviewQuote(row);
@@ -822,7 +833,7 @@ export function QuotesView({ session }: { session: { user: { id: string } } }) {
             ) : isPartial ? (
               <><CheckCircle2 size={14} /> Ver itens aprovados</>
             ) : isApproved ? (
-              hasGeneratedOrder ? "OS gerada" : <><Wrench size={14} /> Gerar ordem de serviço <span aria-hidden="true">→</span></>
+              convertingQuoteId === row.id ? "Criando OS…" : hasGeneratedOrder ? "OS gerada" : <><Wrench size={14} /> Gerar ordem de serviço <span aria-hidden="true">→</span></>
             ) : (
               <><MessageCircle size={14} /> Enviar ao cliente</>
             )}

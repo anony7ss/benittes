@@ -34,8 +34,10 @@ export async function GET(request: NextRequest) {
       ? {
           id: data.id,
           is_online: isOnline,
-          status: isOnline ? data.status : "disconnected",
+          status: data.bot_enabled === false ? "stopped" : isOnline ? data.status : "disconnected",
           qr_code: isOnline ? data.qr_code : null,
+          bot_enabled: data.bot_enabled !== false,
+          qr_requested: data.qr_requested === true,
           phone_connected: data.phone_connected,
           profile_name: data.profile_name,
           ai_enabled: data.ai_enabled,
@@ -97,10 +99,51 @@ export async function POST(request: NextRequest) {
   const action = String(body.action || "");
   const supabase = getServiceSupabase();
 
+  if (["start_bot", "stop_bot", "generate_qr"].includes(action)) {
+    const { data: current, error: currentError } = await supabase
+      .from("whatsapp_bot_session")
+      .select("last_heartbeat, status, bot_enabled, qr_requested, phone_connected")
+      .eq("id", "default")
+      .maybeSingle();
+    if (currentError) return databaseErrorResponse(currentError);
+    const isOnline = isBotHeartbeatFresh(current?.last_heartbeat);
+    if (action === "start_bot" && isOnline && current?.status === "connected" && current?.bot_enabled !== false) {
+      return NextResponse.json({ ok: true, action, alreadyRunning: true, queued: false });
+    }
+    if (action === "stop_bot" && current?.bot_enabled === false && current?.status === "stopped") {
+      return NextResponse.json({ ok: true, action, alreadyStopped: true, queued: !isOnline });
+    }
+    if (action === "generate_qr" && isOnline && current?.status === "connected") {
+      return NextResponse.json({ error: "A conta já está conectada; não é necessário gerar QR Code." }, { status: 409 });
+    }
+    if (action === "generate_qr" && current?.phone_connected) {
+      return NextResponse.json({ error: "Esta conta já está vinculada. Use “Ligar bot” ou “Reiniciar” para reconectar sem gerar outro QR." }, { status: 409 });
+    }
+
+    const patch = action === "stop_bot"
+      ? { bot_enabled: false, qr_requested: false, status: "stopped", qr_code: null }
+      : action === "generate_qr"
+        ? { bot_enabled: true, qr_requested: true, status: "connecting", qr_code: null }
+        : { bot_enabled: true, qr_requested: false, status: "connecting", qr_code: null };
+    const { error } = await supabase
+      .from("whatsapp_bot_session")
+      .upsert(
+        {
+          id: "default",
+          ...patch,
+          action_requested: action,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
+    if (error) return databaseErrorResponse(error);
+    return NextResponse.json({ ok: true, action, queued: !isOnline });
+  }
+
   if (action === "disconnect" || action === "restart" || action === "clear_session") {
     const { data: current } = await supabase
       .from("whatsapp_bot_session")
-      .select("last_heartbeat, status")
+      .select("last_heartbeat, status, bot_enabled")
       .eq("id", "default")
       .maybeSingle();
 
@@ -135,6 +178,7 @@ export async function POST(request: NextRequest) {
         {
           id: "default",
           action_requested: action,
+          ...(action === "disconnect" || action === "clear_session" ? { qr_requested: false } : {}),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "id" },

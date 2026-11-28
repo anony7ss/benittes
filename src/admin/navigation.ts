@@ -7,7 +7,8 @@ export type AdminPage = {
   icon: string;
   module?: string;
   description?: string;
-  special?: "dashboard" | "login" | "recovery" | "contacts" | "settings" | "account" | "bot" | "ponto";
+  special?: "dashboard" | "login" | "recovery" | "contacts" | "settings" | "account" | "bot" | "ponto" | "updates";
+  footer?: boolean;
 };
 
 export const adminPages: AdminPage[] = [
@@ -23,6 +24,7 @@ export const adminPages: AdminPage[] = [
   { path: "precos", label: "Preços por veículo", group: "Oficina", icon: "prices", module: "prices", description: "Tarifas específicas por marca, modelo e ano." },
   { path: "estoque", label: "Estoque", group: "Oficina", icon: "inventory", module: "inventory", description: "Peças, insumos, estoque mínimo e margem." },
 
+  { path: "chat", label: "Chat", group: "Comercial", icon: "chat", module: "chat", description: "Conversas do WhatsApp com atendimento manual e controle do bot." },
   { path: "contatos", label: "Mensagens", group: "Comercial", icon: "contacts", special: "contacts", description: "Solicitações recebidas pelo formulário do site." },
   { path: "financeiro", label: "Finanças", group: "Financeiro", icon: "finance", module: "finance", description: "Receitas, despesas, fluxo de caixa e vencimentos." },
   { path: "vendas", label: "Vendas e PDV", group: "Comercial", icon: "sales", module: "sales", description: "Vendas de balcão, formas de pagamento e comandas." },
@@ -33,6 +35,7 @@ export const adminPages: AdminPage[] = [
   { path: "galeria", label: "Galeria do site", group: "Administração", icon: "gallery", module: "gallery", description: "Fotos, vídeos, destaques e ordem de exibição no site." },
   { path: "conta", label: "Conta & Equipe", group: "Administração", icon: "account", special: "account", description: "Seu perfil, equipe, permissões e auditoria." },
   { path: "configuracoes", label: "Configurações", group: "Administração", icon: "settings", special: "settings", description: "Parâmetros da oficina e conteúdo do site." },
+  { path: "novidades", label: "Novidades", group: "Administração", icon: "updates", special: "updates", footer: true, description: "Melhorias recentes do painel explicadas sem termos técnicos." },
 
   { path: "login", label: "Entrar", group: "Acesso", icon: "account", special: "login" },
   { path: "recuperar-senha", label: "Recuperar senha", group: "Acesso", icon: "account", special: "recovery" },
@@ -45,6 +48,7 @@ export const routeFor = (path: string) => (path ? `/painel/${path}/` : "/painel/
 
 export function canSeePage(role: string, page: AdminPage, permissions?: PanelPermissions | null): boolean {
   if (role === "owner") return true;
+  if (page.special === "updates") return true;
   if (permissions) {
     const module = page.module ?? (page.special === "dashboard" || page.special === "account" || page.special === "ponto" || page.special === "contacts" || page.special === "settings" || page.special === "bot" ? page.special : null);
     return Boolean(module && hasModulePermission(permissions, module));
@@ -54,7 +58,7 @@ export function canSeePage(role: string, page: AdminPage, permissions?: PanelPer
   if (page.special === "contacts") return role === "advisor";
   if (page.special === "settings" || page.special === "bot") return false;
   const roleModules: Record<string, string[]> = {
-    advisor: ["appointments", "work-orders", "quotes", "inspections", "clients", "vehicles", "services", "prices", "reports"],
+    advisor: ["appointments", "work-orders", "quotes", "inspections", "clients", "vehicles", "services", "prices", "reports", "chat"],
     technician: ["appointments", "work-orders", "inspections", "vehicles", "inventory"],
     finance: ["finance", "sales", "reports"],
   };

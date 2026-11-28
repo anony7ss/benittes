@@ -226,11 +226,12 @@ async function extrairConteudoMensagem(message, socket) {
     try {
       const transcricao = await transcreverAudio(message, socket);
       if (transcricao?.sucesso && transcricao.texto) {
-        return { text: transcricao.texto, isAudio: true, imageDataUrl: null, mediaError: null };
+        return { text: transcricao.texto, isAudio: true, mediaType: 'audio', imageDataUrl: null, mediaError: null };
       }
       return {
         text: '[Áudio recebido]',
         isAudio: true,
+        mediaType: 'audio',
         imageDataUrl: null,
         mediaError: 'Não consegui entender esse áudio agora. Pode mandar outro áudio mais curto ou escrever a mensagem?',
       };
@@ -239,6 +240,7 @@ async function extrairConteudoMensagem(message, socket) {
       return {
         text: '[Áudio recebido]',
         isAudio: true,
+        mediaType: 'audio',
         imageDataUrl: null,
         mediaError: 'Não consegui entender esse áudio agora. Pode mandar outro áudio mais curto ou escrever a mensagem?',
       };
@@ -251,6 +253,7 @@ async function extrairConteudoMensagem(message, socket) {
   const videoThumbnail = thumbnailBytes && (Buffer.isBuffer(thumbnailBytes) || thumbnailBytes instanceof Uint8Array)
     ? Buffer.from(thumbnailBytes)
     : null;
+  const isVideoPreview = Boolean(videoThumbnail);
 
   if (imageMessage || videoThumbnail) {
     try {
@@ -263,7 +266,6 @@ async function extrairConteudoMensagem(message, socket) {
       if (!mime) throw new Error('A mídia recebida não é uma imagem suportada.');
       const base64 = buffer.toString('base64');
       const isSticker = Boolean(msg.stickerMessage);
-      const isVideoPreview = Boolean(videoThumbnail);
       const imageContext = isSticker
         ? 'O cliente enviou uma figurinha. Descreva o que aparece nela e considere o contexto da conversa.'
         : isVideoPreview
@@ -272,6 +274,7 @@ async function extrairConteudoMensagem(message, socket) {
       return {
         text: [text, imageContext].filter(Boolean).join('\n'),
         isAudio: false,
+        mediaType: isVideoPreview ? 'video' : 'image',
         imageDataUrl: `data:${mime};base64,${base64}`,
         mediaError: null,
       };
@@ -280,6 +283,7 @@ async function extrairConteudoMensagem(message, socket) {
       return {
         text: text || '[Imagem ou figurinha recebida]',
         isAudio: false,
+        mediaType: isVideoPreview ? 'video' : 'image',
         imageDataUrl: null,
         mediaError: 'Não consegui abrir essa imagem ou figurinha. Pode reenviar em JPG/PNG ou explicar o que aparece?',
       };
@@ -290,6 +294,7 @@ async function extrairConteudoMensagem(message, socket) {
     return {
       text: text || '[Documento recebido]',
       isAudio: false,
+      mediaType: null,
       imageDataUrl: null,
       mediaError: 'Consigo analisar fotos e figurinhas, mas ainda não consigo ler esse tipo de documento. Se puder, envie uma foto ou copie o trecho importante aqui.',
     };
@@ -299,6 +304,7 @@ async function extrairConteudoMensagem(message, socket) {
     return {
       text: [text, 'O cliente enviou um vídeo sem miniatura disponível; você não analisou o conteúdo visual dele.'].filter(Boolean).join('\n'),
       isAudio: false,
+      mediaType: 'video',
       imageDataUrl: null,
       mediaError: null,
     };
@@ -311,10 +317,10 @@ async function extrairConteudoMensagem(message, socket) {
     const coordinates = Number.isFinite(latitude) && Number.isFinite(longitude)
       ? `${latitude}, ${longitude}`
       : 'coordenadas não disponíveis';
-    return { text: [text, `O cliente compartilhou uma localização (${coordinates}).`].filter(Boolean).join('\n'), isAudio: false, imageDataUrl: null, mediaError: null };
+    return { text: [text, `O cliente compartilhou uma localização (${coordinates}).`].filter(Boolean).join('\n'), isAudio: false, mediaType: null, imageDataUrl: null, mediaError: null };
   }
 
-  return { text: text.trim(), isAudio: false, imageDataUrl: null, mediaError: null };
+  return { text: text.trim(), isAudio: false, mediaType: null, imageDataUrl: null, mediaError: null };
 }
 
 async function extrairTextoParaDecisaoDeOrcamento(message, socket) {
@@ -332,18 +338,18 @@ async function extrairTextoParaDecisaoDeOrcamento(message, socket) {
     '';
 
   if (!msg.audioMessage && !msg.pttMessage) {
-    return { text: String(text || '').trim(), isAudio: false };
+    return { text: String(text || '').trim(), isAudio: false, mediaType: msg.imageMessage || msg.stickerMessage ? 'image' : msg.videoMessage ? 'video' : null };
   }
 
   try {
     const transcription = await transcreverAudio(message, socket);
     if (transcription?.sucesso && transcription.texto) {
-      return { text: transcription.texto, isAudio: true };
+      return { text: transcription.texto, isAudio: true, mediaType: 'audio' };
     }
   } catch (error) {
     logWarn('Áudio', `Falha ao transcrever para identificar resposta de orçamento: ${error?.message || error}`);
   }
-  return { text: '[Áudio recebido sem transcrição]', isAudio: true };
+  return { text: '[Áudio recebido sem transcrição]', isAudio: true, mediaType: 'audio' };
 }
 
 function detectarDecisaoDeOrcamento(text) {
@@ -418,7 +424,8 @@ export async function processarMensagemComIA({ socket, message, jid, telefone, n
       direction: 'incoming',
       senderName: nomeCliente || null,
       body: cleanText,
-      mediaType: isAudio ? 'audio' : imageDataUrl ? 'image' : null,
+      mediaType: extracted.mediaType ?? (isAudio ? 'audio' : imageDataUrl ? 'image' : null),
+      messageKey: message?.key?.id || null,
     });
 
     if (isRateLimited(telefone || jid)) {
